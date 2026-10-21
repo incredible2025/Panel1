@@ -50,9 +50,10 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with WidgetsBindingObserver {
+  static const _platform = MethodChannel('streamline/platform');
   final _surfaceFocus = FocusNode(debugLabel: 'Video surface');
   final _playFocus = FocusNode(debugLabel: 'Player play pause');
-  final _releasedControllers = <VideoPlayerController>{};
+  final _controllerReleases = Expando<Future<void>>('controller releases');
   late final LocalStore _store;
   late final Session? _session;
   late final List<MediaItem> _channels;
@@ -91,6 +92,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
     );
+    unawaited(_keepScreenOn(true));
     final session = _session;
     if (_tracksHistory && session != null) {
       unawaited(
@@ -103,6 +105,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_persistProgress());
     });
+  }
+
+  Future<void> _keepScreenOn(bool enabled) async {
+    try {
+      await _platform.invokeMethod<void>('setKeepScreenOn', enabled);
+    } on MissingPluginException {
+      // Native window flags are unavailable in tests and on other platforms.
+    } on PlatformException {
+      // Screen-awake support must never prevent video playback or teardown.
+    }
   }
 
   Future<void> _enqueueHistory(Future<void> Function() write) {
@@ -143,8 +155,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  Future<void> _release(VideoPlayerController controller) async {
-    if (!_releasedControllers.add(controller)) return;
+  Future<void> _release(VideoPlayerController controller) {
+    final existing = _controllerReleases[controller];
+    if (existing != null) return existing;
+    final release = _disposeController(controller);
+    _controllerReleases[controller] = release;
+    return release;
+  }
+
+  Future<void> _disposeController(VideoPlayerController controller) async {
     controller.removeListener(_onControllerChanged);
     try {
       await controller.pause();
@@ -336,6 +355,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _retry() {
+    if (_exiting) return;
     final value = _controller?.value;
     final position = value != null && value.isInitialized
         ? clampPlaybackPosition(value.position, value.duration)
@@ -382,7 +402,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
-      if (event is KeyDownEvent) unawaited(_togglePlayback());
+      if (event is KeyDownEvent) {
+        if (_playbackError != null) {
+          _retry();
+        } else {
+          unawaited(_togglePlayback());
+        }
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowLeft && !_isLive) {
@@ -422,6 +448,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (controller != null) unawaited(_release(controller));
     _surfaceFocus.dispose();
     _playFocus.dispose();
+    unawaited(_keepScreenOn(false));
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     super.dispose();
   }
@@ -449,17 +476,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           body: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => _surfaceFocus.requestFocus(),
-            onDoubleTap: () => unawaited(_togglePlayback()),
             child: Stack(
               fit: StackFit.expand,
               children: [
                 if (ready && controller != null && error == null)
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: value!.aspectRatio > 0
-                          ? value.aspectRatio
-                          : 16 / 9,
-                      child: VideoPlayer(controller),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onDoubleTap: () => unawaited(_togglePlayback()),
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: value!.aspectRatio > 0
+                            ? value.aspectRatio
+                            : 16 / 9,
+                        child: VideoPlayer(controller),
+                      ),
                     ),
                   ),
                 const IgnorePointer(
@@ -560,7 +590,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: Text(
-                              _isLive
+                              error != null
+                                  ? 'OK Retry   •   Back Exit'
+                                  : _isLive
                                   ? '↑ / ↓ Channel   •   OK Play / pause   •   Menu Controls'
                                   : '← / → Seek   •   OK Play / pause   •   ↓ Controls',
                               textAlign: TextAlign.center,

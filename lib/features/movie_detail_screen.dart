@@ -90,9 +90,13 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         if (answer) start = Duration(milliseconds: progress.positionMs);
       }
       if (!mounted) return;
+      final playableItem =
+          ref.read(movieDetailProvider(widget.item)).asData?.value.item ??
+          widget.item;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => PlayerScreen(item: widget.item, startPosition: start),
+          builder: (_) =>
+              PlayerScreen(item: playableItem, startPosition: start),
         ),
       );
       if (mounted) ref.invalidate(historyProvider);

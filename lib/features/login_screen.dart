@@ -135,11 +135,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 color: Color(0xFF78999E),
                               ),
                               SizedBox(width: 9),
-                              Text(
-                                'Made for mobile & Android TV',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF91A4B9),
+                              Expanded(
+                                child: Text(
+                                  'Made for mobile & Android TV',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF91A4B9),
+                                  ),
                                 ),
                               ),
                             ],

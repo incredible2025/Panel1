@@ -331,12 +331,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               size: 28,
             ),
             SizedBox(width: 8),
-            Text(
-              'STREAMLINE',
-              style: TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.2,
-                fontWeight: FontWeight.w800,
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'STREAMLINE',
+                  style: TextStyle(
+                    fontSize: 12,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ),
           ],
@@ -363,9 +369,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         : const Color(0xFF91A4B9),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    entry.$3,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Text(
+                      entry.$3,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ],
               ),
@@ -428,6 +438,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             .clamp(2, 8);
         return CustomScrollView(
           key: PageStorageKey('library-${_kind.name}'),
+          // Build the next screenful of focus targets before remote traversal.
+          cacheExtent: constraints.maxHeight,
           slivers: [
             if (_kind == MediaKind.movie && showHistory)
               SliverToBoxAdapter(
@@ -609,26 +621,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       builder: (context, constraints) {
         final wide = constraints.maxWidth > 700;
         final preview = _livePreview(selected, channels, compact: !wide);
-        if (wide) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        Widget content(double height) {
+          if (wide) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: list),
+                const SizedBox(width: 22),
+                Expanded(flex: 6, child: preview),
+              ],
+            );
+          }
+          return Column(
             children: [
-              Expanded(flex: 5, child: list),
-              const SizedBox(width: 22),
-              Expanded(flex: 6, child: preview),
+              Expanded(child: list),
+              SizedBox(height: height > 480 ? 220 : 156, child: preview),
+              const SizedBox(height: 12),
             ],
           );
         }
-        return Column(
-          children: [
-            Expanded(child: list),
-            SizedBox(
-              height: constraints.maxHeight > 480 ? 220 : 156,
-              child: preview,
-            ),
-            const SizedBox(height: 12),
-          ],
-        );
+
+        // Landscape phones still need room for the programme guide and controls.
+        if (constraints.maxHeight < 320) {
+          return SingleChildScrollView(
+            child: SizedBox(height: 400, child: content(400)),
+          );
+        }
+        return content(constraints.maxHeight);
       },
     );
   }
@@ -829,6 +848,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  String _clock(DateTime date) =>
-      '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  String _clock(DateTime date) {
+    final local = date.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
 }

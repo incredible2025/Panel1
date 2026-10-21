@@ -26,11 +26,25 @@ class TvFocusCard extends StatefulWidget {
 
 class _TvFocusCardState extends State<TvFocusCard> {
   bool _focused = false;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(debugLabel: widget.label ?? 'Streamline card');
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final highlighted = _focused || widget.selected;
     return FocusableActionDetector(
+      focusNode: _focusNode,
       autofocus: widget.autofocus,
       shortcuts: const <ShortcutActivator, Intent>{
         SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
@@ -52,7 +66,8 @@ class _TvFocusCardState extends State<TvFocusCard> {
             if (mounted) {
               Scrollable.ensureVisible(
                 context,
-                alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+                alignment: .5,
+                alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
                 duration: const Duration(milliseconds: 160),
               );
             }

@@ -187,6 +187,32 @@ void main() {
     },
   );
 
+  test('uses TS for HLS-default channels on TS-only accounts', () {
+    final api = XtreamApi();
+    addTearDown(api.dispose);
+    const tsSession = Session(
+      credentials: credentials,
+      userInfo: {
+        'allowed_output_formats': ['ts'],
+      },
+      serverInfo: {},
+    );
+    final channel = MediaItem.fromJson({
+      'stream_id': 42,
+      'name': 'Channel',
+    }, kind: MediaKind.live);
+    expect(channel.containerExtension, 'm3u8');
+    expect(api.streamUri(tsSession, channel).pathSegments.last, '42.ts');
+    expect(api.streamUri(session, channel).pathSegments.last, '42.m3u8');
+    const explicitTs = MediaItem(
+      id: '43',
+      name: 'TS channel',
+      kind: MediaKind.live,
+      containerExtension: 'ts',
+    );
+    expect(api.streamUri(session, explicitTs).pathSegments.last, '43.ts');
+  });
+
   test('authentication errors reject expired and inactive accounts', () async {
     for (final user in [
       {'auth': 0},

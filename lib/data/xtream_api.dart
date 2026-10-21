@@ -149,16 +149,19 @@ class XtreamApi {
     };
     var extension = (episode?.containerExtension ?? item.containerExtension)
         .toLowerCase();
-    if (item.kind == MediaKind.live &&
-        extension != 'm3u8' &&
-        extension != 'ts') {
-      final formats = session.userInfo['allowed_output_formats'];
-      extension =
-          formats is List && !formats.contains('m3u8') && formats.contains('ts')
-          ? 'ts'
-          : 'm3u8';
+    if (item.kind == MediaKind.live) {
+      final rawFormats = session.userInfo['allowed_output_formats'];
+      final formats = rawFormats is List
+          ? rawFormats.map((format) => textValue(format).toLowerCase()).toSet()
+          : <String>{};
+      final requiresTs = formats.contains('ts') && !formats.contains('m3u8');
+      if (extension != 'ts' && (extension != 'm3u8' || requiresTs)) {
+        extension = requiresTs ? 'ts' : 'm3u8';
+      }
     }
-    if (!RegExp(r'^[a-z0-9]{1,10}$').hasMatch(extension)) extension = 'mp4';
+    if (!RegExp(r'^[a-z0-9]{1,10}$').hasMatch(extension)) {
+      extension = 'mp4';
+    }
     final id = episode?.id ?? item.id;
     if (id.isEmpty) {
       throw const XtreamApiException('This item has no playable stream.');

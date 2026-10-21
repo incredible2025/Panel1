@@ -65,7 +65,7 @@ flutter run
 flutter build apk --release
 ```
 
-The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. The application ID is `com.streamline.iptv`, minimum Android API 23. Both phone and TV launchers can discover it.
+The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. The application ID is `com.streamline.iptv`, minimum Android API 24 (Android 7). Both phone and TV launchers can discover it.
 
 ## Xtream API
 

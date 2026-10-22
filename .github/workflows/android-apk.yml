@@ -34,6 +34,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib test
       - name: Analyze
         run: flutter analyze
+      - name: Update manifest tooling tests
+        run: python3 -m unittest discover -s scripts -p 'test_create_update_manifest.py'
       - name: Unit and widget tests
         run: flutter test
 
@@ -104,6 +106,20 @@ jobs:
             test -n "$expected" && test "$expected" = "$actual"
           fi
           (cd build && sha256sum ultravpn-player.apk > ultravpn-player.apk.sha256)
+      - name: Generate verified update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          notes="docs/RELEASE_NOTES_$version.md"
+          if [ ! -f "$notes" ]; then
+            notes="build/update-notes.md"
+            printf 'Improvements and fixes for ULTRAVPN PLAYER.\n' > "$notes"
+          fi
+          python3 scripts/create_update_manifest.py --apk build/ultravpn-player.apk --aapt "$aapt" \
+            --apk-url "https://github.com/${{ github.repository }}/releases/download/v$version/ultravpn-player.apk" \
+            --notes "$notes" --output build/update.json
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
@@ -111,6 +127,7 @@ jobs:
           path: |
             build/ultravpn-player.apk
             build/ultravpn-player.apk.sha256
+            build/update.json
           if-no-files-found: error
           retention-days: 30
       - name: Publish direct APK download
@@ -122,20 +139,22 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
+          assets=(build/ultravpn-player.apk build/ultravpn-player.apk.sha256)
+          if [ "$SIGNING_MODE" = "permanent" ]; then assets+=(build/update.json); fi
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then
               echo "::error::Version $tag already belongs to another commit. Increase the version before releasing."
               exit 1
             fi
-            gh release upload "$tag" build/ultravpn-player.apk build/ultravpn-player.apk.sha256 --clobber
+            gh release upload "$tag" "${assets[@]}" --clobber
           else
             notes="docs/RELEASE_NOTES_$version.md"
             if [ ! -f "$notes" ]; then
               notes="build/release-notes.md"
               printf 'ULTRAVPN PLAYER %s for Android phones and Android TV.\n\nDownload ultravpn-player.apk to install.\n' "$version" > "$notes"
             fi
-            gh release create "$tag" build/ultravpn-player.apk build/ultravpn-player.apk.sha256 \
+            gh release create "$tag" "${assets[@]}" \
               --target "$GITHUB_SHA" --title "ULTRAVPN PLAYER $version" --notes-file "$notes" --latest
           fi
       - name: Remove signing material

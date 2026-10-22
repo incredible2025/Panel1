@@ -12,7 +12,9 @@ The release key belongs to this app. Keep an encrypted offline backup of the ent
 
 The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `keyPassword`. GitHub encrypts the repository secret. Only the main-branch release job receives it; pull-request validation runs without signing credentials.
 
-When a signing secret is configured, the release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `streamline.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. An invalid configured secret fails the release; an absent secret selects the testing key explicitly in the build log.
+When a signing secret is configured, the release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `ultravpn-player.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. An invalid configured secret fails the release; an absent secret selects the testing key explicitly in the build log.
+
+Online updates require this permanent key. The release workflow publishes `update.json` only for permanently signed releases. See [online update setup](UPDATES.md).
 
 ## Local builds
 

@@ -19,3 +19,5 @@ android/signing/
 .DS_Store
 
 .codex-remote-attachments/
+
+__pycache__/

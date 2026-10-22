@@ -1,7 +1,7 @@
 name: streamline_iptv
 description: A dual-mode Xtream Codes player for Android phones and Android TV.
 publish_to: none
-version: 0.5.2+7
+version: 0.6.0+8
 environment:
   sdk: '>=3.9.0 <4.0.0'
 dependencies:

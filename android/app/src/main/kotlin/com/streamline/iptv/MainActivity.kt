@@ -12,8 +12,17 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var updater: AppUpdater? = null
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        updater?.close()
+        updater = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        updater = AppUpdater(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "streamline/platform")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

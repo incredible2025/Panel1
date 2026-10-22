@@ -8,6 +8,7 @@ import '../core/providers.dart';
 import '../data/models.dart';
 import '../data/xtream_api.dart';
 import 'connection_diagnosis_screen.dart';
+import 'app_updates_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -415,6 +416,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                   icon: const Icon(Icons.network_check),
                   label: const Text('Connection diagnosis'),
+                ),
+                const UpdateNotice(),
+                TextButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const AppUpdatesScreen(),
+                          ),
+                        ),
+                  icon: const Icon(Icons.system_update),
+                  label: const Text('App updates'),
                 ),
                 const SizedBox(height: 20),
                 Row(

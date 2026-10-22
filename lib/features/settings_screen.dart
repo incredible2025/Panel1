@@ -5,6 +5,7 @@ import '../core/design_system.dart';
 import '../core/app_version.dart';
 import '../core/app_brand.dart';
 import 'connection_diagnosis_screen.dart';
+import 'app_updates_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
@@ -449,6 +450,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             MaterialPageRoute<void>(
               builder: (_) => const ConnectionDiagnosisScreen(),
             ),
+          ),
+        ),
+        const UpdateNotice(),
+        ListTile(
+          leading: const Icon(Icons.system_update),
+          title: const Text('App updates'),
+          subtitle: const Text('Check for new versions and install updates'),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const AppUpdatesScreen()),
           ),
         ),
         _info(appBrandName, appVersion),

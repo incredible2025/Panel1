@@ -55,10 +55,19 @@ jobs:
           flutter-version: '3.35.7'
           channel: stable
           cache: true
-      - name: Configure permanent signing
+      - name: Select signing for the testing APK
         env:
           ANDROID_SIGNING_JSON: ${{ secrets.ANDROID_SIGNING }}
-        run: python3 scripts/configure_android_signing.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$ANDROID_SIGNING_JSON" ]; then
+            python3 scripts/configure_android_signing.py
+            echo "SIGNING_MODE=permanent" >> "$GITHUB_ENV"
+          else
+            echo "Using the Android testing key; permanent signing is not configured."
+            echo "SIGNING_MODE=testing" >> "$GITHUB_ENV"
+          fi
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Build signed APK
@@ -70,9 +79,11 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/streamline.apk
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           "$apksigner" verify --verbose --print-certs build/streamline.apk | tee build/signature.txt
-          expected="$(tr -d '[:space:]:' < android/release-certificate.sha256 | tr '[:upper:]' '[:lower:]')"
-          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build/signature.txt | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
-          test -n "$expected" && test "$expected" = "$actual"
+          if [ "$SIGNING_MODE" = "permanent" ]; then
+            expected="$(tr -d '[:space:]:' < android/release-certificate.sha256 | tr '[:upper:]' '[:lower:]')"
+            actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build/signature.txt | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+            test -n "$expected" && test "$expected" = "$actual"
+          fi
           sha256sum build/streamline.apk > build/streamline.apk.sha256
       - name: Upload installable APK
         uses: actions/upload-artifact@v4

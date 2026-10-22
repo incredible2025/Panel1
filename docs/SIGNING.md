@@ -1,5 +1,7 @@
 # Permanent Android release signing
 
+Permanent signing is prepared but deferred for the current testing release. With no `ANDROID_SIGNING` secret configured, GitHub builds the APK using Android's disposable testing key. It remains installable; updates from another runner can require uninstalling the prior testing app and clearing its local data.
+
 The release key belongs to this app. Keep an encrypted offline backup of the entire private `.signing` folder, including the PKCS#12 keystore and its password JSON. Losing the key prevents updating existing installations. Neither file belongs in Git, release downloads or build artifacts.
 
 ## Initial setup
@@ -10,7 +12,7 @@ The release key belongs to this app. Keep an encrypted offline backup of the ent
 
 The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `keyPassword`. GitHub encrypts the repository secret. Only the main-branch release job receives it; pull-request validation runs without signing credentials.
 
-The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `streamline.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. A missing or invalid signing secret fails the release instead of substituting a disposable debug key.
+When a signing secret is configured, the release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `streamline.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. An invalid configured secret fails the release; an absent secret selects the testing key explicitly in the build log.
 
 ## Local builds
 

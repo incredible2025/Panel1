@@ -10,7 +10,7 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 As a fallback, open **[Actions → Android APK release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **streamline-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 
-v0.3 introduces a permanent release key. Replacing an older disposable-key testing build may require uninstalling that older app once, which clears its saved login and local history. Later releases signed with the same key can update in place. See [release signing](docs/SIGNING.md) for key backup, configuration and update requirements.
+The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is optional and deferred; see [release signing](docs/SIGNING.md) for the prepared setup.
 
 ## Stack
 
@@ -74,7 +74,7 @@ flutter pub get --enforce-lockfile
 flutter analyze
 flutter test
 flutter run
-# Configure release signing first; see docs/SIGNING.md.
+# Uses the testing key unless optional release signing is configured.
 flutter build apk --release
 ```
 

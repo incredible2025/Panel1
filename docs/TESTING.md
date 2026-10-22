@@ -1,6 +1,6 @@
 # Testing Streamline v0.3
 
-The GitHub workflow checks formatting, runs Flutter analysis and executes the automated suite before building and publishing the permanently signed universal APK. Tests cover API/model parsing, provider timestamps and sorting, SQLite migration/account isolation, favorites/recent channels, movie resume thresholds, playback ordering/lifecycle/cleanup, and phone/TV widgets. Playback tests use a fake video platform; real-provider streams and hardware remotes require device checks.
+The GitHub workflow checks formatting, runs Flutter analysis and executes the automated suite before building and publishing the universal testing APK. Tests cover API/model parsing, provider timestamps and sorting, SQLite migration/account isolation, favorites/recent channels, movie resume thresholds, playback ordering/lifecycle/cleanup, and phone/TV widgets. Playback tests use a fake video platform; real-provider streams and hardware remotes require device checks.
 
 ## Automated checks and visual previews
 
@@ -41,7 +41,7 @@ The v0.3 physical-device checks below remain to be completed. No provider creden
 10. **Premium interface:** inspect phone portrait/landscape and TV at normal and enlarged text settings. Check backdrop/title contrast, long titles, missing artwork, synopsis/cast scrolling, visible focus on season/episode cards and access to the final item in long lists. Enable reduced motion and verify navigation and controls still work.
 11. **Favorites/recent channels:** save and remove a channel using its star, enable the Favorites filter, relaunch and confirm persistence. Play more than twenty distinct channels; the recent shelf must retain the newest twenty, move replayed channels to the front and avoid duplicates. Selecting a channel or failing initialization must not add it. Repeat rapid zapping and Back while local writes are pending.
 12. **Dates and sorting:** verify Newest, Title: A–Z and Title: Z–A against provider data, including mixed-case titles and tied timestamps. Recently added rows must use `added` or fallback `last_modified`, exclude undated titles and show an honest missing-date state when appropriate. Undated titles remain available through Browse all and appear last under Newest.
-13. **Upgrade/signing:** moving from an older disposable-key build may require one uninstall and lose local data. After installing the permanently signed v0.3 APK, future releases using the same certificate should update in place. Verify saved login, favorites and history survive an in-place update; SQLite's v1→v2 migration must preserve movie progress and EPG cache. See [SIGNING.md](SIGNING.md).
+13. **Upgrade/signing:** the current testing key can differ between runners, so installing a newer testing APK may require uninstalling the older app and losing local data. Permanent signing is deferred. When two APKs share a certificate, verify saved login, favorites and history survive an in-place update; SQLite's v1→v2 migration must preserve movie progress and EPG cache. See [SIGNING.md](SIGNING.md).
 
 ## Practical limits
 
@@ -49,4 +49,4 @@ The v0.3 physical-device checks below remain to be completed. No provider creden
 - Flutter runs as an Android app on TV with native TV detection and Flutter focus navigation. Device-specific remote/IME behavior still needs a physical-device check.
 - Hardware decoding is managed by ExoPlayer and Android; support varies by stream codec and device. DRM, catch-up TV, downloads, parental controls and Chromecast are outside this build.
 - EPG stores a short preview. A full EPG grid, audio/subtitle-track selection and further playback-resilience improvements remain future work. Catalog lists require a network connection; full offline playback is not supported. A force-killed process may lose up to the latest five seconds of movie progress.
-- Release updates depend on retaining the permanent signing key and increasing the Android build number; see [SIGNING.md](SIGNING.md).
+- Permanent signing is optional and deferred. Testing builds can require reinstalling; stable updates need the same signing certificate and an increasing Android build number. See [SIGNING.md](SIGNING.md).

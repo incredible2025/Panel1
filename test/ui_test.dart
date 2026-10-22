@@ -335,6 +335,22 @@ Future<void> _pumpApp(
 // Optional visual QA: flutter test --dart-define=CAPTURE_UI=true test/ui_test.dart.
 Future<void> _screenshot(WidgetTester tester, String name) async {
   if (!const bool.fromEnvironment('CAPTURE_UI')) return;
+  // Wait for the exact asset/resize variants used by the visible branding.
+  // Image decoding is asynchronous and can outlive pumpAndSettle's fake clock.
+  final captureContext = tester.element(
+    find.byKey(const ValueKey('qa-surface')),
+  );
+  final assets = tester
+      .widgetList<Image>(find.byType(Image))
+      .map((widget) => widget.image)
+      .where((provider) => provider is AssetImage || provider is ResizeImage)
+      .toList();
+  await tester.runAsync(() async {
+    for (final provider in assets) {
+      await precacheImage(provider, captureContext);
+    }
+  });
+  await tester.pumpAndSettle();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(const ValueKey('qa-surface')),
   );

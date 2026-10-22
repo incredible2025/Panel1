@@ -30,6 +30,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/licenses/native-player.txt
+    - assets/branding/
   fonts:
     - family: Streamline Sans
       fonts:

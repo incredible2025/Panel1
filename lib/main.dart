@@ -12,7 +12,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks([
-      'Streamline native compatibility player',
+      'ULTRAVPN PLAYER native compatibility player',
     ], await rootBundle.loadString('assets/licenses/native-player.txt'));
   });
   try {
@@ -48,7 +48,7 @@ class _StartupError extends StatelessWidget {
             children: [
               const Icon(Icons.storage_rounded, size: 56),
               const SizedBox(height: 24),
-              const Text('Streamline could not open its local storage.'),
+              const Text('ULTRAVPN PLAYER could not open its local storage.'),
               const SizedBox(height: 12),
               const Text('Check available device storage, then try again.'),
               const SizedBox(height: 24),

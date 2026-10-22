@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_brand.dart';
+
 /// Shared visual tokens for the mobile and ten-foot interfaces.
 abstract final class AppColors {
   static const canvas = Color(0xFF060E1B);
@@ -203,62 +205,76 @@ abstract final class StreamlineTheme {
   }
 }
 
+// Keep the internal widget name stable while the public brand changes.
 class StreamlineMark extends StatelessWidget {
   const StreamlineMark({super.key, this.size = 32, this.wordmark = false});
   final double size;
   final bool wordmark;
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      SizedBox.square(
-        dimension: size,
-        child: const CustomPaint(painter: _MarkPainter()),
-      ),
-      if (wordmark) ...[
-        SizedBox(width: size * .34),
-        Text(
-          'STREAMLINE',
-          style: TextStyle(
-            fontFamily: 'Streamline Sans',
-            color: AppColors.text,
-            fontWeight: FontWeight.w700,
-            fontSize: size * .39,
-            letterSpacing: size * .062,
-          ),
+  Widget build(BuildContext context) => Semantics(
+    label: appBrandName,
+    image: true,
+    excludeSemantics: true,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(
+          appBrandMark,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.high,
+          cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).ceil(),
         ),
+        if (wordmark) ...[
+          SizedBox(width: size * .3),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ULTRAVPN',
+                style: TextStyle(
+                  fontFamily: 'Streamline Sans',
+                  color: AppColors.text,
+                  fontWeight: FontWeight.w700,
+                  fontSize: size * .49,
+                  letterSpacing: size * .025,
+                ),
+              ),
+              Text(
+                'PLAYER',
+                style: TextStyle(
+                  fontFamily: 'Streamline Sans',
+                  color: const Color(0xFFA6DAEF),
+                  fontWeight: FontWeight.w700,
+                  fontSize: size * .28,
+                  letterSpacing: size * .13,
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
-    ],
+    ),
   );
 }
 
-class _MarkPainter extends CustomPainter {
-  const _MarkPainter();
+/// Shared with the Android TV launcher banner export, so launcher and UI agree.
+class UltraVpnBanner extends StatelessWidget {
+  const UltraVpnBanner({super.key});
   @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width;
-    final path = Path()
-      ..moveTo(s * .13, s * .04)
-      ..lineTo(s * .87, s * .5)
-      ..lineTo(s * .13, s * .96)
-      ..lineTo(s * .13, s * .71)
-      ..lineTo(s * .48, s * .5)
-      ..lineTo(s * .13, s * .29)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.text, AppColors.accent, AppColors.accentStrong],
-        ).createShader(Offset.zero & size),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) => const DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF103345), Color(0xFF060E1B), Color(0xFF071126)],
+      ),
+    ),
+    child: Center(child: StreamlineMark(size: 76, wordmark: true)),
+  );
 }
 
 class Eyebrow extends StatelessWidget {

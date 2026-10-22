@@ -118,7 +118,7 @@ class CompatibilityPlayback extends PlaybackHandle {
     if (_dead) return;
     _player = mk.Player(
       configuration: const mk.PlayerConfiguration(
-        title: 'Streamline',
+        title: 'ULTRAVPN PLAYER',
         logLevel: mk.MPVLogLevel.error,
         libass: true,
         libassAndroidFont: 'assets/fonts/Roboto-Regular.ttf',

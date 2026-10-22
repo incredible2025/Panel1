@@ -67,7 +67,7 @@ class DiagnosticReport {
   // Only curated descriptions enter the report. Never include provider response
   // text, URLs, IPs, credentials, media titles, headers or native exception text.
   String toText() {
-    final out = StringBuffer('Streamline connection diagnosis\n')
+    final out = StringBuffer('ULTRAVPN PLAYER connection diagnosis\n')
       ..writeln('Version: $appVersion')
       ..writeln('UTC: ${started.toUtc().toIso8601String()}')
       ..writeln(summary)

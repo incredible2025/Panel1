@@ -1,6 +1,8 @@
-# Streamline IPTV
+# ULTRAVPN PLAYER IPTV
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
+
+**Next build:** ULTRAVPN PLAYER branding is prepared for the next release, including the supplied artwork, shield launcher icon, splash and TV banner. See [branding notes](docs/BRANDING.md).
 
 **v0.5.1** adds comprehensive connection diagnosis with stage-by-stage error explanations, safe reports and optional stream sampling. Open it from Settings, sign-in or the player error screen. See [release notes](docs/RELEASE_NOTES_0.5.1.md) and [diagnosis details](docs/CONNECTION_DIAGNOSIS.md).
 

@@ -170,7 +170,7 @@ class IoDiagnosticTransport implements DiagnosticTransport {
         );
         request.headers.set(
           HttpHeaders.userAgentHeader,
-          'Streamline-Diagnostics',
+          'UltraVPNPlayer-Diagnostics',
         );
         if (stream &&
             (uri.pathSegments.contains('movie') ||

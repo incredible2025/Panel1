@@ -287,7 +287,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
     if (_restoring || settings.isLoading) {
       return const Scaffold(
-        body: StatusView(title: 'Preparing Streamline', loading: true),
+        body: StatusView(title: 'Preparing ULTRAVPN PLAYER', loading: true),
       );
     }
     final categories = ref.watch(categoriesProvider(_kind));

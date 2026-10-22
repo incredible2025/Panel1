@@ -525,6 +525,28 @@ void main() {
     },
   );
 
+  testWidgets(
+    'reconnection restores the last playing movie position before play',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      platform.positions[1] = const Duration(minutes: 3);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      platform.failInitialization(1);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(platform.sources.length, 2);
+      await _finishInitialization(tester, platform);
+      expect(
+        platform.calls.indexOf('seek:2:180000'),
+        lessThan(platform.calls.indexOf('play:2')),
+      );
+      expect(platform.positions[2], const Duration(minutes: 3));
+    },
+  );
+
   testWidgets('resumes before playing and saves progress when paused', (
     tester,
   ) async {

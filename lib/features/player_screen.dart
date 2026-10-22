@@ -272,6 +272,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _open(
     MediaItem item, {
     Duration startPosition = Duration.zero,
+    Episode? episode,
   }) async {
     _retryTimer?.cancel();
     _initializationTimer?.cancel();
@@ -286,6 +287,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (mounted) {
       setState(() {
         _item = item;
+        if (episode != null) _episode = episode;
         _loading = true;
         _playbackError = null;
         _dragPosition = null;
@@ -368,6 +370,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
     if (value.isCompleted &&
+        !_advancing &&
         !_completionHandled &&
         _nextEpisode != null &&
         _appActive &&
@@ -614,12 +617,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _advancing = false;
       return;
     }
-    _episode = next;
     _completionHandled = false;
     _retryCount = 0;
     _resumePosition = Duration.zero;
     _wantsPlayback = true;
-    await _open(_item);
+    await _open(_item, episode: next);
     _advancing = false;
   }
 

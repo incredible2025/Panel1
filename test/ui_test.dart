@@ -72,6 +72,19 @@ const _series = MediaItem(
 );
 
 class _MemoryStore implements LocalStore {
+  @override
+  Future<List<EpisodeWatchEntry>> seriesHistory(String accountId) async =>
+      episodeEntries;
+  List<EpisodeWatchEntry> episodeEntries = [];
+  @override
+  Future<void> saveEpisodeProgress(
+    String accountId,
+    MediaItem item,
+    Episode episode, {
+    required int positionMs,
+    required int durationMs,
+    Episode? nextEpisode,
+  }) async {}
   Session? savedSession;
   List<WatchEntry> entries = [];
   List<MediaItem> favoriteItems = [];
@@ -423,6 +436,116 @@ void main() {
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
+  _uiTest('My List saves a movie and filters movies without mixing in series', (
+    tester,
+  ) async {
+    final store = _MemoryStore()..favoriteItems = [_series];
+    await _pumpApp(
+      tester,
+      store: store,
+      screen: MovieDetailScreen(item: _film),
+    );
+    await tester.ensureVisible(find.text('My List'));
+    await tester.tap(find.text('My List'));
+    await tester.pumpAndSettle();
+    expect(store.favoriteItems, contains(_film));
+    expect(find.text('In My List'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpApp(tester, store: store);
+    await tester.tap(find.text('Movies').last);
+    await tester.pumpAndSettle();
+    final chip = find.text('My List').first;
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+    expect(_gridTitles(tester), ['Zephyr']);
+    await _screenshot(tester, 'phone-my-list');
+  });
+
+  _uiTest(
+    'series selects the saved season and shows resume and watched markers',
+    (tester) async {
+      const first = Episode(
+        id: '21',
+        title: 'First Light',
+        season: '1',
+        episodeNumber: 1,
+      );
+      const second = Episode(
+        id: '22',
+        title: 'New Horizons',
+        season: '2',
+        episodeNumber: 1,
+      );
+      final store = _MemoryStore()
+        ..episodeEntries = [
+          EpisodeWatchEntry(
+            item: _series,
+            episode: second,
+            positionMs: 45000,
+            durationMs: 100000,
+            lastAccessed: DateTime.now(),
+          ),
+          EpisodeWatchEntry(
+            item: _series,
+            episode: first,
+            nextEpisode: second,
+            positionMs: 100000,
+            durationMs: 100000,
+            lastAccessed: DateTime.now().subtract(const Duration(minutes: 1)),
+          ),
+        ];
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        screen: const SeriesDetailScreen(item: _series),
+      );
+      await _reveal(tester, find.text('Resume · S2 E1'));
+      expect(find.text('New Horizons'), findsOneWidget);
+      expect(find.text('Resume · 00:45'), findsOneWidget);
+      await _screenshot(tester, 'tv-series-progress');
+      await tester.tap(find.text('Season 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Watched'), findsOneWidget);
+      await tester.tap(find.text('Season 2'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Resume · S2 E1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Continue this episode?'), findsOneWidget);
+      expect(find.text('Resume from 00:45'), findsOneWidget);
+    },
+  );
+
+  _uiTest('series home shows continue watching and My List shelves', (
+    tester,
+  ) async {
+    const first = Episode(
+      id: '21',
+      title: 'First Light',
+      season: '1',
+      episodeNumber: 1,
+    );
+    final store = _MemoryStore()
+      ..favoriteItems = [_series]
+      ..episodeEntries = [
+        EpisodeWatchEntry(
+          item: _series,
+          episode: first,
+          positionMs: 45000,
+          durationMs: 100000,
+          lastAccessed: DateTime.now(),
+        ),
+      ];
+    await _pumpApp(tester, store: store, tv: true);
+    await tester.tap(find.text('Series').first);
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.text('Continue watching'));
+    expect(find.text('Resume · S1 · E1'), findsOneWidget);
+    await _screenshot(tester, 'tv-series-continue');
+    expect(tester.takeException(), isNull);
+  });
+
   _uiTest('phone login validates fields then authenticates and saves session', (
     tester,
   ) async {

@@ -2,7 +2,7 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
-**v0.3.0** adds horizontal movie/series shelves, recently added titles, Newest/A–Z/Z–A sorting, favorite channels and recently played channels. The cinematic [visual system](docs/PREMIUM_DESIGN.md) pairs charcoal surfaces, ivory typography, champagne accents and bundled fonts.
+**v0.4.0** adds series Continue Watching, watched episodes, an optional next-episode countdown, a full channel/time guide, movie and series My List, automatic stream recovery, picture modes, and native audio/subtitle selection. Recently added shelves, sorting and live favorites remain available. The cinematic [visual system](docs/PREMIUM_DESIGN.md) pairs charcoal surfaces, ivory typography, champagne accents and bundled fonts.
 
 ## Download the APK
 
@@ -28,8 +28,11 @@ The current APK uses Android's disposable testing key. Builds from different run
 - **Newest**, **Title: A–Z** and **Title: Z–A** sorting. Recently added rows use real provider timestamps; missing dates are left unknown and sort after dated titles under Newest.
 - Movie details, recently opened films and Continue Watching.
 - Resume or restart prompt when movie progress is **strictly above 5% and below 95%**.
-- Series categories, details, season selectors and episode playback.
-- Movie progress snapshots every five seconds, on pause/background and before navigating back. Recent opens update the access timestamp without erasing saved progress.
+- Series resume, watched episode markers, Continue Watching and a cancellable eight-second next-episode countdown.
+- Movie/series My List shelves and saved-only filters, separated by account.
+- Full channel/time guide with programme descriptions, device-local times, date selection and limited-EPG fallback.
+- Bounded automatic reconnects, Fit/Fill/Stretch and stream-provided audio/subtitle controls.
+- Movie and episode progress snapshots every five seconds, on pause/background and before navigating back. Recent opens update the access timestamp without erasing saved progress.
 - Loading, empty and retry states; credentials and stream URLs are excluded from user-facing error messages.
 - Provider backdrops and posters, movie/series metadata, title-based artwork fallbacks and animated TV focus states that respect reduced motion.
 
@@ -43,6 +46,7 @@ lib/
   app.dart                     # app theme, shortcuts, auth routing
   core/
     providers.dart             # Riverpod session, API, catalog, EPG/history
+    player_tracks.dart         # native audio/subtitle bridge
     platform_mode.dart         # Android TV MethodChannel
     design_system.dart         # visual tokens, bundled type, brand and theme
   data/
@@ -53,9 +57,11 @@ lib/
     login_screen.dart
     dashboard_screen.dart      # Live / Movies / Series, two layouts
     movie_detail_screen.dart   # metadata, recent open, resume prompt
-    series_detail_screen.dart
+    series_detail_screen.dart   # saved season, episode progress and resume
+    tv_guide_screen.dart        # scrollable channel/time schedule
     player_screen.dart         # playback, remote keys, history flush
   widgets/                     # focusable cards, artwork, shared states
+packages/video_player_android/  # pinned player with native track extension
 android/                       # app, Leanback manifest, TV detection
 assets/fonts/                  # bundled Roboto families and licenses
 test/                          # API, SQLite, playback and widget tests
@@ -67,7 +73,7 @@ docs/SIGNING.md
 
 ## Run locally
 
-Install Flutter 3.35.7, JDK 17 and Android SDK 35+ with build tools. Then:
+Install Flutter 3.35.7, JDK 17 and Android SDK 36 with build tools. Then:
 
 ```sh
 flutter pub get --enforce-lockfile
@@ -88,11 +94,11 @@ Requests use `{server}/player_api.php` with URI-encoded `username` and `password
 
 | Area | Actions |
 | --- | --- |
-| Live | `get_live_categories`, `get_live_streams`, `get_short_epg&stream_id=…` |
+| Live | `get_live_categories`, `get_live_streams`, `get_short_epg&stream_id=…`, `get_simple_data_table&stream_id=…` |
 | Movies | `get_vod_categories`, `get_vod_streams`, `get_vod_info&vod_id=…` |
 | Series | `get_series_categories`, `get_series`, `get_series_info&series_id=…` |
 
-Playback URLs follow Xtream's `/live/{username}/{password}/{id}.m3u8`, `/movie/.../{id}.{extension}` and `/series/.../{episodeId}.{extension}` forms. Provider-reported movie and episode extensions are respected. Live HLS is the default; explicit `.ts` channels and accounts restricted to MPEG-TS use `.ts`. The short EPG endpoint supplies the preview and has a two-hour local fallback cache.
+Playback URLs follow Xtream's `/live/{username}/{password}/{id}.m3u8`, `/movie/.../{id}.{extension}` and `/series/.../{episodeId}.{extension}` forms. Provider-reported movie and episode extensions are respected. Live HLS is the default; explicit `.ts` channels and accounts restricted to MPEG-TS use `.ts`. The short EPG endpoint supplies the preview and has a two-hour local fallback cache. The full guide uses get_simple_data_table, a 15-minute fresh cache and up to 24-hour cached fallback. Some providers supply only a short schedule; date controls do not create missing programmes or enable catch-up.
 
 ## Controls
 
@@ -103,7 +109,7 @@ Playback URLs follow Xtream's `/live/{username}/{password}/{id}.m3u8`, `/movie/.
 | Media Play / Pause | Control playback |
 | Left / Right on video | Seek VOD |
 | Up / Down on video | Previous / next live channel |
-| Back | Save movie progress and leave player |
+| Back | Save movie/episode progress and leave player |
 | Touch | Tap controls and scrub VOD timeline |
 
 See [the device test guide](docs/TESTING.md) for acceptance checks and known limits.

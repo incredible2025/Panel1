@@ -293,6 +293,15 @@ class Episode {
   final String containerExtension;
   final String imageUrl;
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'season': season,
+    'episodeNumber': episodeNumber,
+    'container_extension': containerExtension,
+    'imageUrl': imageUrl,
+  };
+
   factory Episode.fromJson(Map<String, dynamic> json, {String season = ''}) {
     final info = objectValue(json['info']);
     final number = intValue(json['episode_num'] ?? json['episodeNumber']);
@@ -329,6 +338,22 @@ class SeriesDetail {
   final String genre;
   final String rating;
   final String year;
+
+  List<Episode> get orderedEpisodes {
+    final episodes = seasons.values.expand((value) => value).toList();
+    episodes.sort((a, b) {
+      final season = (int.tryParse(a.season) ?? 0).compareTo(
+        int.tryParse(b.season) ?? 0,
+      );
+      if (season != 0) return season;
+      final number = a.episodeNumber.compareTo(b.episodeNumber);
+      return number != 0 ? number : a.id.compareTo(b.id);
+    });
+    final ids = <String>{};
+    return episodes
+        .where((episode) => episode.id.isNotEmpty && ids.add(episode.id))
+        .toList();
+  }
 
   factory SeriesDetail.fromJson(MediaItem item, Map<String, dynamic> json) {
     final info = objectValue(json['info']);
@@ -437,10 +462,11 @@ class EpgEntry {
 
 DateTime? _epgDate(dynamic value) {
   final number = num.tryParse(textValue(value));
-  if (number != null && number > 0) {
+  if (number != null && number.isFinite && number > 0) {
     final millis = number > 100000000000
         ? number.toInt()
         : (number * 1000).toInt();
+    if (millis > 8640000000000000) return null;
     return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
   }
   return DateTime.tryParse(textValue(value));
@@ -476,6 +502,44 @@ class WatchEntry {
   double get progress =>
       durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
   bool get canResume => durationMs > 0 && progress > .05 && progress < .95;
+}
+
+class EpisodeWatchEntry {
+  const EpisodeWatchEntry({
+    required this.item,
+    required this.episode,
+    required this.positionMs,
+    required this.durationMs,
+    required this.lastAccessed,
+    this.nextEpisode,
+  });
+  final MediaItem item;
+  final Episode episode;
+  final int positionMs;
+  final int durationMs;
+  final DateTime lastAccessed;
+  final Episode? nextEpisode;
+  double get progress =>
+      durationMs <= 0 ? 0 : (positionMs / durationMs).clamp(0.0, 1.0);
+  bool get watched => durationMs > 0 && progress >= .95;
+  bool get canResume => durationMs > 0 && positionMs >= 10000 && !watched;
+  Episode? get continueEpisode => canResume
+      ? episode
+      : watched
+      ? nextEpisode
+      : null;
+  String get label => 'S${episode.season} · E${episode.episodeNumber}';
+}
+
+class GuideSchedule {
+  const GuideSchedule(
+    this.entries, {
+    this.limited = false,
+    this.cached = false,
+  });
+  final List<EpgEntry> entries;
+  final bool limited;
+  final bool cached;
 }
 
 String textValue(dynamic value, [String fallback = '']) {

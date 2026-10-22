@@ -19,6 +19,74 @@ void main() {
   );
 
   test(
+    'full guide uses provider schedule, sorts and removes duplicate or invalid intervals',
+    () async {
+      final api = XtreamApi(
+        client: MockClient((request) async {
+          expect(
+            request.url.queryParameters['action'],
+            'get_simple_data_table',
+          );
+          expect(request.url.queryParameters['stream_id'], '9');
+          return http.Response(
+            jsonEncode({
+              'epg_listings': [
+                {
+                  'title': 'Later',
+                  'start_timestamp': 2000000000,
+                  'stop_timestamp': 2000003600,
+                },
+                {
+                  'title': 'Earlier',
+                  'start_timestamp': 1999996400,
+                  'stop_timestamp': 2000000000,
+                },
+                {
+                  'title': 'Duplicate',
+                  'start_timestamp': 1999996400,
+                  'stop_timestamp': 2000000000,
+                },
+                {
+                  'title': 'Invalid',
+                  'start_timestamp': 2000000000,
+                  'stop_timestamp': 1999996400,
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.dispose);
+      final result = await api.fullEpg(session, '9');
+      expect(result.entries.map((entry) => entry.title), ['Earlier', 'Later']);
+      expect(result.limited, false);
+    },
+  );
+
+  test(
+    'unsupported full guide falls back to a clearly limited short EPG',
+    () async {
+      final actions = <String>[];
+      final api = XtreamApi(
+        client: MockClient((request) async {
+          final action = request.url.queryParameters['action']!;
+          actions.add(action);
+          if (action == 'get_simple_data_table') {
+            return http.Response('Unavailable', 404);
+          }
+          expect(request.url.queryParameters['limit'], '192');
+          return http.Response('{"epg_listings":[]}', 200);
+        }),
+      );
+      addTearDown(api.dispose);
+      final result = await api.fullEpg(session, '9');
+      expect(actions, ['get_simple_data_table', 'get_short_epg']);
+      expect(result.limited, true);
+    },
+  );
+
+  test(
     'authenticates with encoded GET credentials and normalizes server URL',
     () async {
       final api = XtreamApi(

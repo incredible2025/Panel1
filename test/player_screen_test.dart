@@ -55,6 +55,21 @@ class _SavedPosition {
 }
 
 class _HistoryStore implements LocalStore {
+  final episodeSaves = <(String, String, int)>[];
+  @override
+  Future<List<EpisodeWatchEntry>> seriesHistory(String accountId) async => [];
+  @override
+  Future<void> saveEpisodeProgress(
+    String accountId,
+    MediaItem item,
+    Episode episode, {
+    required int positionMs,
+    required int durationMs,
+    Episode? nextEpisode,
+  }) async {
+    episodeSaves.add((item.id, episode.id, positionMs));
+  }
+
   final opened = <MediaItem>[];
   final saved = <_SavedPosition>[];
   final channelPlays = <MediaItem>[];
@@ -205,6 +220,8 @@ Future<void> _mountPlayer(
   Duration startPosition = Duration.zero,
   MediaItem item = _movie,
   List<MediaItem> channels = const [],
+  Episode? episode,
+  List<Episode> episodes = const [],
 }) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
@@ -240,6 +257,8 @@ Future<void> _mountPlayer(
                         item: item,
                         startPosition: startPosition,
                         channels: channels,
+                        episode: episode,
+                        episodes: episodes,
                       ),
                     ),
                   ),
@@ -302,6 +321,209 @@ void main() {
           null,
         );
   });
+
+  testWidgets(
+    'series resumes and saves the correct episode before advancing across seasons',
+    (tester) async {
+      const series = MediaItem(id: 's', name: 'Series', kind: MediaKind.series);
+      const first = Episode(
+        id: 'e1',
+        title: 'First',
+        season: '1',
+        episodeNumber: 1,
+      );
+      const second = Episode(
+        id: 'e2',
+        title: 'Second',
+        season: '2',
+        episodeNumber: 1,
+      );
+      await _mountPlayer(
+        tester,
+        store,
+        item: series,
+        episode: first,
+        episodes: [first, second],
+        startPosition: const Duration(seconds: 45),
+      );
+      await _finishInitialization(tester, platform);
+      expect(
+        platform.calls.indexOf('seek:1:45000'),
+        lessThan(platform.calls.indexOf('play:1')),
+      );
+      platform.positions[1] = _duration;
+      platform.events[1]!.add(VideoEvent(eventType: VideoEventType.completed));
+      await tester.pump();
+      expect(find.text('Next episode in 8'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pump(const Duration(seconds: 9));
+      expect(platform.sources.length, 1);
+      await tester.tap(find.text('Next episode'));
+      await tester.pump();
+      await tester.pump();
+      expect(platform.sources.values.last.uri, contains('/e2.mp4'));
+      expect(
+        store.episodeSaves.any(
+          (entry) => entry.$2 == 'e1' && entry.$3 == _duration.inMilliseconds,
+        ),
+        true,
+      );
+      await _finishInitialization(tester, platform);
+      expect(find.text('Second'), findsOneWidget);
+      expect(store.opened, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'completed series automatically advances once after eight seconds',
+    (tester) async {
+      const series = MediaItem(id: 's', name: 'Series', kind: MediaKind.series);
+      const first = Episode(
+        id: 'e1',
+        title: 'First',
+        season: '1',
+        episodeNumber: 1,
+      );
+      const second = Episode(
+        id: 'e2',
+        title: 'Second',
+        season: '1',
+        episodeNumber: 2,
+      );
+      await _mountPlayer(
+        tester,
+        store,
+        item: series,
+        episode: first,
+        episodes: [first, second],
+      );
+      await _finishInitialization(tester, platform);
+      platform.positions[1] = _duration;
+      platform.events[1]!.add(VideoEvent(eventType: VideoEventType.completed));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 8));
+      await tester.pump();
+      expect(platform.sources.length, 2);
+      expect(platform.sources.values.last.uri, contains('/e2.mp4'));
+      await _finishInitialization(tester, platform);
+      expect(find.text('Next episode'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'reconnection stops after three attempts and backgrounding cancels it',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      for (var attempt = 0; attempt < 4; attempt++) {
+        platform.failInitialization(platform.sources.keys.last);
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(Duration(seconds: 2 << attempt));
+        await tester.pump();
+      }
+      expect(platform.sources.length, 4);
+      await tester.pump(const Duration(seconds: 40));
+      expect(platform.sources.length, 4);
+      await tester.tap(find.text('Try again'));
+      await tester.pump();
+      platform.failInitialization(platform.sources.keys.last);
+      await tester.pump();
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump(const Duration(seconds: 10));
+      expect(platform.sources.length, 5);
+    },
+  );
+
+  testWidgets(
+    'picture modes and unavailable audio remain usable without a native track bridge',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      await tester.tap(find.text('Picture: Fit'));
+      await tester.pump();
+      expect(find.text('Picture: Fill'), findsOneWidget);
+      await tester.tap(find.text('Audio'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Track selection is unavailable for this player.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(platform.calls, contains('play:1'));
+    },
+  );
+
+  testWidgets(
+    'native audio and subtitle menus select supplied tracks and render captions',
+    (tester) async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final selections = <String>[];
+      Map<String, dynamic> snapshot({String caption = ''}) => {
+        'tracks': [
+          {
+            'key': '0:0',
+            'type': 'audio',
+            'label': 'English',
+            'selected': true,
+            'supported': true,
+          },
+          {
+            'key': '1:0',
+            'type': 'text',
+            'label': 'Spanish',
+            'selected': false,
+            'supported': true,
+          },
+        ],
+        'caption': caption,
+        'textOff': caption.isEmpty,
+        'audioAuto': true,
+      };
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('streamline/player_tracks'),
+        (call) async {
+          if (call.method == 'select') {
+            selections.add(
+              '${call.arguments['type']}:${call.arguments['key']}',
+            );
+            return snapshot(caption: 'Provider caption');
+          }
+          return snapshot();
+        },
+      );
+      messenger.setMockMethodCallHandler(
+        const MethodChannel('streamline/player_tracks/events'),
+        (call) async => null,
+      );
+      addTearDown(() {
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('streamline/player_tracks'),
+          null,
+        );
+        messenger.setMockMethodCallHandler(
+          const MethodChannel('streamline/player_tracks/events'),
+          null,
+        );
+      });
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      await tester.tap(find.text('Audio'));
+      await tester.pumpAndSettle();
+      expect(find.text('Automatic'), findsOneWidget);
+      await tester.tap(find.text('English'));
+      await tester.pumpAndSettle();
+      expect(selections, ['audio:0:0']);
+      expect(find.text('Provider caption'), findsOneWidget);
+      await tester.tap(find.text('Subtitles'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Spanish'));
+      await tester.pumpAndSettle();
+      expect(selections.last, 'text:1:0');
+    },
+  );
 
   testWidgets('resumes before playing and saves progress when paused', (
     tester,

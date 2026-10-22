@@ -3,3 +3,4 @@ analyzer:
   exclude:
     - .tooling/**
     - .pub-cache/**
+    - packages/video_player_android/**

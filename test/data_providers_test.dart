@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/data/xtream_api.dart';
 
 class _CollectionStore implements LocalStore {
   final favoritesByAccount = <String, List<MediaItem>>{};
@@ -20,7 +21,133 @@ class _CollectionStore implements LocalStore {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _GuideStore extends _CollectionStore {
+  dynamic cache;
+  bool broken = false;
+  @override
+  Future<dynamic> cachedJson(
+    String accountId,
+    String key, {
+    Duration maxAge = const Duration(hours: 2),
+  }) async {
+    if (broken) throw StateError('Cache unavailable');
+    return cache;
+  }
+
+  @override
+  Future<void> cacheJson(String accountId, String key, dynamic value) async {
+    if (broken) throw StateError('Cache unavailable');
+    cache = value;
+  }
+}
+
+class _GuideApi extends XtreamApi {
+  int requests = 0;
+  bool offline = false;
+  @override
+  Future<GuideSchedule> fullEpg(Session session, String streamId) async {
+    requests++;
+    if (offline) throw const XtreamApiException('Schedule unavailable');
+    return GuideSchedule([
+      EpgEntry(
+        title: 'News',
+        description: '',
+        start: DateTime.utc(2026, 10, 22, 10),
+        end: DateTime.utc(2026, 10, 22, 11),
+      ),
+    ]);
+  }
+}
+
 void main() {
+  test(
+    'guide refresh reaches provider and network failure uses cached schedule',
+    () async {
+      final store = _GuideStore();
+      final api = _GuideApi();
+      final container = ProviderContainer(
+        overrides: [
+          storeProvider.overrideWithValue(store),
+          apiProvider.overrideWithValue(api),
+          sessionProvider.overrideWith(
+            (ref) => const Session(
+              credentials: Credentials(
+                serverUrl: 'https://example.com',
+                username: 'alice',
+                password: 'secret',
+              ),
+              userInfo: {},
+              serverInfo: {},
+            ),
+          ),
+        ],
+      );
+      final subscription = container.listen(
+        guideScheduleProvider('1'),
+        (_, __) {},
+      );
+      addTearDown(() {
+        subscription.close();
+        container.dispose();
+        api.dispose();
+      });
+      expect(
+        (await container.read(guideScheduleProvider('1').future)).cached,
+        false,
+      );
+      container.invalidate(guideScheduleProvider('1'));
+      expect(
+        (await container.read(guideScheduleProvider('1').future)).cached,
+        true,
+      );
+      expect(api.requests, 1);
+      api.offline = true;
+      container.read(guideRefreshProvider.notifier).state++;
+      expect(
+        (await container.read(guideScheduleProvider('1').future)).cached,
+        true,
+      );
+      expect(api.requests, 2);
+    },
+  );
+
+  test('broken cache cannot hide valid provider schedule', () async {
+    final store = _GuideStore()..broken = true;
+    final api = _GuideApi();
+    final container = ProviderContainer(
+      overrides: [
+        storeProvider.overrideWithValue(store),
+        apiProvider.overrideWithValue(api),
+        sessionProvider.overrideWith(
+          (ref) => const Session(
+            credentials: Credentials(
+              serverUrl: 'https://example.com',
+              username: 'alice',
+              password: 'secret',
+            ),
+            userInfo: {},
+            serverInfo: {},
+          ),
+        ),
+      ],
+    );
+    final subscription = container.listen(
+      guideScheduleProvider('1'),
+      (_, __) {},
+    );
+    addTearDown(() {
+      subscription.close();
+      container.dispose();
+      api.dispose();
+    });
+    expect(
+      (await container.read(
+        guideScheduleProvider('1').future,
+      )).entries.single.title,
+      'News',
+    );
+  });
+
   test(
     'collection providers are empty when signed out without opening storage',
     () async {

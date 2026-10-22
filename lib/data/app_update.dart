@@ -159,8 +159,11 @@ class AndroidUpdatePlatform implements UpdatePlatform {
 
 /// A separate client per operation makes cancellation close the active socket.
 class UpdateTransport {
-  UpdateTransport({HttpClient Function()? clientFactory})
-    : _clientFactory = clientFactory ?? HttpClient.new;
+  UpdateTransport({
+    HttpClient Function()? clientFactory,
+    this.operationTimeout = const Duration(minutes: 15),
+  }) : _clientFactory = clientFactory ?? HttpClient.new;
+  final Duration operationTimeout;
   final HttpClient Function() _clientFactory;
   HttpClient? _active;
   bool _cancelled = false;
@@ -174,9 +177,21 @@ class UpdateTransport {
     final client = _clientFactory()
       ..connectionTimeout = const Duration(seconds: 15);
     _active = client;
+    var expired = false;
+    final timer = Timer(operationTimeout, () {
+      expired = true;
+      _cancelled = true;
+      client.close(force: true);
+    });
     try {
-      return await operation(client).timeout(const Duration(minutes: 15));
+      final value = await operation(client);
+      if (expired) throw TimeoutException('Update deadline exceeded.');
+      return value;
+    } catch (_) {
+      if (expired) throw TimeoutException('Update deadline exceeded.');
+      rethrow;
     } finally {
+      timer.cancel();
       client.close(force: true);
       if (identical(_active, client)) _active = null;
     }
@@ -235,7 +250,8 @@ class UpdateTransport {
     final partial = File('$directory/update.part');
     final apk = File('$directory/update.apk');
     if (await apk.exists()) await apk.delete();
-    final output = partial.openWrite();
+    final output = await partial.open(mode: FileMode.write);
+    var closed = false;
     try {
       final response = await _get(client, update.url);
       if (response.contentLength >= 0 &&
@@ -253,11 +269,12 @@ class UpdateTransport {
             'The APK is larger than expected. No installation was started.',
           );
         }
-        output.add(chunk);
-        await output.flush();
+        await output.writeFrom(chunk);
         progress(received);
       }
+      await output.flush();
       await output.close();
+      closed = true;
       if (received != update.bytes ||
           (await sha256.bind(partial.openRead()).first).toString() !=
               update.sha256) {
@@ -269,7 +286,7 @@ class UpdateTransport {
       await partial.rename(apk.path);
       return apk.path;
     } finally {
-      await output.close();
+      if (!closed) await output.close();
       if (await partial.exists()) await partial.delete();
     }
   });

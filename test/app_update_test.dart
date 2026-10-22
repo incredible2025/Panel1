@@ -363,6 +363,37 @@ void main() {
         },
       );
     }
+    test('storage open failure happens before any HTTP request', () async {
+      await Directory('${directory.path}/update.part').create();
+      final client = Client([
+        bytes([1, 2, 3]),
+      ]);
+      await expectLater(
+        UpdateTransport(
+          clientFactory: () => client,
+        ).download(candidate(), directory.path, (_) {}),
+        throwsA(isA<FileSystemException>()),
+      );
+      expect(client.urls, isEmpty);
+    });
+    test(
+      'deadline waits for operation cleanup and removes the partial file',
+      () async {
+        final stream = Stream<List<int>>.fromFuture(
+          Future.delayed(const Duration(milliseconds: 60), () => [1, 2, 3]),
+        );
+        final client = Client([Response(stream)]);
+        final transport = UpdateTransport(
+          clientFactory: () => client,
+          operationTimeout: const Duration(milliseconds: 10),
+        );
+        await expectLater(
+          transport.download(candidate(), directory.path, (_) {}),
+          throwsA(isA<TimeoutException>()),
+        );
+        expect(await directory.list().toList(), isEmpty);
+      },
+    );
     test('declared size mismatch is rejected', () async {
       final transport = UpdateTransport(
         clientFactory: () => Client([

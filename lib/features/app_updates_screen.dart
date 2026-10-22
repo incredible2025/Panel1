@@ -11,7 +11,6 @@ class AppUpdatesScreen extends ConsumerStatefulWidget {
 }
 
 class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
-  final _address = TextEditingController();
   bool _loaded = false;
   @override
   void initState() {
@@ -25,7 +24,6 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
       }
       if (mounted) {
         setState(() {
-          _address.text = controller.url;
           _loaded = true;
         });
       }
@@ -33,18 +31,11 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
   }
 
   @override
-  void dispose() {
-    _address.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final c = ref.watch(updateControllerProvider);
     final update = c.update;
     final status = switch (c.stage) {
-      UpdateStage.idle =>
-        c.configured ? 'Ready to check' : 'Set up remote updates',
+      UpdateStage.idle => 'Ready to check',
       UpdateStage.checking => 'Checking for updates…',
       UpdateStage.current => 'You’re up to date',
       UpdateStage.available => 'A new version is available',
@@ -72,13 +63,6 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                   'Last attempt: ${c.lastCheck!.toLocal().toString().split('.').first}',
                 ),
               const SizedBox(height: 20),
-              if (!c.configured && _loaded)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    'Enter the HTTPS address of your update.json file below to enable remote updates.',
-                  ),
-                ),
               if (c.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -135,60 +119,14 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 ),
               const SizedBox(height: 16),
               OutlinedButton(
-                onPressed: c.busy || !_loaded || !c.configured
+                onPressed: c.busy || !_loaded
                     ? null
                     : () => c.check(),
                 child: const Text('Check for updates'),
               ),
               const SizedBox(height: 24),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Check automatically'),
-                subtitle: const Text(
-                  'Check on opening the app, at most once every 12 hours. Downloads only start when you choose.',
-                ),
-                value: c.automatic,
-                onChanged: c.busy || !_loaded ? null : (v) => c.save(c.url, v),
-              ),
-              const Divider(height: 32),
-              TextField(
-                controller: _address,
-                enabled: !c.busy && _loaded,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Remote update address',
-                  hintText: 'https://yourdomain.com/updates/update.json',
-                  helperText:
-                      'Full HTTPS link to update.json. Save an empty address to turn off remote updates.',
-                  helperMaxLines: 3,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                children: [
-                  TextButton(
-                    onPressed: c.busy || !_loaded
-                        ? null
-                        : () async {
-                            if (await c.save(_address.text, c.automatic) &&
-                                context.mounted) {
-                              _address.text = c.url;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Update address saved.'),
-                                ),
-                              );
-                            }
-                          },
-                    child: const Text('Save address'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
               const Text(
-                'Updates preserve your account and watch history when signed with the same release key. APK integrity, app identity and signing compatibility are checked before installation.',
+                'Updates download only when you choose. Android asks you to approve installation.',
               ),
             ],
           ),

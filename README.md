@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.2** embeds the administrator's update endpoint and simplifies App updates to status, check, download and install controls. No address entry is needed. See [remote update hosting](docs/UPDATES.md).
+
 **v0.6.1** removes the preset update host and adds portable remote-update packages. Enter your own HTTPS update.json address in App updates; new installations make no update requests until configured. See [remote update hosting](docs/UPDATES.md).
 
 **v0.6.0** adds a built-in updater with configurable HTTPS hosting, release notes, optional automatic checks, verified APK downloads and Android installer integration. See [online updates](docs/UPDATES.md). Reliable in-place updates require the permanent release key.

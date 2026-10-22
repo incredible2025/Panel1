@@ -3,49 +3,33 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
+import 'package:streamline_iptv/data/app_update.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 
 import 'app_update_test.dart' show FakePlatform, FakeTransport;
 
 void main() {
-  testWidgets('unconfigured screen has remote setup, no preset and no error', (
-    tester,
-  ) async {
-    final transport = FakeTransport();
-    final c = UpdateController(FakePlatform()..url = '', transport);
-    await tester.pumpWidget(
-      ProviderScope(
+  for (final previous in ['', 'https://old.example/update.json']) {
+    testWidgets('updates show actions without source controls: $previous', (tester) async {
+      final transport = FakeTransport();
+      final c = UpdateController(FakePlatform()..url = previous, transport);
+      await tester.pumpWidget(ProviderScope(
         overrides: [updateControllerProvider.overrideWith((ref) => c)],
-        child: const MaterialApp(home: AppUpdatesScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Set up remote updates'), findsOneWidget);
-    expect(find.text('Use official updates'), findsNothing);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      '',
-    );
-    expect(
-      tester
-          .widget<OutlinedButton>(
-            find.widgetWithText(OutlinedButton, 'Check for updates'),
-          )
-          .onPressed,
-      null,
-    );
-    await tester.enterText(
-      find.byType(TextField),
-      'https://own.example/updates/update.json',
-    );
-    await tester.ensureVisible(find.text('Save address'));
-    await tester.tap(find.text('Save address'));
-    await tester.pumpAndSettle();
-    expect(c.configured, true);
-    expect(c.url, 'https://own.example/updates/update.json');
-    expect(transport.checks, 0);
-    expect(tester.takeException(), isNull);
-  });
+        child: const MaterialApp(home: AppUpdatesScreen())));
+      await tester.pumpAndSettle();
+      expect(find.text('Ready to check'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(SwitchListTile), findsNothing);
+      expect(find.text('Save address'), findsNothing);
+      expect(find.text('Use official updates'), findsNothing);
+      expect(find.textContaining('ultra-vpn.store'), findsNothing);
+      await tester.tap(find.text('Check for updates'));
+      await tester.pumpAndSettle();
+      expect(transport.checkedUrl, appUpdateManifestUrl);
+      expect(find.text('A new version is available'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final size in [const Size(390, 844), const Size(1280, 720)]) {
     testWidgets('check, download and installer permission flow at $size', (

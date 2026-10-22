@@ -3,6 +3,9 @@ package com.streamline.iptv
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +20,30 @@ class MainActivity : FlutterActivity() {
                     "isTelevision" -> {
                         val manager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
                         result.success(manager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION)
+                    }
+                    "networkDiagnosis" -> {
+                        try {
+                            val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                            val network = manager.activeNetwork
+                            val caps = network?.let { manager.getNetworkCapabilities(it) }
+                            val links = network?.let { manager.getLinkProperties(it) }
+                            val transports = mutableListOf<String>()
+                            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) transports.add("Wi-Fi")
+                            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true) transports.add("Ethernet")
+                            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true) transports.add("Mobile")
+                            if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) transports.add("VPN")
+                            result.success(mapOf(
+                                "connected" to (network != null),
+                                "validated" to caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+                                "captivePortal" to caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
+                                "vpn" to caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
+                                "privateDns" to if (Build.VERSION.SDK_INT >= 28) links?.isPrivateDnsActive else null,
+                                "metered" to manager.isActiveNetworkMetered,
+                                "transports" to transports
+                            ))
+                        } catch (_: Exception) {
+                            result.error("network_unavailable", "Network information is unavailable.", null)
+                        }
                     }
                     "setKeepScreenOn" -> {
                         if (call.arguments == true) {

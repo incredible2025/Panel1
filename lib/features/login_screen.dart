@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
+import '../data/xtream_api.dart';
+import 'connection_diagnosis_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -49,11 +51,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
       await ref.read(storeProvider).saveSession(session);
       if (mounted) ref.read(sessionProvider.notifier).state = session;
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(
-          () => _error =
-              'Could not sign in. Check your server address and account details, and make sure the provider is available.',
+          () => _error = error is XtreamApiException
+              ? error.message
+              : 'The account could not be saved or sign-in could not finish. Check device storage and run Connection diagnosis.',
         );
       }
     } finally {
@@ -393,6 +396,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                     ],
                   ),
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => ConnectionDiagnosisScreen(
+                              credentials: Credentials(
+                                serverUrl: _server.text.trim(),
+                                username: _username.text.trim(),
+                                password: _password.text,
+                              ),
+                            ),
+                          ),
+                        ),
+                  icon: const Icon(Icons.network_check),
+                  label: const Text('Connection diagnosis'),
                 ),
                 const SizedBox(height: 20),
                 Row(

@@ -26,7 +26,7 @@ class LocalStore {
       databasePath ??
           path.join(await factory.getDatabasesPath(), 'streamline.db'),
       options: sqlite.OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE watch_history (
@@ -53,9 +53,11 @@ class LocalStore {
             )
           ''');
           await _createCollections(db);
+          await _createEpisodeHistory(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createCollections(db);
+          if (oldVersion < 3) await _createEpisodeHistory(db);
         },
       ),
     );
@@ -94,6 +96,115 @@ class LocalStore {
     await db.execute('''
       CREATE INDEX channels_recent ON live_recent (account_id, last_played DESC)
     ''');
+  }
+
+  static Future<void> _createEpisodeHistory(sqlite.DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE episode_history (
+        account_id TEXT NOT NULL,
+        series_id TEXT NOT NULL,
+        episode_id TEXT NOT NULL,
+        item_json TEXT NOT NULL,
+        episode_json TEXT NOT NULL,
+        next_episode_json TEXT,
+        position_ms INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        last_accessed INTEGER NOT NULL,
+        PRIMARY KEY (account_id, series_id, episode_id)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX episodes_recent ON episode_history (account_id, last_accessed DESC)',
+    );
+  }
+
+  Future<List<EpisodeWatchEntry>> seriesHistory(String accountId) async {
+    final rows = await _database.query(
+      'episode_history',
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+      orderBy: 'last_accessed DESC, episode_id ASC',
+    );
+    final entries = <EpisodeWatchEntry>[];
+    for (final row in rows) {
+      try {
+        final item = MediaItem.fromJson(
+          objectValue(jsonDecode(row['item_json']! as String)),
+        );
+        final episode = Episode.fromJson(
+          objectValue(jsonDecode(row['episode_json']! as String)),
+        );
+        if (item.kind != MediaKind.series || episode.id.isEmpty) continue;
+        final next = row['next_episode_json'];
+        entries.add(
+          EpisodeWatchEntry(
+            item: item,
+            episode: episode,
+            nextEpisode: next is String
+                ? Episode.fromJson(objectValue(jsonDecode(next)))
+                : null,
+            positionMs: intValue(row['position_ms']),
+            durationMs: intValue(row['duration_ms']),
+            lastAccessed: DateTime.fromMillisecondsSinceEpoch(
+              intValue(row['last_accessed']),
+            ),
+          ),
+        );
+      } on FormatException {
+        continue;
+      }
+    }
+    return entries;
+  }
+
+  Future<void> saveEpisodeProgress(
+    String accountId,
+    MediaItem item,
+    Episode episode, {
+    required int positionMs,
+    required int durationMs,
+    Episode? nextEpisode,
+  }) async {
+    if (item.kind != MediaKind.series ||
+        item.id.isEmpty ||
+        episode.id.isEmpty) {
+      return;
+    }
+    await _database.transaction((txn) async {
+      final rows = await txn.query(
+        'episode_history',
+        where: 'account_id = ? AND series_id = ? AND episode_id = ?',
+        whereArgs: [accountId, item.id, episode.id],
+        limit: 1,
+      );
+      final existing = rows.firstOrNull;
+      final oldDuration = intValue(existing?['duration_ms']);
+      final duration = durationMs > 0 ? durationMs : oldDuration;
+      final rawPosition = durationMs <= 0 && positionMs <= 0 && oldDuration > 0
+          ? intValue(existing?['position_ms'])
+          : math.max(0, positionMs);
+      final position = duration > 0
+          ? math.min(rawPosition, duration)
+          : rawPosition;
+      await txn.insert('episode_history', {
+        'account_id': accountId,
+        'series_id': item.id,
+        'episode_id': episode.id,
+        'item_json': jsonEncode(item.toJson()),
+        'episode_json': jsonEncode(episode.toJson()),
+        'next_episode_json': nextEpisode == null
+            ? null
+            : jsonEncode(nextEpisode.toJson()),
+        'position_ms': position,
+        'duration_ms': math.max(0, duration),
+        'last_accessed': await _nextCollectionTime(
+          txn,
+          'episode_history',
+          'last_accessed',
+          accountId,
+        ),
+      }, conflictAlgorithm: sqlite.ConflictAlgorithm.replace);
+    });
   }
 
   Future<Session?> readSession() async {

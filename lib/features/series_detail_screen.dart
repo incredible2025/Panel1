@@ -5,7 +5,8 @@ import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
 import '../widgets/media_card.dart';
-import '../widgets/status_view.dart';
+import '../widgets/my_list_button.dart';
+import '../widgets/status_view.dart' hide formatPlaybackTime;
 import '../widgets/tv_focus_card.dart';
 import 'player_screen.dart';
 
@@ -34,8 +35,19 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
           ? first.compareTo(second)
           : a.compareTo(b);
     });
-    final season = seasons.contains(_selectedSeason)
-        ? _selectedSeason
+    final history =
+        (ref.watch(seriesHistoryProvider).asData?.value ??
+                <EpisodeWatchEntry>[])
+            .where((entry) => entry.item.id == widget.item.id)
+            .toList();
+    final latest = history.firstOrNull;
+    final continueId = latest?.continueEpisode?.id;
+    final continuing = series?.orderedEpisodes
+        .where((episode) => episode.id == continueId)
+        .firstOrNull;
+    final preferredSeason = _selectedSeason ?? continuing?.season;
+    final season = seasons.contains(preferredSeason)
+        ? preferredSeason
         : seasons.firstOrNull;
     final episodes = series?.seasons[season] ?? <Episode>[];
     return Scaffold(
@@ -87,6 +99,29 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  if (series != null &&
+                                      series.orderedEpisodes.isNotEmpty)
+                                    FilledButton.icon(
+                                      onPressed: () => _playEpisode(
+                                        continuing ??
+                                            series.orderedEpisodes.first,
+                                        series,
+                                      ),
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: Text(
+                                        continuing == null
+                                            ? 'Play series'
+                                            : '${latest!.canResume ? 'Resume' : 'Up next'} · S${continuing.season} E${continuing.episodeNumber}',
+                                      ),
+                                    ),
+                                  MyListButton(item: widget.item),
+                                ],
+                              ),
+                              const SizedBox(height: 28),
                               const Divider(color: AppColors.border, height: 1),
                               const SizedBox(height: 28),
                               Row(
@@ -183,7 +218,18 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                             delegate: SliverChildBuilderDelegate(
                               (context, index) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
-                                child: _episode(episodes[index], series!, wide),
+                                child: _episode(
+                                  episodes[index],
+                                  series!,
+                                  wide,
+                                  history
+                                      .where(
+                                        (entry) =>
+                                            entry.episode.id ==
+                                            episodes[index].id,
+                                      )
+                                      .firstOrNull,
+                                ),
                               ),
                               childCount: episodes.length,
                             ),
@@ -423,7 +469,74 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     ),
   );
 
-  Widget _episode(Episode episode, SeriesDetail series, bool wide) {
+  Future<void> _playEpisode(Episode episode, SeriesDetail series) async {
+    Duration position = Duration.zero;
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
+    try {
+      final history = await ref
+          .read(storeProvider)
+          .seriesHistory(session.accountId);
+      final saved = history
+          .where(
+            (entry) =>
+                entry.item.id == widget.item.id &&
+                entry.episode.id == episode.id,
+          )
+          .firstOrNull;
+      if (!mounted) return;
+      if (saved?.canResume == true) {
+        final resume = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Continue this episode?'),
+            content: Text(
+              'Resume from ${formatPlaybackTime(Duration(milliseconds: saved!.positionMs))}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Start from Beginning'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Resume'),
+              ),
+            ],
+          ),
+        );
+        if (resume == null || !mounted) return;
+        if (resume) position = Duration(milliseconds: saved!.positionMs);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved progress is unavailable. Try again.'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlayerScreen(
+          item: widget.item,
+          episode: episode,
+          episodes: series.orderedEpisodes,
+          startPosition: position,
+        ),
+      ),
+    );
+    if (mounted) ref.invalidate(seriesHistoryProvider);
+  }
+
+  Widget _episode(
+    Episode episode,
+    SeriesDetail series,
+    bool wide,
+    EpisodeWatchEntry? saved,
+  ) {
     final artwork = episode.imageUrl.isNotEmpty
         ? episode.imageUrl
         : series.backdropUrl.isNotEmpty
@@ -432,11 +545,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     return TvFocusCard(
       borderRadius: 10,
       label: 'Play episode ${episode.episodeNumber}: ${episode.title}',
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => PlayerScreen(item: widget.item, episode: episode),
-        ),
-      ),
+      onPressed: () => _playEpisode(episode, series),
       child: Padding(
         padding: EdgeInsets.all(wide ? 13 : 10),
         child: Row(
@@ -494,6 +603,25 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (saved != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      saved.watched
+                          ? 'Watched'
+                          : saved.canResume
+                          ? 'Resume · ${formatPlaybackTime(Duration(milliseconds: saved.positionMs))}'
+                          : 'Started',
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    LinearProgressIndicator(
+                      value: saved.progress,
+                      minHeight: 2,
+                    ),
+                  ],
                   if (wide) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -518,7 +646,9 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                 border: Border.all(color: AppColors.border),
               ),
               child: Icon(
-                Icons.play_arrow_rounded,
+                saved?.watched == true
+                    ? Icons.check_rounded
+                    : Icons.play_arrow_rounded,
                 size: wide ? 26 : 21,
                 color: AppColors.accent,
               ),

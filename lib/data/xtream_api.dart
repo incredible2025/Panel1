@@ -124,12 +124,50 @@ class XtreamApi {
     return SeriesDetail.fromJson(item, payload);
   }
 
-  Future<List<EpgEntry>> shortEpg(Session session, String streamId) async {
+  Future<GuideSchedule> fullEpg(Session session, String streamId) async {
+    try {
+      final payload = objectValue(
+        await _request(session.credentials, {
+          'action': 'get_simple_data_table',
+          'stream_id': streamId,
+        }),
+      );
+      if (payload['epg_listings'] is! List) {
+        throw const XtreamApiException('Full schedule is unavailable.');
+      }
+      final entries =
+          objectList(
+              payload['epg_listings'],
+            ).map(EpgEntry.fromJson).whereType<EpgEntry>().toList()
+            ..sort((a, b) => a.start.compareTo(b.start));
+      final seen = <String>{};
+      return GuideSchedule(
+        entries
+            .where(
+              (entry) => seen.add(
+                '${entry.start.toIso8601String()}:${entry.end.toIso8601String()}',
+              ),
+            )
+            .toList(),
+      );
+    } on XtreamApiException {
+      return GuideSchedule(
+        await shortEpg(session, streamId, limit: 192),
+        limited: true,
+      );
+    }
+  }
+
+  Future<List<EpgEntry>> shortEpg(
+    Session session,
+    String streamId, {
+    int limit = 6,
+  }) async {
     final payload = objectValue(
       await _request(session.credentials, {
         'action': 'get_short_epg',
         'stream_id': streamId,
-        'limit': '6',
+        'limit': limit.toString(),
       }),
     );
     return objectList(

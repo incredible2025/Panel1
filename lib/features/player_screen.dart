@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
+import '../core/player_tracks.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
 
@@ -38,12 +39,14 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.episode,
     this.startPosition = Duration.zero,
     this.channels = const [],
+    this.episodes = const [],
   });
 
   final MediaItem item;
   final Episode? episode;
   final Duration startPosition;
   final List<MediaItem> channels;
+  final List<Episode> episodes;
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
@@ -62,6 +65,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late MediaItem _item;
   VideoPlayerController? _controller;
   Timer? _progressTimer;
+  Timer? _retryTimer;
+  Timer? _initializationTimer;
+  Timer? _nextTimer;
+  final _tracks = PlayerTracks();
+  Episode? _episode;
+  BoxFit _pictureFit = BoxFit.contain;
+  int _retryCount = 0;
+  int? _nextSeconds;
+  bool _completionHandled = false;
+  bool _advancing = false;
+  bool _wantsPlayback = true;
+  Duration _resumePosition = Duration.zero;
+  DateTime? _bufferingSince;
+  DateTime? _healthySince;
   Future<void> _historyWrites = Future<void>.value();
   Future<void> _channelHistoryWrites = Future<void>.value();
   int _generation = 0;
@@ -75,7 +92,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   DateTime? _lastZap;
 
   bool get _isLive => _item.kind == MediaKind.live;
-  bool get _tracksHistory => widget.item.kind == MediaKind.movie;
+  bool get _tracksHistory =>
+      _item.kind == MediaKind.movie ||
+      (_item.kind == MediaKind.series && _episode != null);
+  Episode? get _nextEpisode {
+    final index = widget.episodes.indexWhere(
+      (episode) => episode.id == _episode?.id,
+    );
+    return index >= 0 && index + 1 < widget.episodes.length
+        ? widget.episodes[index + 1]
+        : null;
+  }
 
   @override
   void initState() {
@@ -84,6 +111,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _store = ref.read(storeProvider);
     _session = ref.read(sessionProvider);
     _item = widget.item;
+    _episode = widget.episode;
+    _resumePosition = widget.startPosition;
     _channels = widget.channels
         .where((item) => item.kind == MediaKind.live)
         .toList();
@@ -97,7 +126,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     unawaited(_keepScreenOn(true));
     final session = _session;
-    if (_tracksHistory && session != null) {
+    if (_item.kind == MediaKind.movie && session != null) {
       unawaited(
         _enqueueHistory(
           () => _store.recordOpened(session.accountId, widget.item),
@@ -107,6 +136,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_open(_item, startPosition: widget.startPosition));
     _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_persistProgress());
+      _checkBuffering();
     });
   }
 
@@ -128,6 +158,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         await write();
         if (!mounted) return;
         ref.invalidate(historyProvider);
+        ref.invalidate(seriesHistoryProvider);
         if (_saveFailed && !_exiting) setState(() => _saveFailed = false);
       } catch (_) {
         if (mounted && !_exiting) setState(() => _saveFailed = true);
@@ -148,13 +179,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
     final position = clampPlaybackPosition(value.position, value.duration);
     final duration = value.duration;
+    final item = _item;
+    final episode = _episode;
+    final next = _nextEpisode;
     return _enqueueHistory(
-      () => _store.saveProgress(
-        session.accountId,
-        widget.item,
-        positionMs: position.inMilliseconds,
-        durationMs: duration.inMilliseconds,
-      ),
+      () => episode != null && item.kind == MediaKind.series
+          ? _store.saveEpisodeProgress(
+              session.accountId,
+              item,
+              episode,
+              positionMs: position.inMilliseconds,
+              durationMs: duration.inMilliseconds,
+              nextEpisode: next,
+            )
+          : _store.saveProgress(
+              session.accountId,
+              item,
+              positionMs: position.inMilliseconds,
+              durationMs: duration.inMilliseconds,
+            ),
     );
   }
 
@@ -229,13 +272,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _open(
     MediaItem item, {
     Duration startPosition = Duration.zero,
+    Episode? episode,
   }) async {
+    _retryTimer?.cancel();
+    _initializationTimer?.cancel();
+    _cancelNext();
+    _bufferingSince = null;
+    _healthySince = null;
     final generation = ++_generation;
+    await _tracks.detach();
+    if (!mounted || generation != _generation || _exiting) return;
     final previous = _controller;
     _controller = null;
     if (mounted) {
       setState(() {
         _item = item;
+        if (episode != null) _episode = episode;
         _loading = true;
         _playbackError = null;
         _dragPosition = null;
@@ -256,7 +308,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
       final uri = ref
           .read(apiProvider)
-          .streamUri(session, item, episode: widget.episode);
+          .streamUri(session, item, episode: _episode);
       controller = VideoPlayerController.networkUrl(
         uri,
         formatHint: uri.path.toLowerCase().endsWith('.m3u8')
@@ -269,7 +321,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       );
       _controller = controller;
       controller.addListener(_onControllerChanged);
-      await controller.initialize();
+      await _initialize(controller);
       if (!mounted || generation != _generation || _exiting) {
         await _release(controller);
         return;
@@ -280,8 +332,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         );
       }
       if (!mounted || generation != _generation || _exiting) return;
-      if (_appActive) await controller.play();
+      if (_appActive && _wantsPlayback) await controller.play();
       if (!mounted || generation != _generation || _exiting) return;
+      unawaited(_tracks.attach(controller));
       _recordLivePlayback(controller, generation, item);
       setState(() => _loading = false);
     } catch (_) {
@@ -295,6 +348,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         });
       }
       if (controller != null) await _release(controller);
+      if (mounted && generation == _generation && !_exiting) {
+        _scheduleReconnect();
+      }
     }
   }
 
@@ -302,6 +358,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!mounted || _exiting) return;
     final value = _controller?.value;
     if (value == null) return;
+    if (value.isInitialized && !value.hasError) {
+      _resumePosition = clampPlaybackPosition(value.position, value.duration);
+      if (value.isPlaying && !value.isBuffering) {
+        _healthySince ??= DateTime.now();
+        if (DateTime.now().difference(_healthySince!).inSeconds >= 30) {
+          _retryCount = 0;
+        }
+      } else {
+        _healthySince = null;
+      }
+    }
+    if (value.isCompleted &&
+        !_advancing &&
+        !_completionHandled &&
+        _nextEpisode != null &&
+        _appActive &&
+        _wantsPlayback) {
+      _startNextCountdown();
+    }
+    if (value.hasError && !_loading) _scheduleReconnect();
     setState(() {
       if (value.hasError) {
         _loading = false;
@@ -312,6 +388,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _pauseAndSave() async {
+    _wantsPlayback = false;
+    _retryTimer?.cancel();
+    _cancelNext();
     final controller = _controller;
     // Capture position before pausing: another lifecycle callback may arrive
     // while the native pause request is still in flight.
@@ -338,6 +417,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Future<void> _leave() async {
     if (_exiting) return;
     _exiting = true;
+    _initializationTimer?.cancel();
+    _retryTimer?.cancel();
+    _cancelNext();
     _progressTimer?.cancel();
     await _pauseAndSave();
     if (mounted) Navigator.of(context).pop();
@@ -352,12 +434,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
     try {
       if (controller.value.isPlaying) {
+        _wantsPlayback = false;
+        _retryTimer?.cancel();
+        _cancelNext();
         await controller.pause();
         await _persistProgress();
       } else if (_appActive) {
+        _wantsPlayback = true;
         if (!_isLive &&
             controller.value.duration > Duration.zero &&
             controller.value.position >= controller.value.duration) {
+          _completionHandled = false;
           await controller.seekTo(Duration.zero);
         }
         await controller.play();
@@ -403,17 +490,262 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return;
     }
     _lastZap = now;
+    _retryCount = 0;
+    _wantsPlayback = true;
     _channelIndex = (_channelIndex + delta) % _channels.length;
     unawaited(_open(_channels[_channelIndex]));
   }
 
   void _retry() {
     if (_exiting) return;
+    _retryCount = 0;
+    _wantsPlayback = true;
     final value = _controller?.value;
     final position = value != null && value.isInitialized
         ? clampPlaybackPosition(value.position, value.duration)
-        : widget.startPosition;
+        : _resumePosition;
     unawaited(_open(_item, startPosition: position));
+  }
+
+  Future<void> _initialize(VideoPlayerController controller) {
+    final complete = Completer<void>();
+    final timer = Timer(const Duration(seconds: 25), () {
+      if (!complete.isCompleted) {
+        complete.completeError(
+          TimeoutException('Stream initialization timed out'),
+        );
+      }
+    });
+    _initializationTimer = timer;
+    controller.initialize().then(
+      (_) {
+        timer.cancel();
+        if (!complete.isCompleted) complete.complete();
+      },
+      onError: (Object error, StackTrace stack) {
+        timer.cancel();
+        if (!complete.isCompleted) complete.completeError(error, stack);
+      },
+    );
+    return complete.future;
+  }
+
+  void _checkBuffering() {
+    final value = _controller?.value;
+    if (_loading ||
+        !_appActive ||
+        !_wantsPlayback ||
+        value == null ||
+        value.isCompleted) {
+      return;
+    }
+    if (value.isBuffering) {
+      _bufferingSince ??= DateTime.now();
+      if (DateTime.now().difference(_bufferingSince!).inSeconds >= 20) {
+        _scheduleReconnect();
+        if (mounted) {
+          setState(() => _playbackError = 'The stream stalled. Reconnecting…');
+        }
+      }
+    } else {
+      _bufferingSince = null;
+    }
+  }
+
+  void _scheduleReconnect() {
+    if (_retryTimer?.isActive == true ||
+        !_appActive ||
+        !_wantsPlayback ||
+        _exiting ||
+        _retryCount >= 3 ||
+        ref.read(sessionProvider)?.accountId != _session?.accountId) {
+      return;
+    }
+    final generation = _generation;
+    final position = _resumePosition;
+    final seconds = 2 << _retryCount;
+    _retryCount++;
+    _retryTimer = Timer(Duration(seconds: seconds), () async {
+      if (!mounted ||
+          _exiting ||
+          !_appActive ||
+          !_wantsPlayback ||
+          generation != _generation) {
+        return;
+      }
+      await _persistProgress();
+      if (!mounted ||
+          _exiting ||
+          !_appActive ||
+          !_wantsPlayback ||
+          generation != _generation) {
+        return;
+      }
+      unawaited(_open(_item, startPosition: position));
+    });
+  }
+
+  void _cancelNext() {
+    _nextTimer?.cancel();
+    _nextSeconds = null;
+  }
+
+  void _startNextCountdown() {
+    _completionHandled = true;
+    _nextSeconds = 8;
+    unawaited(_persistProgress());
+    _nextTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _exiting || !_appActive) {
+        _cancelNext();
+        return;
+      }
+      if ((_nextSeconds ?? 0) <= 1) {
+        unawaited(_advanceEpisode());
+      } else {
+        setState(() => _nextSeconds = _nextSeconds! - 1);
+      }
+    });
+  }
+
+  Future<void> _advanceEpisode() async {
+    final next = _nextEpisode;
+    if (next == null || _advancing || _exiting) return;
+    _advancing = true;
+    _cancelNext();
+    await _persistProgress();
+    if (!mounted || _exiting || !_appActive) {
+      _advancing = false;
+      return;
+    }
+    _completionHandled = false;
+    _retryCount = 0;
+    _resumePosition = Duration.zero;
+    _wantsPlayback = true;
+    await _open(_item, episode: next);
+    _advancing = false;
+  }
+
+  Widget _extraControls() => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 12,
+      children: [
+        TextButton.icon(
+          onPressed: () => _chooseTracks('audio'),
+          icon: const Icon(Icons.audiotrack, size: 18),
+          label: const Text('Audio'),
+        ),
+        TextButton.icon(
+          onPressed: () => _chooseTracks('text'),
+          icon: const Icon(Icons.subtitles_outlined, size: 18),
+          label: const Text('Subtitles'),
+        ),
+        TextButton.icon(
+          onPressed: () => setState(
+            () => _pictureFit = _pictureFit == BoxFit.contain
+                ? BoxFit.cover
+                : _pictureFit == BoxFit.cover
+                ? BoxFit.fill
+                : BoxFit.contain,
+          ),
+          icon: const Icon(Icons.aspect_ratio, size: 18),
+          label: Text(
+            'Picture: ${_pictureFit == BoxFit.contain
+                ? 'Fit'
+                : _pictureFit == BoxFit.cover
+                ? 'Fill'
+                : 'Stretch'}',
+          ),
+        ),
+        if (_nextEpisode != null)
+          TextButton.icon(
+            onPressed: () => unawaited(_advanceEpisode()),
+            icon: const Icon(Icons.skip_next, size: 18),
+            label: const Text('Next episode'),
+          ),
+      ],
+    ),
+  );
+
+  Future<void> _chooseTracks(String type) async {
+    final snapshot = _tracks.value;
+    final tracks = snapshot.tracks
+        .where((track) => track.type == type)
+        .toList();
+    final key = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(type == 'audio' ? 'Audio' : 'Subtitles'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!snapshot.available)
+                  const Text('Track selection is unavailable for this player.')
+                else ...[
+                  ListTile(
+                    title: Text(type == 'audio' ? 'Automatic' : 'Off'),
+                    trailing:
+                        (type == 'audio'
+                            ? snapshot.audioAuto
+                            : snapshot.textOff)
+                        ? const Icon(Icons.check)
+                        : null,
+                    onTap: () => Navigator.pop(
+                      context,
+                      type == 'audio' ? 'auto' : 'off',
+                    ),
+                  ),
+                  if (type == 'text')
+                    ListTile(
+                      title: const Text('Automatic'),
+                      onTap: () => Navigator.pop(context, 'auto'),
+                    ),
+                  for (final track in tracks)
+                    ListTile(
+                      enabled: track.supported,
+                      title: Text(track.label),
+                      subtitle: !track.supported
+                          ? const Text('Unsupported format')
+                          : null,
+                      trailing: track.selected ? const Icon(Icons.check) : null,
+                      onTap: track.supported
+                          ? () => Navigator.pop(context, track.key)
+                          : null,
+                    ),
+                  if (tracks.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'No tracks of this type supplied by the stream.',
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (key == null || !mounted || _exiting) return;
+    if (!await _tracks.select(type, key) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This track could not be selected. Reopen the menu to try again.',
+          ),
+        ),
+      );
+    }
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -492,6 +824,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
+    _retryTimer?.cancel();
+    _nextTimer?.cancel();
+    _initializationTimer?.cancel();
+    _tracks.dispose();
     // Normal exits await this queue; this fallback also captures an unexpected
     // route removal without retaining access to Riverpod after disposal.
     unawaited(_persistProgress());
@@ -513,7 +849,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final value = controller?.value;
     final ready = value?.isInitialized ?? false;
     final error = _playbackError;
-    final title = widget.episode?.title ?? _item.name;
+    final title = _episode?.title ?? _item.name;
     final compact = MediaQuery.sizeOf(context).height < 460;
 
     return PopScope<Object?>(
@@ -538,14 +874,61 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     behavior: HitTestBehavior.opaque,
                     onDoubleTap: () => unawaited(_togglePlayback()),
                     child: Center(
-                      child: AspectRatio(
-                        aspectRatio: value!.aspectRatio > 0
-                            ? value.aspectRatio
-                            : 16 / 9,
-                        child: VideoPlayer(controller),
+                      child: SizedBox.expand(
+                        child: ClipRect(
+                          child: FittedBox(
+                            fit: _pictureFit,
+                            child: SizedBox(
+                              width: value!.size.width > 0
+                                  ? value.size.width
+                                  : 16,
+                              height: value.size.height > 0
+                                  ? value.size.height
+                                  : 9,
+                              child: VideoPlayer(controller),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
+                ValueListenableBuilder<TrackSnapshot>(
+                  valueListenable: _tracks,
+                  builder: (context, tracks, _) => Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: compact ? 175 : 230,
+                    child: IgnorePointer(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final bytes in tracks.images)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 120),
+                              child: Image.memory(
+                                bytes,
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
+                          if (tracks.caption.isNotEmpty)
+                            Text(
+                              tracks.caption,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                color: Colors.white,
+                                backgroundColor: Colors.black87,
+                                shadows: [
+                                  Shadow(blurRadius: 3, color: Colors.black),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
                 const IgnorePointer(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -587,6 +970,31 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       children: [
                         _playerHeader(context, title, tv, compact),
                         const Spacer(),
+                        if (_nextSeconds != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 12,
+                                  children: [
+                                    Text('Next episode in $_nextSeconds'),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          unawaited(_advanceEpisode()),
+                                      child: const Text('Play next'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => setState(_cancelNext),
+                                      child: const Text('Cancel'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         if (_saveFailed)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 12),
@@ -613,6 +1021,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                           ),
                         if (ready && error == null)
                           _buildControls(context, value!, tv),
+                        if (ready && error == null) _extraControls(),
                         if (tv)
                           Padding(
                             padding: const EdgeInsets.only(top: 22),
@@ -691,7 +1100,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   Text(
                     _isLive
                         ? 'LIVE TELEVISION'
-                        : widget.episode == null
+                        : _episode == null
                         ? 'MOVIE'
                         : 'SERIES',
                     style: TextStyle(
@@ -804,6 +1213,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 icon: const Icon(Icons.refresh_rounded, size: 19),
                 label: const Text('Try again'),
               ),
+              if (_retryTimer?.isActive == true)
+                TextButton(
+                  onPressed: () => setState(() {
+                    _retryTimer?.cancel();
+                    _wantsPlayback = false;
+                  }),
+                  child: Text('Cancel reconnect ($_retryCount/3)'),
+                ),
             ],
           ),
         ),

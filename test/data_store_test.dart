@@ -220,6 +220,150 @@ void main() {
     },
   );
 
+  test(
+    'episode progress isolates account and series, survives restart, and retains the next episode',
+    () async {
+      const series = MediaItem(id: 's1', name: 'Coast', kind: MediaKind.series);
+      const other = MediaItem(
+        id: 's2',
+        name: 'Mountains',
+        kind: MediaKind.series,
+      );
+      const episode = Episode(
+        id: '1',
+        title: 'Pilot',
+        season: '1',
+        episodeNumber: 1,
+      );
+      const next = Episode(
+        id: '2',
+        title: 'Next season',
+        season: '2',
+        episodeNumber: 1,
+      );
+      await store.saveEpisodeProgress(
+        'alice',
+        series,
+        episode,
+        positionMs: 30000,
+        durationMs: 100000,
+        nextEpisode: next,
+      );
+      await store.saveEpisodeProgress(
+        'alice',
+        other,
+        episode,
+        positionMs: 60000,
+        durationMs: 100000,
+      );
+      await store.saveEpisodeProgress(
+        'bob',
+        series,
+        episode,
+        positionMs: 80000,
+        durationMs: 100000,
+      );
+      var entries = await store.seriesHistory('alice');
+      expect(entries.map((entry) => entry.item.id), ['s2', 's1']);
+      expect(entries.last.canResume, true);
+      expect(entries.last.nextEpisode?.season, '2');
+      expect(entries.last.episode.title, 'Pilot');
+      await store.saveEpisodeProgress(
+        'alice',
+        series,
+        episode,
+        positionMs: 0,
+        durationMs: 0,
+        nextEpisode: next,
+      );
+      entries = await store.seriesHistory('alice');
+      expect(entries.first.positionMs, 30000);
+      await store.saveEpisodeProgress(
+        'alice',
+        series,
+        episode,
+        positionMs: 999999,
+        durationMs: 100000,
+        nextEpisode: next,
+      );
+      final completed = (await store.seriesHistory('alice')).first;
+      expect(completed.positionMs, 100000);
+      expect(completed.watched, true);
+      expect(completed.canResume, false);
+      expect(completed.continueEpisode?.id, next.id);
+      expect((await store.seriesHistory('bob')).single.positionMs, 80000);
+      await store.clearSession();
+      expect((await store.seriesHistory('alice')).length, 2);
+      expect(await store.history('alice'), isEmpty);
+    },
+  );
+
+  test(
+    'v2 migration preserves movies and My List while adding persistent series progress',
+    () async {
+      final location = path.join(
+        Directory.systemTemp.path,
+        'streamline-v2-${DateTime.now().microsecondsSinceEpoch}.db',
+      );
+      LocalStore? current;
+      Database? legacy;
+      try {
+        current = await LocalStore.open(
+          databaseFactory: databaseFactoryFfi,
+          databasePath: location,
+        );
+        await current.saveProgress(
+          'alice',
+          movie,
+          positionMs: 40000,
+          durationMs: 100000,
+        );
+        await current.setFavorite('alice', movie, true);
+        await current.close();
+        current = null;
+        legacy = await databaseFactoryFfi.openDatabase(location);
+        await legacy.execute('DROP TABLE episode_history');
+        await legacy.setVersion(2);
+        await legacy.close();
+        legacy = null;
+        current = await LocalStore.open(
+          databaseFactory: databaseFactoryFfi,
+          databasePath: location,
+        );
+        expect((await current.history('alice')).single.positionMs, 40000);
+        expect((await current.favorites('alice')).single, movie);
+        const series = MediaItem(
+          id: 's',
+          name: 'Series',
+          kind: MediaKind.series,
+        );
+        const episode = Episode(
+          id: 'e',
+          title: 'Episode',
+          season: '1',
+          episodeNumber: 1,
+        );
+        await current.saveEpisodeProgress(
+          'alice',
+          series,
+          episode,
+          positionMs: 50000,
+          durationMs: 100000,
+        );
+        await current.close();
+        current = await LocalStore.open(
+          databaseFactory: databaseFactoryFfi,
+          databasePath: location,
+        );
+        expect((await current.seriesHistory('alice')).single.positionMs, 50000);
+      } finally {
+        await legacy?.close();
+        await current?.close();
+        await databaseFactoryFfi.deleteDatabase(location);
+      }
+    },
+  );
+
   test('securely saves, restores and clears the session', () async {
     const session = Session(
       credentials: Credentials(

@@ -5,6 +5,7 @@ import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
 import '../widgets/media_card.dart';
+import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart';
 import 'player_screen.dart' show PlayerScreen;
 
@@ -350,7 +351,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                             ],
                             if (wide) ...[
                               const SizedBox(height: 28),
-                              _playButton(saved, tv),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _playButton(saved, tv),
+                                  MyListButton(item: widget.item),
+                                ],
+                              ),
                             ],
                           ],
                         ),
@@ -359,7 +367,14 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   ),
                   if (!wide) ...[
                     const SizedBox(height: 30),
-                    _playButton(saved, tv),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _playButton(saved, tv),
+                        MyListButton(item: widget.item),
+                      ],
+                    ),
                   ],
                   if (saved != null) ...[
                     const SizedBox(height: 28),

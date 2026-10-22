@@ -23,6 +23,76 @@ final historyProvider = FutureProvider<List<WatchEntry>>((ref) async {
   return ref.watch(storeProvider).history(session.accountId);
 });
 
+final seriesHistoryProvider = FutureProvider<List<EpisodeWatchEntry>>((
+  ref,
+) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.watch(storeProvider).seriesHistory(session.accountId);
+});
+
+final guideRefreshProvider = StateProvider<int>((ref) => 0);
+
+final guideScheduleProvider = FutureProvider.autoDispose
+    .family<GuideSchedule, String>((ref, id) async {
+      final session = ref.watch(sessionProvider);
+      if (session == null) return const GuideSchedule([]);
+      final refresh = ref.watch(guideRefreshProvider);
+      final store = ref.watch(storeProvider);
+      final key = 'guide:$id';
+      GuideSchedule? decode(dynamic data) {
+        if (data is! Map) return null;
+        return GuideSchedule(
+          objectList(
+            data['entries'],
+          ).map(EpgEntry.fromJson).whereType<EpgEntry>().toList(),
+          limited: data['limited'] == true,
+          cached: true,
+        );
+      }
+
+      try {
+        if (refresh == 0) {
+          try {
+            final recent = decode(
+              await store.cachedJson(
+                session.accountId,
+                key,
+                maxAge: const Duration(minutes: 15),
+              ),
+            );
+            if (recent != null) return recent;
+          } catch (_) {
+            /* Read failures do not prevent a live provider request. */
+          }
+        }
+        final schedule = await ref.watch(apiProvider).fullEpg(session, id);
+        try {
+          await store.cacheJson(session.accountId, key, {
+            'limited': schedule.limited,
+            'entries': [for (final entry in schedule.entries) entry.toJson()],
+          });
+        } catch (_) {
+          /* Cache failure must not hide a valid live schedule. */
+        }
+        return schedule;
+      } catch (_) {
+        try {
+          final cached = decode(
+            await store.cachedJson(
+              session.accountId,
+              key,
+              maxAge: const Duration(hours: 24),
+            ),
+          );
+          if (cached != null) return cached;
+        } catch (_) {
+          /* Keep the provider's neutral error. */
+        }
+        rethrow;
+      }
+    });
+
 final favoritesProvider = FutureProvider<List<MediaItem>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session == null) return [];

@@ -10,6 +10,7 @@ import '../widgets/tv_focus_card.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
+import 'tv_guide_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -26,6 +27,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final Map<MediaKind, String?> _category = {};
   final Map<MediaKind, CatalogSort> _sort = {};
   final Set<MediaKind> _browseAll = {};
+  final Set<MediaKind> _myListOnly = {};
   final Set<String> _savingFavorites = {};
   MediaItem? _channel;
   bool _signingOut = false;
@@ -69,13 +71,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _showCategory(String? id) {
-    setState(() => _category[_kind] = id);
+    setState(() {
+      _category[_kind] = id;
+      _myListOnly.remove(_kind);
+    });
+    _scrollToTop();
+  }
+
+  void _showMyList() {
+    setState(() {
+      _category[_kind] = null;
+      _search.clear();
+      _browseAll.add(_kind);
+      _myListOnly.add(_kind);
+    });
     _scrollToTop();
   }
 
   void _showAll({CatalogSort? sort}) {
     setState(() {
       _browseAll.add(_kind);
+      _myListOnly.remove(_kind);
       if (sort != null) _sort[_kind] = sort;
     });
     _scrollToTop();
@@ -116,6 +132,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     ref.invalidate(itemsProvider(_kind));
     ref.invalidate(categoriesProvider(_kind));
     ref.invalidate(historyProvider);
+    ref.invalidate(seriesHistoryProvider);
     ref.invalidate(favoritesProvider);
     ref.invalidate(recentChannelsProvider);
     if (_channel != null) ref.invalidate(epgProvider(_channel!.id));
@@ -135,6 +152,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => screen));
     if (mounted) {
       ref.invalidate(historyProvider);
+      ref.invalidate(seriesHistoryProvider);
       ref.invalidate(recentChannelsProvider);
     }
   }
@@ -185,7 +203,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final favoritesState = ref.watch(favoritesProvider);
     final favoriteIds =
         favoritesState.asData?.value
-            .where((item) => item.kind == MediaKind.live)
+            .where((item) => item.kind == _kind)
             .map((item) => item.id)
             .toSet() ??
         <String>{};
@@ -282,8 +300,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ),
                           ],
                           data: (allItems) {
-                            if (_kind == MediaKind.live &&
-                                _favoritesOnly &&
+                            if (((_kind == MediaKind.live && _favoritesOnly) ||
+                                    _myListOnly.contains(_kind)) &&
                                 favoritesState.isLoading) {
                               return [
                                 _status(
@@ -294,8 +312,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 ),
                               ];
                             }
-                            if (_kind == MediaKind.live &&
-                                _favoritesOnly &&
+                            if (((_kind == MediaKind.live && _favoritesOnly) ||
+                                    _myListOnly.contains(_kind)) &&
                                 favoritesState.hasError) {
                               return [
                                 _status(
@@ -314,6 +332,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                   (item) =>
                                       (_kind != MediaKind.live ||
                                           !_favoritesOnly ||
+                                          favoriteIds.contains(item.id)) &&
+                                      (!_myListOnly.contains(_kind) ||
                                           favoriteIds.contains(item.id)) &&
                                       (selectedCategory == null ||
                                           item.categoryId ==
@@ -353,11 +373,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                             query.isEmpty &&
                                             selectedCategory == null
                                         ? 'No favorite channels yet'
+                                        : _myListOnly.contains(_kind)
+                                        ? 'Your list is empty'
                                         : 'No matches found',
                                     message:
                                         _kind == MediaKind.live &&
                                             _favoritesOnly
                                         ? 'Turn off Favorites and use the star beside a channel to save it.'
+                                        : _myListOnly.contains(_kind)
+                                        ? 'Open a movie or series and choose My List to save it here.'
                                         : 'Try another search or category.',
                                     icon: Icons.search_off,
                                   ),
@@ -419,6 +443,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ),
       ),
+      if (_kind == MediaKind.live)
+        IconButton(
+          tooltip: 'TV guide',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => const TvGuideScreen()),
+          ),
+          icon: const Icon(Icons.calendar_view_week_rounded),
+        ),
       IconButton(
         onPressed: _refresh,
         tooltip: 'Refresh library',
@@ -723,20 +755,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     height: 42,
     child: ListView.separated(
       scrollDirection: Axis.horizontal,
-      itemCount: categories.length + 1,
+      itemCount: categories.length + (_kind == MediaKind.live ? 1 : 2),
       separatorBuilder: (_, __) => const SizedBox(width: 8),
       itemBuilder: (context, index) {
-        final category = index == 0 ? null : categories[index - 1];
-        final selected = _category[_kind] == category?.id;
+        final extra = _kind == MediaKind.live ? 1 : 2;
+        final list = extra == 2 && index == 1;
+        final category = index < extra ? null : categories[index - extra];
+        final selected = list
+            ? _myListOnly.contains(_kind)
+            : !_myListOnly.contains(_kind) && _category[_kind] == category?.id;
         return TvFocusCard(
           selected: selected,
           transparent: true,
           borderRadius: 30,
-          onPressed: () => _showCategory(category?.id),
+          onPressed: list ? _showMyList : () => _showCategory(category?.id),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: Text(
-              category?.name ?? 'All',
+              list ? 'My List' : category?.name ?? 'All',
               style: TextStyle(
                 color: selected ? AppColors.accent : AppColors.muted,
                 fontSize: 12,
@@ -817,6 +853,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     : () {
                         setState(() {
                           _browseAll.remove(_kind);
+                          _myListOnly.remove(_kind);
                           _category[_kind] = null;
                           _search.clear();
                         });
@@ -832,6 +869,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
       ),
+      if (browsing)
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: margin),
+          sliver: SliverToBoxAdapter(child: _savedShelves(items, isTv)),
+        ),
       if (_kind == MediaKind.movie && browsing)
         SliverPadding(
           padding: EdgeInsets.symmetric(horizontal: margin),
@@ -982,6 +1024,98 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
     ];
+  }
+
+  Widget _savedShelves(List<MediaItem> items, bool tv) {
+    final saved = ref.watch(favoritesProvider).asData?.value ?? <MediaItem>[];
+    final ids = saved
+        .where((item) => item.kind == _kind)
+        .map((item) => item.id)
+        .toSet();
+    final list = items.where((item) => ids.contains(item.id)).toList();
+    final history = _kind == MediaKind.series
+        ? ref.watch(seriesHistoryProvider).asData?.value ??
+              <EpisodeWatchEntry>[]
+        : <EpisodeWatchEntry>[];
+    final seen = <String>{};
+    final continuing = history
+        .where((entry) => seen.add(entry.item.id))
+        .where(
+          (entry) =>
+              entry.continueEpisode != null &&
+              items.any((item) => item.id == entry.item.id),
+        )
+        .take(20)
+        .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (continuing.isNotEmpty) ...[
+          _sectionTitle('Continue watching'),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 242,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: continuing.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 16),
+              itemBuilder: (context, index) {
+                final entry = continuing[index];
+                final episode = entry.continueEpisode!;
+                return SizedBox(
+                  width: tv ? 260 : 220,
+                  child: TvFocusCard(
+                    label: 'Continue ${entry.item.name}',
+                    onPressed: () => _open(entry.item),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: 145,
+                          child: Artwork(
+                            url: entry.item.imageUrl,
+                            title: entry.item.name,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        LinearProgressIndicator(
+                          value: entry.canResume ? entry.progress : 0,
+                          minHeight: 3,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                entry.item.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 7),
+                              Text(
+                                '${entry.canResume ? 'Resume' : 'Up next'} · S${episode.season} · E${episode.episodeNumber}',
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 28),
+        ],
+        if (list.isNotEmpty)
+          _posterRail('My List', list, tv, onViewAll: _showMyList),
+      ],
+    );
   }
 
   Widget _posterRail(

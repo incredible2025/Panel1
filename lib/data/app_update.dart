@@ -5,14 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
-const defaultUpdateUrl = '';
-const _legacyUpdateUrl =
-    'https://github.com/incredible2025/Panel1/releases/latest/download/update.json';
-
-String remoteUpdateAddress(String value) {
-  final address = value.trim();
-  return address == _legacyUpdateUrl ? defaultUpdateUrl : address;
-}
+const appUpdateManifestUrl = 'https://ultra-vpn.store/dl/app/update.json';
 
 const maxApkBytes = 512 * 1024 * 1024;
 
@@ -136,7 +129,7 @@ class AndroidUpdatePlatform implements UpdatePlatform {
       code: value['code'] as int,
       sdk: value['sdk'] as int,
       directory: value['directory'] as String,
-      url: value['url'] as String? ?? defaultUpdateUrl,
+      url: value['url'] as String? ?? appUpdateManifestUrl,
       automatic: value['automatic'] as bool? ?? true,
       lastCheck: DateTime.tryParse(value['lastCheck'] as String? ?? ''),
     );

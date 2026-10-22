@@ -27,7 +27,7 @@ AppUpdate candidate({int code = 9}) =>
 class FakePlatform implements UpdatePlatform {
   bool allowed = false, requested = false;
   bool automatic = true;
-  String url = testUpdateUrl;
+  String url = appUpdateManifestUrl;
   DateTime? checked;
   int installs = 0, validations = 0;
   Object? validationError;
@@ -74,12 +74,14 @@ class FakePlatform implements UpdatePlatform {
 class FakeTransport extends UpdateTransport {
   AppUpdate next = candidate();
   int checks = 0;
+  String? checkedUrl;
   Object? failure;
   Completer<String>? pending;
   bool cancelled = false;
   @override
   Future<AppUpdate> check(String url) async {
     checks++;
+    checkedUrl = url;
     if (failure != null) throw failure!;
     return next;
   }
@@ -177,43 +179,32 @@ Response bytes(List<int> value, {int length = -1}) =>
     Response(Stream.value(value), contentLength: length);
 
 void main() {
-  test('unconfigured updates make no requests and show no error', () async {
-    final platform = FakePlatform()..url = '';
-    final transport = FakeTransport();
-    final c = UpdateController(platform, transport);
-    addTearDown(c.dispose);
-    await c.autoCheck();
-    await c.check();
-    expect(c.configured, false);
-    expect(c.stage, UpdateStage.idle);
-    expect(c.error, null);
-    expect(transport.checks, 0);
-    expect(await c.save('', false), true);
-    expect(platform.url, '');
-  });
-  test(
-    'legacy default is cleared but custom server addresses are retained',
-    () async {
+  for (final previous in [
+    '',
+    'https://old.example/update.json',
+    'https://github.com/incredible2025/Panel1/releases/latest/download/update.json',
+  ]) {
+    test('embedded source replaces old preference: $previous', () async {
       final platform = FakePlatform()
-        ..url =
-            'https://github.com/incredible2025/Panel1/releases/latest/download/update.json'
+        ..url = previous
+        ..automatic = false
         ..checked = DateTime.now();
       final transport = FakeTransport();
       final c = UpdateController(platform, transport);
       addTearDown(c.dispose);
       await c.autoCheck();
-      expect(c.url, '');
-      expect(platform.url, '');
-      expect(platform.checked, null);
-      expect(transport.checks, 0);
-      expect(await c.save(testUpdateUrl, true), true);
-      await c.check();
+      expect(c.url, appUpdateManifestUrl);
+      expect(platform.url, appUpdateManifestUrl);
+      expect(platform.automatic, true);
+      expect(transport.checkedUrl, appUpdateManifestUrl);
       expect(transport.checks, 1);
-      expect(await c.save('', false), true);
-      expect(c.update, null);
-      expect(c.stage, UpdateStage.idle);
-    },
-  );
+      expect(c.stage, UpdateStage.available);
+      await c.autoCheck();
+      expect(transport.checks, 1);
+      await c.check();
+      expect(transport.checks, 2);
+    });
+  }
   test('relative APK addresses resolve against the manifest location', () {
     final data = {...manifest(), 'apkUrl': 'ultravpn-player-0.6.1.apk'};
     final update = AppUpdate.parse(
@@ -337,18 +328,15 @@ void main() {
       expect(transport.checks, 2);
     },
   );
-  test('automatic opt out and HTTPS preference validation', () async {
-    final platform = FakePlatform()..automatic = false,
-        transport = FakeTransport();
+  test('automatic checks use the embedded policy and URL', () async {
+    final platform = FakePlatform()..automatic = false;
+    final transport = FakeTransport();
     final c = UpdateController(platform, transport);
     addTearDown(c.dispose);
     await c.autoCheck();
-    expect(transport.checks, 0);
-    expect(await c.save('http://unsafe', true), false);
-    expect(platform.automatic, false);
-    expect(await c.save('https://own.example/update.json', true), true);
-    expect(c.url, 'https://own.example/update.json');
-    expect(c.lastCheck, null);
+    expect(transport.checks, 1);
+    expect(platform.automatic, true);
+    expect(transport.checkedUrl, appUpdateManifestUrl);
   });
   test('incompatible Android version explains the reason', () async {
     final transport = FakeTransport()

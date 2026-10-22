@@ -1,33 +1,34 @@
 # Remote app updates
 
-From 0.6.1, App updates uses only the HTTPS address you supply. There is no
-preset host or official-update button. Until an address is saved, the screen
-shows **Set up remote updates** and makes no automatic requests. An upgrade
-clears the previous preset address and its last-attempt time, while keeping
-custom server addresses.
+From 0.6.2 the app uses the built-in manifest endpoint:
+`https://ultra-vpn.store/dl/app/update.json`.
 
-## First setup
+The endpoint is configured in source and hidden from the app's settings.
+Saved custom or old preset addresses are
+replaced with this source on upgrade. Automatic checks run on opening/resuming
+at most once per 12 hours; manual Check for updates always checks immediately.
+Downloads and Android installation approval remain manual.
 
-1. Choose an HTTPS host with a valid public TLS certificate. The JSON and APK
-   must be publicly downloadable without signing in.
-2. Download **remote-update.zip** from the app release, then extract it.
-3. Upload both files to the same folder, for example:
+## First setup and checking
 
-   ```text
-   https://yourdomain.com/updates/update.json
-   https://yourdomain.com/updates/ultravpn-player-0.6.1.apk
-   ```
+1. Install the 0.6.2 APK. There is no address to enter or save.
+2. Extract remote-update.zip and upload both files to the public HTTPS folder:
+   `https://ultra-vpn.store/dl/app/`.
+3. Upload the versioned APK first, then replace update.json from the same package.
+4. Open Settings > App updates > Check for updates.
 
-4. In **Settings > App updates > Remote update address**, enter the full JSON
-   address: `https://yourdomain.com/updates/update.json`.
-5. Choose **Save address**, then **Check for updates**. A device already on that
-   version correctly says it is up to date. The next higher version code is
-   offered as an update.
+The server must serve both URLs directly, without a login or browser-only
+download page. The manifest's apkUrl must match the actual file name. For 0.6.2:
 
-The saved address is app-wide and survives sign-out. It is separate from IPTV
-server/login details. Save an empty address to turn off remote updates.
-Automatic checks run on opening/resuming at most once per 12 hours. Users can
-also check manually. Downloads and Android installation approval remain manual.
+```text
+https://ultra-vpn.store/dl/app/update.json
+https://ultra-vpn.store/dl/app/ultravpn-player-0.6.2.apk
+```
+
+Uploading version 0.6.2 when version 0.6.2 is already installed correctly says
+up to date. To test an actual update offer from that installation, publish a
+later build with a higher version code, for example 0.6.3+11. Do not edit only
+the JSON version: the actual APK must have that higher version code too.
 
 ## Each subsequent release
 
@@ -65,10 +66,10 @@ up to five times; relative APK paths use the final manifest location.
 {
   "schemaVersion": 1,
   "applicationId": "com.streamline.iptv",
-  "versionName": "0.6.1",
-  "versionCode": 9,
+  "versionName": "0.6.2",
+  "versionCode": 10,
   "minSdk": 24,
-  "apkUrl": "ultravpn-player-0.6.1.apk",
+  "apkUrl": "ultravpn-player-0.6.2.apk",
   "sizeBytes": 100000000,
   "sha256": "replace-with-the-real-64-character-apk-sha256",
   "releaseNotes": "What changed in this release."

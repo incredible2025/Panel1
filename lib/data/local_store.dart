@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'app_settings.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as path;
@@ -26,7 +29,7 @@ class LocalStore {
       databasePath ??
           path.join(await factory.getDatabasesPath(), 'streamline.db'),
       options: sqlite.OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE watch_history (
@@ -54,10 +57,12 @@ class LocalStore {
           ''');
           await _createCollections(db);
           await _createEpisodeHistory(db);
+          await _createPreferences(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createCollections(db);
           if (oldVersion < 3) await _createEpisodeHistory(db);
+          if (oldVersion < 4) await _createPreferences(db);
         },
       ),
     );
@@ -478,5 +483,119 @@ class LocalStore {
     }, conflictAlgorithm: sqlite.ConflictAlgorithm.replace);
   }
 
+  static Future<void> _createPreferences(
+    sqlite.DatabaseExecutor db,
+  ) => db.execute(
+    'CREATE TABLE IF NOT EXISTS app_preferences (account_id TEXT PRIMARY KEY, data_json TEXT NOT NULL)',
+  );
+  Future<AppSettings> readSettings(String accountId) async {
+    final rows = await _database.query(
+      'app_preferences',
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return const AppSettings();
+    return AppSettings.fromJson(
+      objectValue(jsonDecode(rows.single['data_json']! as String)),
+    );
+  }
+
+  Future<void> saveSettings(String accountId, AppSettings settings) =>
+      _database.insert('app_preferences', {
+        'account_id': accountId,
+        'data_json': jsonEncode(settings.toJson()),
+      }, conflictAlgorithm: sqlite.ConflictAlgorithm.replace);
+  Future<void> clearCache(String accountId) => _database.delete(
+    'provider_cache',
+    where: 'account_id = ?',
+    whereArgs: [accountId],
+  );
+  String _pinKey(String accountId) => 'streamline.parental.$accountId';
+  Future<bool> hasPin(String accountId) async =>
+      await _secureStorage.read(key: _pinKey(accountId)) != null;
+  Future<void> setPin(String accountId, String pin) async {
+    if (!RegExp(r'^\d{4,8}$').hasMatch(pin)) {
+      throw const FormatException('Use four to eight digits.');
+    }
+    final salt = base64Encode(
+      List<int>.generate(16, (_) => math.Random.secure().nextInt(256)),
+    );
+    final digest = await compute(deriveParentalPin, [pin, salt]);
+    await _secureStorage.write(
+      key: _pinKey(accountId),
+      value: jsonEncode({
+        'salt': salt,
+        'digest': digest,
+        'failures': 0,
+        'until': 0,
+      }),
+    );
+  }
+
+  Future<void> _pinChecks = Future.value();
+  Future<int> verifyPin(String accountId, String pin) {
+    final check = _pinChecks.then((_) => _verifyPin(accountId, pin));
+    _pinChecks = check.then<void>((_) {}, onError: (Object _) {});
+    return check;
+  }
+
+  Future<int> _verifyPin(String accountId, String pin) async {
+    final raw = await _secureStorage.read(key: _pinKey(accountId));
+    if (raw == null) return 0;
+    final record = objectValue(jsonDecode(raw));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final until = intValue(record['until']);
+    if (until > now) return ((until - now) / 1000).ceil();
+    final digest = await compute(deriveParentalPin, [
+      pin,
+      textValue(record['salt']),
+    ]);
+    final expected = textValue(record['digest']);
+    var difference = digest.length ^ expected.length;
+    for (
+      var index = 0;
+      index < math.min(digest.length, expected.length);
+      index++
+    ) {
+      difference |= digest.codeUnitAt(index) ^ expected.codeUnitAt(index);
+    }
+    if (difference == 0) {
+      await _secureStorage.write(
+        key: _pinKey(accountId),
+        value: jsonEncode({...record, 'failures': 0, 'until': 0}),
+      );
+      return 0;
+    }
+    final failures = intValue(record['failures']) + 1;
+    await _secureStorage.write(
+      key: _pinKey(accountId),
+      value: jsonEncode({
+        ...record,
+        'failures': failures,
+        'until': failures >= 5 ? now + 30000 : 0,
+      }),
+    );
+    return failures >= 5 ? 30 : -1;
+  }
+
+  Future<void> removePin(String accountId) =>
+      _secureStorage.delete(key: _pinKey(accountId));
   Future<void> close() => _database.close();
+}
+
+/// PBKDF2-HMAC-SHA256 runs off the UI isolate. The salted result and lockout
+/// counters are stored inside Android Keystore-backed encrypted storage.
+String deriveParentalPin(List<String> input) {
+  final hmac = Hmac(sha256, utf8.encode(input[0]));
+  final salt = base64Decode(input[1]);
+  var block = hmac.convert([...salt, 0, 0, 0, 1]).bytes;
+  final output = List<int>.of(block);
+  for (var iteration = 1; iteration < 120000; iteration++) {
+    block = hmac.convert(block).bytes;
+    for (var index = 0; index < output.length; index++) {
+      output[index] ^= block[index];
+    }
+  }
+  return base64Encode(output);
 }

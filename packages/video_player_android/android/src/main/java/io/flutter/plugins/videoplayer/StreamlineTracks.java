@@ -52,6 +52,18 @@ final class StreamlineTracks implements EventChannel.StreamHandler {
           String key = call.argument("key");
           select(player, "audio".equals(type) ? C.TRACK_TYPE_AUDIO : C.TRACK_TYPE_TEXT, key);
           result.success(snapshot(player));
+        } else if (call.method.equals("preferences")) {
+          String audio = call.argument("audioLanguage");
+          String text = call.argument("subtitleLanguage");
+          Boolean subtitles = call.argument("subtitles");
+          Boolean stereo = call.argument("stereo");
+          player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+            .setPreferredAudioLanguage(audio == null || audio.isEmpty() ? null : audio)
+            .setPreferredTextLanguage(text == null || text.isEmpty() ? null : text)
+            .setSelectUndeterminedTextLanguage(Boolean.TRUE.equals(subtitles))
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !Boolean.TRUE.equals(subtitles))
+            .setMaxAudioChannelCount(Boolean.TRUE.equals(stereo) ? 2 : Integer.MAX_VALUE).build());
+          result.success(null);
         } else { result.notImplemented(); }
       } catch (RuntimeException error) {
         result.error("tracks_unavailable", "Audio and subtitles are unavailable for this stream.", null);
@@ -104,6 +116,11 @@ final class StreamlineTracks implements EventChannel.StreamHandler {
       }
     }
     data.put("tracks", available);
+    Format video = player.getVideoFormat();
+    Format audio = player.getAudioFormat();
+    data.put("videoCodec", video == null ? "" : video.codecs != null ? video.codecs : video.sampleMimeType);
+    data.put("audioCodec", audio == null ? "" : audio.codecs != null ? audio.codecs : audio.sampleMimeType);
+    data.put("audioChannels", audio == null ? 0 : Math.max(0, audio.channelCount));
     data.put("textOff", player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_TEXT));
     boolean audioAuto = true;
     for (TrackSelectionOverride override : player.getTrackSelectionParameters().overrides.values()) {

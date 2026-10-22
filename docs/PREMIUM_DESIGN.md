@@ -1,42 +1,27 @@
-# Streamline visual system · v0.3
+# Streamline visual system · v0.5
 
-Streamline pairs an ink charcoal interface with ivory typography and restrained champagne accents. Provider artwork leads the experience; fine borders, layered gradients and generous spacing keep navigation and playback controls readable on phones and televisions.
+The current design and interaction specification is [V0.5_DESIGN.md](V0.5_DESIGN.md).
 
-## Color and typography
+## Visual foundations
 
-The shared tokens and Material theme live in [`lib/core/design_system.dart`](../lib/core/design_system.dart).
+Midnight-blue canvas (#060E1B), layered navy surfaces (#101D30 / #172840), cool-white typography (#F4F8FF) and cyan interaction accents (#64D9F5) create the shared mobile/TV palette. Cinema mode uses neutral black and ivory for the main theme surfaces and controls.
 
-| Role | Token | Color |
-| --- | --- | --- |
-| App background | `canvas` | `#0B0D10` |
-| Cards and panels | `surface` / `surfaceRaised` | `#14171C` / `#1C2026` |
-| Fine rules and borders | `border` | `#2C3035` |
-| Primary actions and selected states | `accent` | `#DEC48D` |
-| Primary text | `text` | `#F5F2EA` |
-| Supporting text | `muted` | `#ABB0B8` |
-| Live status | `live` | `#E78277` |
+Bundled Roboto and Roboto Condensed keep typography predictable without a network font dependency. Large editorial titles, clear metadata and restrained uppercase labels establish hierarchy. Provider artwork receives directional gradients so titles and actions remain readable. Missing artwork uses a title-seeded abstract cover rather than invented media.
 
-Bundled Roboto Condensed gives titles a cinematic display style; Roboto supports forms, controls and metadata. Both load locally, including when the device is offline. Their licenses are included in [`assets/fonts`](../assets/fonts).
+## Composed screens
 
-`StreamlineMark`, `Eyebrow` and `MetaPill` provide consistent branding, section labels and metadata. Filled buttons identify the main action; outlined and text buttons provide quieter secondary actions.
+- Home: a large provider-backed featured title, Continue Watching, explained local recommendations, recently added movies, saved titles and favourite channels.
+- Movies and Series: cinematic introductions, horizontally scrolling artwork shelves, category/saved filters and a full poster grid. Detail screens retain synopsis, metadata, resume actions and episode progress.
+- Live TV: channel navigation beside a large programme/preview panel. Preview is optional and muted; full-screen playback releases it first.
+- Settings: grouped cards for playback, audio/subtitles, appearance, library/parental controls, account and maintenance. Wide screens use two columns.
+- Player: chrome disappears during playback, including the dark scrim and branding. Subtitles remain visible. Menus, pause, errors and countdowns retain reachable controls.
 
-## Screen composition
+## Focus, density and motion
 
-- **Login:** an atmospheric brand composition and a compact account form, with a landscape arrangement for television.
-- **Live TV:** a channel guide with a selected-channel panel, current/upcoming EPG and a clear Watch action. Favorite and recently played channel shelves provide shortcuts; the star control and Favorites filter expose the saved collection.
-- **Movies and series:** a streaming-service-style home of contextual featured artwork and horizontal poster shelves. Up to five provider categories appear as home rows; Browse all opens the full lazy grid. Category/search controls and Newest/A–Z/Z–A sorting remain available. Movies retain Continue Watching and Recently Watched rows.
-- **Movie details:** a cinematic backdrop, cover poster, prominent title, provider metadata, synopsis and cast. Saved progress appears as a timeline with watched/remaining time; the resume dialog offers Resume or Start from Beginning.
-- **Series details:** a matching cinematic introduction, selectable season rail and image-led episode cards.
-- **Player:** readable title and live status, a restrained timeline, clear playback controls and visible remote focus.
+TV uses a navigation rail which expands on focus. The selected control has a bright outline, subtle background and restrained scale. Mobile has five bottom destinations. Large-poster, compact-layout and reduced-motion preferences affect the actual components.
 
-Artwork, ratings, years, genres and descriptions come from the user's provider. Recently added shelves use actual `added` timestamps, with `last_modified` as a fallback; titles with unknown dates are never presented as newly added. A missing-date state offers Browse all instead. Missing or failed artwork uses a title-seeded abstract cover. Empty metadata is omitted; Streamline does not invent catalog entries, ratings, trailers or provider claims.
+Account/category protection applies before fetching protected details or opening playback. It also filters Home, recommendations and guide content. Expiry notices use provider data and never invent account dates.
 
-## Touch, remote and motion
+## Verification
 
-Native Android TV detection selects the television rail and remote layout. Phones retain touch navigation, including landscape scrolling. Major content sections scroll so that forms, guide actions, season controls and playback choices remain reachable on shorter screens.
-
-Focusable cards use a bright outline, subtle scale and a soft accent glow. Short transitions respect Android/Flutter reduced-motion settings. D-pad traversal scrolls off-screen targets into view; Select/Enter activates them. The player retains its media-key, seeking, zapping and Back behavior.
-
-## Visual verification
-
-Widget checks cover phone portrait, phone landscape and television layouts, category/search behavior, sorting, favorite controls, resume choices and season selection. Optional screenshot capture writes previews to `build/qa`; see [TESTING.md](TESTING.md) for commands and the v0.3 physical-device acceptance checklist.
+Flutter widget checks exercise phone portrait/landscape and television layouts, including Settings, Home, recommendations, category filtering and remote navigation. Reviewable previews are written to build/qa using the real widgets. See [TESTING.md](TESTING.md) for capture commands and physical-device acceptance checks.

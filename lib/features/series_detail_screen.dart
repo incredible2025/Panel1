@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
+import '../widgets/parental_access.dart';
 import '../widgets/media_card.dart';
 import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart' hide formatPlaybackTime;
@@ -24,6 +25,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final protection = protectedLibraryView(context, ref, widget.item);
+    if (protection != null) return protection;
     final detail = ref.watch(seriesDetailProvider(widget.item));
     final tv = ref.watch(isTvProvider);
     final series = detail.asData?.value;

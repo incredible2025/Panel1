@@ -17,3 +17,5 @@ android/key.properties
 android/signing/
 *.log
 .DS_Store
+
+.codex-remote-attachments/

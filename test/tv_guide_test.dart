@@ -165,6 +165,7 @@ void main() {
         expect(find.text('World News'), findsNothing);
         expect(find.text('Evening Film'), findsOneWidget);
         await tester.ensureVisible(find.text('Tomorrow'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Tomorrow'));
         await tester.pumpAndSettle();
         expect(find.textContaining('No programme data'), findsOneWidget);

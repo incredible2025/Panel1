@@ -14,7 +14,7 @@ The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `
 
 When a signing secret is configured, the release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `ultravpn-player.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. An invalid configured secret fails the release; an absent secret selects the testing key explicitly in the build log.
 
-Online updates require this permanent key. The release workflow publishes `update.json` only for permanently signed releases. See [online update setup](UPDATES.md).
+Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing a versioned APK and `update.json` for uploading to your own HTTPS host. Testing packages are available too, but a different temporary key cannot upgrade an existing installation. See [remote update setup](UPDATES.md).
 
 ## Local builds
 

@@ -1,64 +1,65 @@
-# Online app updates
+# Remote app updates
 
-ULTRAVPN PLAYER 0.6.0 adds **Settings > App updates**, also available before sign-in.
-The Home screen and login show an update notice when a newer version is found.
-Automatic checks run on opening/resuming the app, at most once per 12 hours.
-Users can disable them or check manually at any time. No automatic APK downloads
-or silent installs happen; playback is not interrupted by a dialog.
+From 0.6.1, App updates uses only the HTTPS address you supply. There is no
+preset host or official-update button. Until an address is saved, the screen
+shows **Set up remote updates** and makes no automatic requests. An upgrade
+clears the previous preset address and its last-attempt time, while keeping
+custom server addresses.
 
-## Publish with GitHub
+## First setup
 
-The default feed is:
-`https://github.com/incredible2025/Panel1/releases/latest/download/update.json`
+1. Choose an HTTPS host with a valid public TLS certificate. The JSON and APK
+   must be publicly downloadable without signing in.
+2. Download **remote-update.zip** from the app release, then extract it.
+3. Upload both files to the same folder, for example:
 
-1. Enable the permanent `ANDROID_SIGNING` repository secret using [SIGNING.md](SIGNING.md).
-2. Make the app changes and increase **both** `versionName` and `versionCode` in
-   `pubspec.yaml` (for example `0.6.1+9`). Update `lib/core/app_version.dart` too.
-3. Add release notes at `docs/RELEASE_NOTES_0.6.1.md`, then merge to `main`.
-4. Actions tests and builds the APK, verifies signing, derives `update.json` from
-   the actual APK, and publishes the manifest with the APK and checksum.
-5. Installed apps discover it on their next check. The user chooses Download,
-   then Install. This is a periodic online check, not an instantaneous push service.
+   ```text
+   https://yourdomain.com/updates/update.json
+   https://yourdomain.com/updates/ultravpn-player-0.6.1.apk
+   ```
 
-**Testing releases:** without `ANDROID_SIGNING`, Actions still publishes an APK
-for manual testing, but deliberately does not publish `update.json`. A fresh
-temporary key on each runner cannot reliably update existing installations. The
-app reports an unpublished feed as HTTP 404, not as "up to date". The GitHub
-connector cannot configure Actions secrets; the prepared private JSON must be
-added once through repository settings. Never commit it or attach it to a release.
+4. In **Settings > App updates > Remote update address**, enter the full JSON
+   address: `https://yourdomain.com/updates/update.json`.
+5. Choose **Save address**, then **Check for updates**. A device already on that
+   version correctly says it is up to date. The next higher version code is
+   offered as an update.
 
-An older testing installation may need a one-time migration to the permanent
-key. The updater refuses a different certificate and never uninstalls anything.
-Uninstalling clears local accounts, preferences and watch history. Android has
-no safe way for this updater to preserve private data across incompatible keys.
-Once a permanent key is enabled, keep it backed up and use it for every release.
+The saved address is app-wide and survives sign-out. It is separate from IPTV
+server/login details. Save an empty address to turn off remote updates.
+Automatic checks run on opening/resuming at most once per 12 hours. Users can
+also check manually. Downloads and Android installation approval remain manual.
 
-## Host on your own server
+## Each subsequent release
 
-Use an HTTPS server with a valid public TLS certificate and anonymously readable
-APK/JSON URLs. In App updates, save your HTTPS manifest address. That preference
-is app-wide and survives sign-out; it is separate from IPTV account credentials.
-Protected Settings still requires the parental PIN. Before sign-in, App updates
-is available without an IPTV account.
+1. Build the new app with a higher version name and version code, using the
+   **same permanent signing key**. The repository workflow builds and publishes
+   a fresh remote-update.zip after changes/version updates are merged to main.
+2. Extract the ZIP. Upload the new, versioned APK first.
+3. Replace the server's update.json with the one from that same package **last**,
+   preferably using an atomic rename. Keep the JSON address unchanged.
+4. Leave the previous versioned APK available for users already downloading it.
 
-Upload the versioned APK first; publish the manifest last, preferably by an atomic
-rename. Do not replace bytes at an already published APK URL. Disable long-lived
-JSON caching. Downloads follow up to five HTTPS redirects and allow at most
-512 MiB; the JSON limit is 64 KiB. Allow enough free cache storage for the APK.
-Interrupted downloads restart from the beginning; downloaded files are not
-restored after process termination. Android can clear cache, in which case
-download again. No IPTV credentials or watch history are sent to the update host.
+Example after the next update:
 
-Generate a matching manifest on a machine with Android build-tools/Python 3.11+:
-
-```sh
-python scripts/create_update_manifest.py --apk ultravpn-player.apk \
-  --aapt /path/to/android/build-tools/36.0.0/aapt2 \
-  --apk-url https://updates.example.com/0.6.1/ultravpn-player.apk \
-  --notes docs/RELEASE_NOTES_0.6.1.md --output update.json
+```text
+updates/
+  update.json                       # replace with each release
+  ultravpn-player-0.6.1.apk          # keep previous APKs
+  ultravpn-player-0.6.2.apk          # upload before replacing JSON
 ```
 
-Schema (hash and size must describe the real APK):
+There is no need to enter new server details on each device. The ZIP contains
+the correct version, actual APK size and SHA-256. Do not manually change those
+values or replace an APK while keeping an old manifest. Disable long-lived
+caching for update.json. This is a periodic update check, not an instantaneous
+push to apps that are closed.
+
+## Manifest format
+
+The package's relative apkUrl resolves next to the downloaded JSON file, so you
+can upload the same ZIP contents to your chosen domain without editing it.
+Absolute HTTPS APK addresses remain supported. HTTPS redirects are followed
+up to five times; relative APK paths use the final manifest location.
 
 ```json
 {
@@ -67,35 +68,55 @@ Schema (hash and size must describe the real APK):
   "versionName": "0.6.1",
   "versionCode": 9,
   "minSdk": 24,
-  "apkUrl": "https://updates.example.com/0.6.1/ultravpn-player.apk",
+  "apkUrl": "ultravpn-player-0.6.1.apk",
   "sizeBytes": 100000000,
-  "sha256": "replace-with-64-hex-character-apk-sha256",
+  "sha256": "replace-with-the-real-64-character-apk-sha256",
   "releaseNotes": "What changed in this release."
 }
 ```
 
-## Installation and error handling
+This example is illustrative; upload the generated JSON from the ZIP with the
+matching APK. The JSON limit is 64 KiB; the APK limit is 512 MiB.
 
-The app checks download size/SHA-256, then Android checks the APK package ID,
-minimum SDK, actual version code and matching current signing certificates.
-Native checks run again immediately before installation. The system installer
-performs the final APK signature verification. Signing key rotation is not
-supported by this updater; use the same current certificate(s).
+For custom manual builds, generate the matching JSON using Python 3.11+ and
+Android build-tools:
 
-Only `cache/updates/` is exposed through a private, non-exported FileProvider with
-temporary read access to the Android installer. No shared-storage permission is
-requested. Android 8+ requires "Allow from this source" once, followed by the
-normal installer approval on every update. Some managed or restricted TVs do not
-permit sideloading; their policy must be changed by the device administrator.
+```sh
+python scripts/create_update_manifest.py --apk ultravpn-player-0.6.1.apk \
+  --aapt /path/to/android/build-tools/36.0.0/aapt2 \
+  --apk-url ultravpn-player-0.6.1.apk \
+  --notes docs/RELEASE_NOTES_0.6.1.md --output update.json
+```
 
-The UI distinguishes unreachable servers, HTTP errors, invalid manifests,
-unsupported Android versions, full storage, incomplete/changed APKs, wrong apps,
-signing mismatches and installer restrictions. Errors do not sign users out or
-change their existing app. Returning from an installer does not claim success:
-the installed version shown after restart confirms the result.
+## Signing, installation and errors
 
-Device verification still required before broad rollout: install two consecutive
-builds with the permanent key on a phone and a D-pad TV, approve unknown sources,
-verify history survives the upgrade, cancel/retry installation, and test a device
-whose administrator disables sideloading. Automated tests cannot approve the
-Android system installer on a physical device.
+Hosting on your own server does not change Android's signing requirement.
+All releases must use the same permanent key for updates that keep account,
+preferences and watch history. See [SIGNING.md](SIGNING.md). The prepared key
+still needs the one-time ANDROID_SIGNING setup for repository builds; it is not
+committed or included in a download. Temporary testing keys from different
+runners cannot reliably update each other. Migrating a testing installation can
+require uninstalling; uninstalling clears local app data. The updater never
+uninstalls anything.
+
+The app verifies APK size/SHA-256, then Android checks package ID, minimum SDK,
+actual version code and matching signing certificates again before installation.
+The system installer performs final signature verification. Current signing
+certificate(s) must match; signing-key rotation is not supported.
+
+Only cache/updates/ is shared with the Android installer through a private
+FileProvider. Android 8+ requires Allow from this source once and installer
+approval for every update. Device administrators can restrict sideloading.
+No IPTV credentials or viewing history are sent to the update host.
+
+Errors distinguish unreachable servers, HTTP status, invalid JSON, incompatible
+Android versions, storage failures, changed/incomplete APKs, wrong apps, signing
+mismatches and installer restrictions. A 404 after configuring your server means
+that exact JSON or APK URL is missing; verify the full address and uploaded files.
+Downloads restart after interruption; Android can clear cache. Returning from
+the installer does not claim success: the installed version after restart
+confirms it.
+
+Before broad rollout, test two consecutive permanently signed builds on a phone
+and D-pad TV, verify history survives, and test cancellation and restricted
+sideloading. Automated tests cannot approve the physical Android installer.

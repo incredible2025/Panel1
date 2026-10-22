@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.1** removes the preset update host and adds portable remote-update packages. Enter your own HTTPS update.json address in App updates; new installations make no update requests until configured. See [remote update hosting](docs/UPDATES.md).
+
 **v0.6.0** adds a built-in updater with configurable HTTPS hosting, release notes, optional automatic checks, verified APK downloads and Android installer integration. See [online updates](docs/UPDATES.md). Reliable in-place updates require the permanent release key.
 
 **v0.5.2** introduces ULTRAVPN PLAYER branding, including the supplied artwork, shield launcher icon, splash and TV banner. See [release notes](docs/RELEASE_NOTES_0.5.2.md) and [branding notes](docs/BRANDING.md).
@@ -27,7 +29,7 @@ The current APK uses Android's disposable testing key. Builds from different run
 
 ## Features
 
-- App updates from GitHub or your own HTTPS server, verified APK downloads and installer handoff.
+- App updates from your own HTTPS server, verified APK downloads and installer handoff.
 - Settings for player choice, control timeout, audio/subtitles, picture, appearance, category visibility/order and parental PIN.
 - Local movie recommendations from meaningful viewing and provider categories; watched/hidden/locked titles are excluded.
 - Refreshed account information and expiry reminders, with missing fields labelled honestly.

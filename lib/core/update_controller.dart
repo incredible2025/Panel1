@@ -70,7 +70,8 @@ class UpdateController extends ChangeNotifier {
       final elapsed = lastCheck == null
           ? null
           : DateTime.now().difference(lastCheck!);
-      if (configured && automatic &&
+      if (configured &&
+          automatic &&
           !busy &&
           (elapsed == null ||
               elapsed.isNegative ||

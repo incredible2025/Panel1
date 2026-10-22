@@ -43,7 +43,8 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
     final c = ref.watch(updateControllerProvider);
     final update = c.update;
     final status = switch (c.stage) {
-      UpdateStage.idle => c.configured ? 'Ready to check' : 'Set up remote updates',
+      UpdateStage.idle =>
+        c.configured ? 'Ready to check' : 'Set up remote updates',
       UpdateStage.checking => 'Checking for updates…',
       UpdateStage.current => 'You’re up to date',
       UpdateStage.available => 'A new version is available',
@@ -72,7 +73,12 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 ),
               const SizedBox(height: 20),
               if (!c.configured && _loaded)
-                const Padding(padding: EdgeInsets.only(bottom: 16), child: Text('Enter the HTTPS address of your update.json file below to enable remote updates.')),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    'Enter the HTTPS address of your update.json file below to enable remote updates.',
+                  ),
+                ),
               if (c.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -129,7 +135,9 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 ),
               const SizedBox(height: 16),
               OutlinedButton(
-                onPressed: c.busy || !_loaded || !c.configured ? null : () => c.check(),
+                onPressed: c.busy || !_loaded || !c.configured
+                    ? null
+                    : () => c.check(),
                 child: const Text('Check for updates'),
               ),
               const SizedBox(height: 24),
@@ -176,7 +184,6 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                           },
                     child: const Text('Save address'),
                   ),
-
                 ],
               ),
               const SizedBox(height: 20),

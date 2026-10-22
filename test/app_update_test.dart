@@ -191,45 +191,75 @@ void main() {
     expect(await c.save('', false), true);
     expect(platform.url, '');
   });
-  test('legacy default is cleared but custom server addresses are retained', () async {
-    final platform = FakePlatform()
-      ..url = 'https://github.com/incredible2025/Panel1/releases/latest/download/update.json'
-      ..checked = DateTime.now();
-    final transport = FakeTransport();
-    final c = UpdateController(platform, transport);
-    addTearDown(c.dispose);
-    await c.autoCheck();
-    expect(c.url, '');
-    expect(platform.url, '');
-    expect(platform.checked, null);
-    expect(transport.checks, 0);
-    expect(await c.save(testUpdateUrl, true), true);
-    await c.check();
-    expect(transport.checks, 1);
-    expect(await c.save('', false), true);
-    expect(c.update, null);
-    expect(c.stage, UpdateStage.idle);
-  });
+  test(
+    'legacy default is cleared but custom server addresses are retained',
+    () async {
+      final platform = FakePlatform()
+        ..url =
+            'https://github.com/incredible2025/Panel1/releases/latest/download/update.json'
+        ..checked = DateTime.now();
+      final transport = FakeTransport();
+      final c = UpdateController(platform, transport);
+      addTearDown(c.dispose);
+      await c.autoCheck();
+      expect(c.url, '');
+      expect(platform.url, '');
+      expect(platform.checked, null);
+      expect(transport.checks, 0);
+      expect(await c.save(testUpdateUrl, true), true);
+      await c.check();
+      expect(transport.checks, 1);
+      expect(await c.save('', false), true);
+      expect(c.update, null);
+      expect(c.stage, UpdateStage.idle);
+    },
+  );
   test('relative APK addresses resolve against the manifest location', () {
     final data = {...manifest(), 'apkUrl': 'ultravpn-player-0.6.1.apk'};
-    final update = AppUpdate.parse(jsonEncode(data),
-      sourceUri: Uri.parse('https://own.example/updates/update.json'));
-    expect(update.url.toString(), 'https://own.example/updates/ultravpn-player-0.6.1.apk');
-    for (final value in ['', 'http://other.example/app.apk', 'https://user:pass@other.example/app.apk']) {
-      expect(() => AppUpdate.parse(jsonEncode({...data, 'apkUrl': value}),
-        sourceUri: Uri.parse('https://own.example/update.json')),
-        throwsA(isA<UpdateFailure>()));
+    final update = AppUpdate.parse(
+      jsonEncode(data),
+      sourceUri: Uri.parse('https://own.example/updates/update.json'),
+    );
+    expect(
+      update.url.toString(),
+      'https://own.example/updates/ultravpn-player-0.6.1.apk',
+    );
+    for (final value in [
+      '',
+      'http://other.example/app.apk',
+      'https://user:pass@other.example/app.apk',
+    ]) {
+      expect(
+        () => AppUpdate.parse(
+          jsonEncode({...data, 'apkUrl': value}),
+          sourceUri: Uri.parse('https://own.example/update.json'),
+        ),
+        throwsA(isA<UpdateFailure>()),
+      );
     }
   });
-  test('relative APK address follows the final HTTPS manifest location', () async {
-    final client = Client([
-      Response(const Stream.empty(), statusCode: 302,
-        headers: {'location': 'https://cdn.example/releases/update.json'}),
-      bytes(utf8.encode(jsonEncode({...manifest(), 'apkUrl': 'version-9.apk'}))),
-    ]);
-    final update = await UpdateTransport(clientFactory: () => client).check(testUpdateUrl);
-    expect(update.url.toString(), 'https://cdn.example/releases/version-9.apk');
-  });
+  test(
+    'relative APK address follows the final HTTPS manifest location',
+    () async {
+      final client = Client([
+        Response(
+          const Stream.empty(),
+          statusCode: 302,
+          headers: {'location': 'https://cdn.example/releases/update.json'},
+        ),
+        bytes(
+          utf8.encode(jsonEncode({...manifest(), 'apkUrl': 'version-9.apk'})),
+        ),
+      ]);
+      final update = await UpdateTransport(
+        clientFactory: () => client,
+      ).check(testUpdateUrl);
+      expect(
+        update.url.toString(),
+        'https://cdn.example/releases/version-9.apk',
+      );
+    },
+  );
 
   test('manifest round trip and uppercase SHA-256', () {
     final data = manifest()..['sha256'] = manifest()['sha256'].toUpperCase();

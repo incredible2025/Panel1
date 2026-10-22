@@ -13,6 +13,7 @@ String remoteUpdateAddress(String value) {
   final address = value.trim();
   return address == _legacyUpdateUrl ? defaultUpdateUrl : address;
 }
+
 const maxApkBytes = 512 * 1024 * 1024;
 
 class UpdateFailure implements Exception {
@@ -76,7 +77,9 @@ class AppUpdate {
       return AppUpdate(
         version: version,
         code: code,
-        url: updateUri(sourceUri == null ? address : sourceUri.resolve(address).toString()),
+        url: updateUri(
+          sourceUri == null ? address : sourceUri.resolve(address).toString(),
+        ),
         sha256: hash.toLowerCase(),
         bytes: size,
         minSdk: minSdk,
@@ -205,7 +208,10 @@ class UpdateTransport {
     }
   }
 
-  Future<({HttpClientResponse response, Uri uri})> _get(HttpClient client, Uri url) async {
+  Future<({HttpClientResponse response, Uri uri})> _get(
+    HttpClient client,
+    Uri url,
+  ) async {
     for (var redirects = 0; redirects <= 5; redirects++) {
       final request = await client
           .getUrl(updateUri(url.toString()))

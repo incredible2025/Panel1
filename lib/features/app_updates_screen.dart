@@ -119,9 +119,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 ),
               const SizedBox(height: 16),
               OutlinedButton(
-                onPressed: c.busy || !_loaded
-                    ? null
-                    : () => c.check(),
+                onPressed: c.busy || !_loaded ? null : () => c.check(),
                 child: const Text('Check for updates'),
               ),
               const SizedBox(height: 24),

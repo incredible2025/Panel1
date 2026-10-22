@@ -10,12 +10,17 @@ import 'app_update_test.dart' show FakePlatform, FakeTransport;
 
 void main() {
   for (final previous in ['', 'https://old.example/update.json']) {
-    testWidgets('updates show actions without source controls: $previous', (tester) async {
+    testWidgets('updates show actions without source controls: $previous', (
+      tester,
+    ) async {
       final transport = FakeTransport();
       final c = UpdateController(FakePlatform()..url = previous, transport);
-      await tester.pumpWidget(ProviderScope(
-        overrides: [updateControllerProvider.overrideWith((ref) => c)],
-        child: const MaterialApp(home: AppUpdatesScreen())));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [updateControllerProvider.overrideWith((ref) => c)],
+          child: const MaterialApp(home: AppUpdatesScreen()),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Ready to check'), findsOneWidget);
       expect(find.byType(TextField), findsNothing);

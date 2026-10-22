@@ -179,11 +179,16 @@ Response bytes(List<int> value, {int length = -1}) =>
     Response(Stream.value(value), contentLength: length);
 
 void main() {
-  for (final previous in ['', 'https://old.example/update.json',
-    'https://github.com/incredible2025/Panel1/releases/latest/download/update.json']) {
+  for (final previous in [
+    '',
+    'https://old.example/update.json',
+    'https://github.com/incredible2025/Panel1/releases/latest/download/update.json',
+  ]) {
     test('embedded source replaces old preference: $previous', () async {
-      final platform = FakePlatform()..url = previous
-        ..automatic = false..checked = DateTime.now();
+      final platform = FakePlatform()
+        ..url = previous
+        ..automatic = false
+        ..checked = DateTime.now();
       final transport = FakeTransport();
       final c = UpdateController(platform, transport);
       addTearDown(c.dispose);

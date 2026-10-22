@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
 import '../core/app_version.dart';
+import '../core/app_brand.dart';
 import 'connection_diagnosis_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
@@ -423,6 +424,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
       _group('App & maintenance', Icons.settings_outlined, [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                appBrandArtwork,
+                width: 160,
+                height: 160,
+                semanticLabel: appBrandName,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ),
+        ),
+
         _action(
           'Connection diagnosis',
           'Check the network, provider, HTTPS, account and library. See error explanations and practical next steps.',
@@ -434,14 +451,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         ),
-        _info('Streamline', appVersion),
+        _info(appBrandName, appVersion),
         _action(
           'Open source licences',
           'Licences for Flutter, the playback engines and bundled libraries.',
           Icons.description_outlined,
           () => showLicensePage(
             context: context,
-            applicationName: 'Streamline',
+            applicationName: appBrandName,
             applicationVersion: appVersion,
           ),
         ),

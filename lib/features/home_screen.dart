@@ -563,7 +563,7 @@ class FeatureBillboard extends ConsumerWidget {
                   border: Border.all(color: Colors.white24),
                 ),
                 child: const Text(
-                  'STREAMLINE',
+                  'ULTRAVPN PLAYER',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
+import 'core/app_brand.dart';
 import 'core/design_system.dart';
 import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
@@ -49,7 +50,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
         systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: MaterialApp(
-        title: 'Streamline',
+        title: appBrandName,
         debugShowCheckedModeBanner: false,
         theme: settings.theme == 'cinema'
             ? StreamlineTheme.cinema

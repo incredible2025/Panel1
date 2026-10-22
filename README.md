@@ -1,6 +1,8 @@
-# Streamline IPTV
+# ULTRAVPN PLAYER IPTV
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
+
+**v0.5.2** introduces ULTRAVPN PLAYER branding, including the supplied artwork, shield launcher icon, splash and TV banner. See [release notes](docs/RELEASE_NOTES_0.5.2.md) and [branding notes](docs/BRANDING.md).
 
 **v0.5.1** adds comprehensive connection diagnosis with stage-by-stage error explanations, safe reports and optional stream sampling. Open it from Settings, sign-in or the player error screen. See [release notes](docs/RELEASE_NOTES_0.5.1.md) and [diagnosis details](docs/CONNECTION_DIAGNOSIS.md).
 
@@ -8,9 +10,9 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 ## Download the APK
 
-**[Download the latest streamline.apk](https://github.com/incredible2025/Panel1/releases/latest/download/streamline.apk)** and install it on your phone or TV. The direct release download requires no ZIP extraction. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
+**[Download the latest ultravpn-player.apk](https://github.com/incredible2025/Panel1/releases/latest/download/ultravpn-player.apk)** and install it on your phone or TV. The direct release download requires no ZIP extraction. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
 
-As a fallback, open **[Actions → Android APK release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **streamline-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
+As a fallback, open **[Actions → ULTRAVPN PLAYER Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 
 The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is optional and deferred; see [release signing](docs/SIGNING.md) for the prepared setup.
 

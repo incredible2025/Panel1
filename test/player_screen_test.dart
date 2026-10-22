@@ -5,8 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/providers.dart';
+import 'package:streamline_iptv/core/playback_handle.dart';
+import 'package:streamline_iptv/core/player_tracks.dart';
+import 'package:video_player/video_player.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/features/player_screen.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
@@ -55,6 +59,17 @@ class _SavedPosition {
 }
 
 class _HistoryStore implements LocalStore {
+  AppSettings preferences = const AppSettings();
+  @override
+  Future<AppSettings> readSettings(String accountId) async => preferences;
+  @override
+  Future<void> saveSettings(String accountId, AppSettings settings) async {
+    preferences = settings;
+  }
+
+  @override
+  Future<bool> hasPin(String accountId) async => pinExists;
+  bool pinExists = false;
   final episodeSaves = <(String, String, int)>[];
   @override
   Future<List<EpisodeWatchEntry>> seriesHistory(String accountId) async => [];
@@ -214,6 +229,46 @@ class _VideoPlatform extends VideoPlayerPlatform {
   }
 }
 
+class _FakeCompatibility extends PlaybackHandle {
+  final calls = <String>[];
+  @override
+  Future<void> initialize() async {
+    value = const VideoPlayerValue(
+      duration: _duration,
+      size: Size(1920, 1080),
+      isInitialized: true,
+    );
+  }
+
+  @override
+  Future<void> play() async {
+    calls.add('play');
+    value = value.copyWith(isPlaying: true);
+  }
+
+  @override
+  Future<void> pause() async {
+    calls.add('pause');
+    value = value.copyWith(isPlaying: false);
+  }
+
+  @override
+  Future<void> seekTo(Duration position) async {
+    calls.add('seek:${position.inMilliseconds}');
+    value = value.copyWith(position: position);
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> attachTracks(
+    PlayerTracks bridge,
+    AppSettings preferences,
+  ) async {}
+  @override
+  Widget buildView() => const ColoredBox(color: Colors.black);
+}
+
 Future<void> _mountPlayer(
   WidgetTester tester,
   _HistoryStore store, {
@@ -222,6 +277,7 @@ Future<void> _mountPlayer(
   List<MediaItem> channels = const [],
   Episode? episode,
   List<Episode> episodes = const [],
+  PlaybackFactory? factory,
 }) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
@@ -241,8 +297,10 @@ Future<void> _mountPlayer(
     ProviderScope(
       overrides: [
         storeProvider.overrideWithValue(store),
+        if (factory != null) playbackFactoryProvider.overrideWithValue(factory),
         sessionProvider.overrideWith((ref) => _session),
         isTvProvider.overrideWithValue(false),
+        epgProvider.overrideWith((ref, id) async => []),
       ],
       child: MaterialApp(
         theme: ThemeData.dark(),
@@ -299,6 +357,11 @@ void main() {
     screenAwake = [];
     VideoPlayerPlatform.instance = platform;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('streamline/player_tracks'),
+          (_) async => throw MissingPluginException(),
+        );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(const MethodChannel('streamline/platform'), (
           call,
         ) async {
@@ -315,6 +378,11 @@ void main() {
     }
     await platform.close();
     VideoPlayerPlatform.instance = originalPlatform;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('streamline/player_tracks'),
+          null,
+        );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('streamline/platform'),
@@ -546,6 +614,205 @@ void main() {
       expect(platform.positions[2], const Duration(minutes: 3));
     },
   );
+
+  testWidgets(
+    'playing hides all chrome after five seconds and OK reveals without pausing',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.byKey(const ValueKey('player-chrome')),
+            )
+            .opacity,
+        0,
+      );
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('player-scrim')))
+            .opacity,
+        0,
+      );
+      expect(find.text('Pause').hitTestable(), findsNothing);
+      final pauses = platform.calls.where((call) => call == 'pause:1').length;
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.byKey(const ValueKey('player-chrome')),
+            )
+            .opacity,
+        1,
+      );
+      expect(platform.calls.where((call) => call == 'pause:1').length, pauses);
+    },
+  );
+
+  testWidgets(
+    'controls stay visible for pause and menus then respect the saved timeout',
+    (tester) async {
+      store.preferences = const AppSettings(controlsSeconds: 3);
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      await tester.tap(find.text('Audio'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 10));
+      expect(
+        find.text('Track selection is unavailable for this player.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pause'));
+      await tester.pump(const Duration(seconds: 10));
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.byKey(const ValueKey('player-chrome')),
+            )
+            .opacity,
+        1,
+      );
+      await tester.tap(find.text('Play'));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.byKey(const ValueKey('player-chrome')),
+            )
+            .opacity,
+        0,
+      );
+    },
+  );
+
+  testWidgets('never-hide preference and disabled reconnect are applied', (
+    tester,
+  ) async {
+    store.preferences = const AppSettings(controlsSeconds: 0, reconnect: false);
+    await _mountPlayer(tester, store);
+    await _finishInitialization(tester, platform);
+    await tester.pump(const Duration(seconds: 15));
+    expect(
+      tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('player-chrome')))
+          .opacity,
+      1,
+    );
+    platform.failInitialization(1);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 20));
+    expect(platform.sources.length, 1);
+    expect(find.text('Cancel reconnect (1/3)'), findsNothing);
+  });
+
+  testWidgets('Back hides controls before leaving a playing stream', (
+    tester,
+  ) async {
+    await _mountPlayer(tester, store);
+    await _finishInitialization(tester, platform);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(find.byType(PlayerScreen), findsOneWidget);
+    expect(
+      tester
+          .widget<AnimatedOpacity>(find.byKey(const ValueKey('player-chrome')))
+          .opacity,
+      0,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(PlayerScreen), findsNothing);
+  });
+
+  testWidgets('disabled next-episode autoplay still permits manual next', (
+    tester,
+  ) async {
+    store.preferences = const AppSettings(autoNext: false);
+    const series = MediaItem(id: 's', name: 'Series', kind: MediaKind.series);
+    const first = Episode(
+      id: 'e1',
+      title: 'First',
+      season: '1',
+      episodeNumber: 1,
+    );
+    const next = Episode(
+      id: 'e2',
+      title: 'Second',
+      season: '1',
+      episodeNumber: 2,
+    );
+    await _mountPlayer(
+      tester,
+      store,
+      item: series,
+      episode: first,
+      episodes: [first, next],
+    );
+    await _finishInitialization(tester, platform);
+    platform.positions[1] = _duration;
+    platform.events[1]!.add(VideoEvent(eventType: VideoEventType.completed));
+    await tester.pump(const Duration(seconds: 10));
+    expect(platform.sources.length, 1);
+    expect(find.textContaining('Next episode in'), findsNothing);
+    await tester.tap(find.text('Next episode'));
+    await tester.pump();
+    await tester.pump();
+    expect(platform.sources.length, 2);
+    await _finishInitialization(tester, platform);
+  });
+
+  testWidgets(
+    'compatibility preference uses shared resume, controls and history',
+    (tester) async {
+      store.preferences = const AppSettings(engine: PlayerEngine.compatibility);
+      final handle = _FakeCompatibility();
+      final engines = <PlayerEngine>[];
+      await _mountPlayer(
+        tester,
+        store,
+        startPosition: const Duration(minutes: 2),
+        factory: (uri, engine) {
+          engines.add(engine);
+          return handle;
+        },
+      );
+      await tester.pump();
+      expect(engines, [PlayerEngine.compatibility]);
+      expect(
+        handle.calls.indexOf('seek:120000'),
+        lessThan(handle.calls.indexOf('play')),
+      );
+      await tester.tap(find.text('Pause'));
+      await tester.pump();
+      expect(store.saved.last.positionMs, 120000);
+      expect(find.text('Play'), findsOneWidget);
+    },
+  );
+
+  testWidgets('direct protected playback cannot start without unlocking', (
+    tester,
+  ) async {
+    store.pinExists = true;
+    store.preferences = const AppSettings(lockedCategories: {'movie:'});
+    await _mountPlayer(tester, store);
+    expect(find.text('Unlock this category'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(platform.sources, isEmpty);
+    expect(store.opened, isEmpty);
+    expect(
+      find.text(
+        'This category is hidden or protected. Unlock it before playing.',
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('resumes before playing and saves progress when paused', (
     tester,

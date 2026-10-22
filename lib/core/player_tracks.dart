@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/models.dart';
+import '../data/app_settings.dart';
 
 class PlayerTrack {
   const PlayerTrack({
@@ -13,10 +14,12 @@ class PlayerTrack {
     required this.label,
     required this.selected,
     required this.supported,
+    this.language = '',
   });
   final String key;
   final String type;
   final String label;
+  final String language;
   final bool selected;
   final bool supported;
 }
@@ -29,7 +32,13 @@ class TrackSnapshot {
     this.images = const [],
     this.textOff = true,
     this.audioAuto = true,
+    this.videoCodec = '',
+    this.audioCodec = '',
+    this.decoder = '',
+    this.audioChannels = 0,
   });
+  final String videoCodec, audioCodec, decoder;
+  final int audioChannels;
   final bool available;
   final List<PlayerTrack> tracks;
   final String caption;
@@ -47,6 +56,7 @@ class TrackSnapshot {
               key: textValue(track['key']),
               type: textValue(track['type']),
               label: textValue(track['label'], 'Track'),
+              language: canonicalLanguage(textValue(track['language'])),
               selected: track['selected'] == true,
               supported: track['supported'] == true,
             ),
@@ -58,6 +68,10 @@ class TrackSnapshot {
           : const [],
       textOff: map['textOff'] != false,
       audioAuto: map['audioAuto'] != false,
+      videoCodec: textValue(map['videoCodec']),
+      audioCodec: textValue(map['audioCodec']),
+      decoder: textValue(map['decoder']),
+      audioChannels: intValue(map['audioChannels']),
     );
   }
 }
@@ -71,8 +85,27 @@ class PlayerTracks extends ValueNotifier<TrackSnapshot> {
   int? _id;
   int _epoch = 0;
   bool _disposed = false;
+  bool get isDisposed => _disposed;
+  Future<bool> Function(String type, String key)? externalSelection;
+  Future<void> preferences(AppSettings settings) async {
+    if (_id == null || _disposed) return;
+    try {
+      await _methods.invokeMethod<void>('preferences', {
+        'playerId': _id,
+        'audioLanguage': settings.audioLanguage,
+        'subtitleLanguage': settings.subtitleLanguage,
+        'subtitles': settings.subtitles,
+        'stereo': settings.stereo,
+      });
+    } on MissingPluginException {
+      /* Other platforms */
+    } on PlatformException {
+      /* Retain engine defaults */
+    }
+  }
 
   Future<void> attach(VideoPlayerController controller) async {
+    externalSelection = null;
     final epoch = ++_epoch;
     _id = null;
     final previous = _subscription;
@@ -114,6 +147,8 @@ class PlayerTracks extends ValueNotifier<TrackSnapshot> {
   }
 
   Future<bool> select(String type, String key) async {
+    final external = externalSelection;
+    if (external != null && !_disposed) return external(type, key);
     final id = _id;
     final epoch = _epoch;
     if (id == null || _disposed || !{'audio', 'text'}.contains(type)) {
@@ -137,6 +172,7 @@ class PlayerTracks extends ValueNotifier<TrackSnapshot> {
 
   Future<void> detach() async {
     _epoch++;
+    externalSelection = null;
     _id = null;
     final subscription = _subscription;
     _subscription = null;

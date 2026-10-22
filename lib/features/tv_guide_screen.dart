@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
+import '../core/settings_controller.dart';
+import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_focus_card.dart';
@@ -175,6 +177,23 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   @override
   Widget build(BuildContext context) {
     final tv = ref.watch(isTvProvider);
+    final preferences = ref.watch(settingsProvider);
+    final unlocked = ref.watch(parentalSessionProvider);
+    if (preferences.isLoading) {
+      return const Scaffold(
+        body: StatusView(title: 'Loading preferences', loading: true),
+      );
+    }
+    if (preferences.hasError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('TV guide')),
+        body: StatusView(
+          title: 'Preferences unavailable',
+          onRetry: () => ref.read(settingsProvider.notifier).reload(),
+        ),
+      );
+    }
+    final settings = preferences.asData?.value ?? const AppSettings();
     final channels = ref.watch(itemsProvider(MediaKind.live));
     final day = _day;
     final end = DateTime(day.year, day.month, day.day + 1);
@@ -253,9 +272,12 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                 data: (all) {
                   final filtered = all
                       .where(
-                        (channel) => channel.name.toLowerCase().contains(
-                          _search.text.trim().toLowerCase(),
-                        ),
+                        (channel) =>
+                            !settings.hidden(channel) &&
+                            (unlocked || !settings.locked(channel)) &&
+                            channel.name.toLowerCase().contains(
+                              _search.text.trim().toLowerCase(),
+                            ),
                       )
                       .toList();
                   if (filtered.isEmpty) {

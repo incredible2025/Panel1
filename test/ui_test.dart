@@ -12,8 +12,10 @@ import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/features/movie_detail_screen.dart';
+import 'package:streamline_iptv/features/settings_screen.dart';
 import 'package:streamline_iptv/features/series_detail_screen.dart';
 import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
@@ -72,6 +74,32 @@ const _series = MediaItem(
 );
 
 class _MemoryStore implements LocalStore {
+  AppSettings preferences = const AppSettings(lastSection: 'live');
+  @override
+  Future<AppSettings> readSettings(String accountId) async => preferences;
+  @override
+  Future<void> saveSettings(String accountId, AppSettings settings) async {
+    preferences = settings;
+  }
+
+  @override
+  Future<bool> hasPin(String accountId) async => parentalPin != null;
+  String? parentalPin;
+  @override
+  Future<int> verifyPin(String accountId, String pin) async =>
+      parentalPin == pin ? 0 : -1;
+  @override
+  Future<void> setPin(String accountId, String pin) async {
+    parentalPin = pin;
+  }
+
+  @override
+  Future<void> removePin(String accountId) async {
+    parentalPin = null;
+  }
+
+  @override
+  Future<void> clearCache(String accountId) async {}
   @override
   Future<List<EpisodeWatchEntry>> seriesHistory(String accountId) async =>
       episodeEntries;
@@ -179,12 +207,13 @@ class _MemoryStore implements LocalStore {
 
 class _TestApi extends XtreamApi {
   int authenticationCount = 0;
+  Map<String, dynamic>? refreshedInfo;
   @override
   Future<Session> authenticate(Credentials credentials) async {
     authenticationCount++;
     return Session(
       credentials: credentials,
-      userInfo: _account.userInfo,
+      userInfo: refreshedInfo ?? _account.userInfo,
       serverInfo: {},
     );
   }
@@ -436,6 +465,182 @@ void main() {
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
+  for (final tv in [false, true]) {
+    _uiTest(
+      '${tv ? 'TV' : 'Phone'} Home shows personal recommendations with cinema-style shelves',
+      (tester) async {
+        const suggested = MediaItem(
+          id: '13',
+          name: 'Quiet Harbour',
+          kind: MediaKind.movie,
+          categoryId: 'drama',
+          rating: '8.6',
+          imageUrl: _qaArtwork,
+        );
+        final store = _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'home')
+          ..favoriteItems = [_otherFilm, _channel]
+          ..entries = [
+            WatchEntry(
+              item: _film,
+              positionMs: 600000,
+              durationMs: 6000000,
+              lastAccessed: DateTime.now(),
+            ),
+          ];
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: tv,
+          movies: [_film, _otherFilm, _undatedFilm, suggested],
+        );
+        expect(find.text('Find your next favourite.'), findsOneWidget);
+        await _screenshot(tester, tv ? 'v5-tv-home' : 'v5-phone-home');
+        await _reveal(tester, find.text('Because you watched Zephyr'));
+        expect(find.text('Quiet Harbour'), findsWidgets);
+        await _screenshot(
+          tester,
+          tv ? 'v5-tv-recommendations' : 'v5-phone-recommendations',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  _uiTest('Settings saves player, controls, audio and subtitle choices', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(tester, store: store, screen: const SettingsScreen());
+    await tester.tap(find.text('Default player'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Compatibility · media_kit'));
+    await tester.pumpAndSettle();
+    expect(store.preferences.engine, PlayerEngine.compatibility);
+    await tester.tap(find.text('Hide player controls'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('After 8 seconds'));
+    await tester.pumpAndSettle();
+    expect(store.preferences.controlsSeconds, 8);
+    await tester.ensureVisible(find.text('Preferred audio language'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Preferred audio language'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(store.preferences.audioLanguage, 'en');
+    await tester.ensureVisible(find.text('Subtitles by default'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Subtitles by default'));
+    await tester.pumpAndSettle();
+    expect(store.preferences.subtitles, true);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final tv in [false, true]) {
+    _uiTest(
+      '${tv ? 'TV' : 'Phone'} Settings displays account information and premium grouped controls',
+      (tester) async {
+        final store = _MemoryStore();
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: tv,
+          screen: const SettingsScreen(),
+        );
+        await _screenshot(tester, tv ? 'v5-tv-settings' : 'v5-phone-settings');
+        await tester.ensureVisible(find.text('Expiry date'));
+        await tester.pumpAndSettle();
+        expect(find.text('Not supplied'), findsWidgets);
+        expect(find.text('viewer'), findsOneWidget);
+        expect(find.text('test-only'), findsNothing);
+        await _screenshot(tester, tv ? 'v5-tv-account' : 'v5-phone-account');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  _uiTest(
+    'account refresh updates expiry and counts without losing preferences',
+    (tester) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(controlsSeconds: 8);
+      final expiry = DateTime.now().add(const Duration(days: 3));
+      final api = _TestApi()
+        ..refreshedInfo = {
+          'auth': 1,
+          'status': 'Active',
+          'exp_date': (expiry.millisecondsSinceEpoch ~/ 1000).toString(),
+          'active_cons': '1',
+          'max_connections': '2',
+        };
+      addTearDown(api.dispose);
+      await _pumpApp(
+        tester,
+        store: store,
+        api: api,
+        screen: const SettingsScreen(),
+      );
+      await tester.ensureVisible(find.text('Refresh account information'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refresh account information'));
+      await tester.pumpAndSettle();
+      expect(find.text('3 days'), findsOneWidget);
+      expect(store.savedSession?.userInfo['max_connections'], '2');
+      expect(store.preferences.controlsSeconds, 8);
+      expect(find.text('Account information refreshed.'), findsOneWidget);
+    },
+  );
+
+  _uiTest(
+    'category visibility removes hidden films from browsing and recommendations',
+    (tester) async {
+      final store = _MemoryStore();
+      await _pumpApp(
+        tester,
+        store: store,
+        screen: const CategorySettingsScreen(),
+      );
+      await tester.tap(find.text('Movies'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Hide category').first);
+      await tester.pumpAndSettle();
+      expect(store.preferences.hiddenCategories, contains('movie:drama'));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpApp(tester, store: store);
+      await tester.tap(find.text('Movies'));
+      await tester.pumpAndSettle();
+      expect(find.text('Zephyr'), findsNothing);
+      expect(find.text('Drama'), findsNothing);
+      expect(find.text('Night Shift'), findsWidgets);
+    },
+  );
+
+  _uiTest('a protected movie stays behind a PIN and cannot appear on Home', (
+    tester,
+  ) async {
+    final store = _MemoryStore()
+      ..parentalPin = '1234'
+      ..preferences = const AppSettings(
+        lastSection: 'home',
+        lockedCategories: {'movie:drama'},
+      );
+    await _pumpApp(
+      tester,
+      store: store,
+      screen: MovieDetailScreen(item: _film),
+    );
+    expect(find.text('This category is protected'), findsOneWidget);
+    expect(find.text('Zephyr'), findsNothing);
+    await tester.tap(find.text('Cancel')); // Cancel the entry-point PIN prompt.
+    await tester.pumpAndSettle();
+    expect(store.entries, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpApp(tester, store: store);
+    expect(find.text('Zephyr'), findsNothing);
+    expect(find.text('Because you watched Zephyr'), findsNothing);
+  });
+
   _uiTest('My List saves a movie and filters movies without mixing in series', (
     tester,
   ) async {
@@ -633,7 +838,8 @@ void main() {
   ) async {
     await _pumpApp(tester, store: _MemoryStore(), tv: true);
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text('ANDROID TV'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
     await _screenshot(tester, 'tv-live');
     final moviesLabel = find.text('Movies');
     _cardFocus(tester, moviesLabel).requestFocus();
@@ -641,6 +847,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('Browse movies'), findsOneWidget);
+    await _reveal(tester, find.text('Recently added movies'));
     expect(find.text('Zephyr'), findsWidgets);
     expect(tester.takeException(), isNull);
     await _screenshot(tester, 'tv-movies');

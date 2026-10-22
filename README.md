@@ -2,7 +2,7 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
-**v0.4.0** adds series Continue Watching, watched episodes, an optional next-episode countdown, a full channel/time guide, movie and series My List, automatic stream recovery, picture modes, and native audio/subtitle selection. Recently added shelves, sorting and live favorites remain available. The cinematic [visual system](docs/PREMIUM_DESIGN.md) pairs charcoal surfaces, ivory typography, champagne accents and bundled fonts.
+**v0.5.0** adds a cinematic Home screen, midnight-blue/cyan styling, auto-hiding player controls, full Settings, a built-in compatibility player, per-account movie recommendations, category management and parental protection. See [release notes](docs/RELEASE_NOTES_0.5.0.md) and the [design/behaviour specification](docs/V0.5_DESIGN.md).
 
 ## Download the APK
 
@@ -15,12 +15,16 @@ The current APK uses Android's disposable testing key. Builds from different run
 ## Stack
 
 - Flutter **3.35.7**, Dart 3.9, Material 3 and **Riverpod** state management.
-- `video_player`, backed by Android ExoPlayer, for HLS (`.m3u8`), MPEG-TS (`.ts`) and provider-supported VOD containers. Codec and hardware decoder availability depend on the device.
-- **SQLite** for account-scoped watch history, favorites, recent channels and EPG cache; **flutter_secure_storage** for encrypted saved credentials and session metadata.
+- `video_player`, backed by Android ExoPlayer, plus an optional `media_kit` compatibility engine, for HLS (`.m3u8`), MPEG-TS (`.ts`) and provider-supported VOD containers. Codec and hardware decoder availability depend on the device.
+- **SQLite v4** for account-scoped watch history, preferences, favourites, recent channels and EPG cache; **flutter_secure_storage** for encrypted credentials, session metadata and salted parental-PIN records.
 - Native Android `UiModeManager` detection for TV mode, Leanback launcher support and D-pad focus traversal.
 
 ## Features
 
+- Settings for player choice, control timeout, audio/subtitles, picture, appearance, category visibility/order and parental PIN.
+- Local movie recommendations from meaningful viewing and provider categories; watched/hidden/locked titles are excluded.
+- Refreshed account information and expiry reminders, with missing fields labelled honestly.
+- Remembered section/category/channel selection; optional muted live previews and playback diagnostics.
 - Login using server URL, username and password; restores the encrypted session after relaunch.
 - Live TV category filters, channel search, short EPG preview and full-screen channel zapping.
 - Favorite channel toggles/filter and the latest **20 distinct successfully played live channels**, stored separately for each account.
@@ -48,12 +52,16 @@ lib/
     providers.dart             # Riverpod session, API, catalog, EPG/history
     player_tracks.dart         # native audio/subtitle bridge
     platform_mode.dart         # Android TV MethodChannel
+    settings_controller.dart   # serialized preferences and protected-access session
+    playback_handle.dart       # shared ExoPlayer/media_kit interface
     design_system.dart         # visual tokens, bundled type, brand and theme
   data/
     models.dart                # tolerant Xtream + history models
     xtream_api.dart            # API requests, validation, stream URIs
     local_store.dart           # encrypted session and SQLite persistence
   features/
+    home_screen.dart           # featured, continue, recommended and saved shelves
+    settings_screen.dart       # preferences, account, categories and PIN
     login_screen.dart
     dashboard_screen.dart      # Live / Movies / Series, two layouts
     movie_detail_screen.dart   # metadata, recent open, resume prompt
@@ -86,6 +94,8 @@ flutter build apk --release
 
 The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. The application ID is `com.streamline.iptv`, minimum Android API 24 (Android 7). Both phone and TV launchers can discover it.
 
+Recommendations use at least one minute and five percent of playback, provider categories, recency and supplied ratings. They run on this device without uploading viewing history. They are content-based suggestions, not collaborative or AI recommendations.
+
 The automated suite covers API/model parsing, provider dates and sorting, SQLite migration/account isolation, favorites/recent channels, resume thresholds, playback lifecycle/cleanup and phone/TV widget behavior. See [TESTING.md](docs/TESTING.md) for commands, screenshot capture and device checks.
 
 ## Xtream API
@@ -109,7 +119,7 @@ Playback URLs follow Xtream's `/live/{username}/{password}/{id}.m3u8`, `/movie/.
 | Media Play / Pause | Control playback |
 | Left / Right on video | Seek VOD |
 | Up / Down on video | Previous / next live channel |
-| Back | Save movie/episode progress and leave player |
+| Back | Hide visible controls during playback, then save progress and exit |
 | Touch | Tap controls and scrub VOD timeline |
 
 See [the device test guide](docs/TESTING.md) for acceptance checks and known limits.

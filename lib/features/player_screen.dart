@@ -8,6 +8,10 @@ import 'package:video_player/video_player.dart';
 import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../core/player_tracks.dart';
+import '../core/playback_handle.dart';
+import '../core/settings_controller.dart';
+import '../data/app_settings.dart';
+import '../widgets/parental_access.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
 
@@ -63,11 +67,74 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late final Session? _session;
   late final List<MediaItem> _channels;
   late MediaItem _item;
-  VideoPlayerController? _controller;
+  PlaybackHandle? _controller;
   Timer? _progressTimer;
   Timer? _retryTimer;
   Timer? _initializationTimer;
   Timer? _nextTimer;
+  Timer? _controlsTimer;
+  bool _controlsVisible = true;
+  bool _menuOpen = false;
+  bool _lastPlaying = false;
+  bool _lastBuffering = false;
+  bool _preferencesLoaded = false;
+  bool _movieOpened = false;
+  AppSettings _settings = const AppSettings();
+  PlayerEngine _engine = PlayerEngine.native;
+  bool get _chromeVisible =>
+      _controlsVisible ||
+      _loading ||
+      _playbackError != null ||
+      _saveFailed ||
+      _nextSeconds != null ||
+      _controller?.value.isPlaying != true;
+  bool get _canHide =>
+      !_loading &&
+      _playbackError == null &&
+      !_menuOpen &&
+      _nextSeconds == null &&
+      _controller?.value.isPlaying == true &&
+      _controller?.value.isBuffering != true &&
+      _dragPosition == null;
+  void _armControls() {
+    _controlsTimer?.cancel();
+    if (!_canHide || !_controlsVisible || _settings.controlsSeconds == 0) {
+      return;
+    }
+    _controlsTimer = Timer(Duration(seconds: _settings.controlsSeconds), () {
+      if (mounted && !_exiting && _canHide) _hideControls();
+    });
+  }
+
+  void _showControls() {
+    if (!mounted || _exiting) return;
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _armControls();
+  }
+
+  void _hideControls() {
+    if (!_canHide) return;
+    _controlsTimer?.cancel();
+    setState(() => _controlsVisible = false);
+    _surfaceFocus.requestFocus();
+  }
+
+  void _toggleControls() {
+    if (_chromeVisible) {
+      _hideControls();
+    } else {
+      _showControls();
+    }
+  }
+
+  Future<void> _handleBack() async {
+    if (_chromeVisible && _canHide) {
+      _hideControls();
+    } else {
+      await _leave();
+    }
+  }
+
   final _tracks = PlayerTracks();
   Episode? _episode;
   BoxFit _pictureFit = BoxFit.contain;
@@ -125,14 +192,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
     );
     unawaited(_keepScreenOn(true));
-    final session = _session;
-    if (_item.kind == MediaKind.movie && session != null) {
-      unawaited(
-        _enqueueHistory(
-          () => _store.recordOpened(session.accountId, widget.item),
-        ),
-      );
-    }
     unawaited(_open(_item, startPosition: widget.startPosition));
     _progressTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(_persistProgress());
@@ -202,7 +261,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   bool _isCurrentChannelPlayback(
-    VideoPlayerController controller,
+    PlaybackHandle controller,
     int generation,
     MediaItem item,
     Session session,
@@ -217,7 +276,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _recordLivePlayback(
-    VideoPlayerController controller,
+    PlaybackHandle controller,
     int generation,
     MediaItem item,
   ) {
@@ -247,7 +306,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
   }
 
-  Future<void> _release(VideoPlayerController controller) {
+  Future<void> _release(PlaybackHandle controller) {
     final existing = _controllerReleases[controller];
     if (existing != null) return existing;
     final release = _disposeController(controller);
@@ -255,7 +314,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return release;
   }
 
-  Future<void> _disposeController(VideoPlayerController controller) async {
+  Future<void> _disposeController(PlaybackHandle controller) async {
     controller.removeListener(_onControllerChanged);
     try {
       await controller.pause();
@@ -294,9 +353,55 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       });
     }
     if (previous != null) await _release(previous);
+    await ref.read(settingsProvider.notifier).ready;
     if (!mounted || generation != _generation || _exiting) return;
+    if (ref.read(settingsProvider).hasError) {
+      setState(() {
+        _loading = false;
+        _playbackError =
+            'Preferences could not be loaded. Reopen the player after reloading Settings.';
+      });
+      return;
+    }
+    _settings = ref.read(settingsProvider).asData!.value;
+    if (!_preferencesLoaded) {
+      _preferencesLoaded = true;
+      _pictureFit = _settings.picture == 'fill'
+          ? BoxFit.cover
+          : _settings.picture == 'stretch'
+          ? BoxFit.fill
+          : BoxFit.contain;
+    }
+    if (!await allowMedia(context, ref, item)) {
+      if (mounted && !_exiting && generation == _generation) {
+        setState(() {
+          _loading = false;
+          _playbackError =
+              'This category is hidden or protected. Unlock it before playing.';
+        });
+      }
+      return;
+    }
+    if (!mounted || generation != _generation || _exiting) return;
+    _channels.removeWhere(
+      (channel) =>
+          _settings.hidden(channel) ||
+          (!ref.read(parentalSessionProvider) && _settings.locked(channel)),
+    );
+    if (_isLive) {
+      _channelIndex = _channels
+          .indexWhere((channel) => channel.id == item.id)
+          .clamp(0, _channels.isNotEmpty ? _channels.length - 1 : 0);
+    }
+    _engine = _settings.engineFor(item);
+    if (!_movieOpened && item.kind == MediaKind.movie && _session != null) {
+      _movieOpened = true;
+      unawaited(
+        _enqueueHistory(() => _store.recordOpened(_session.accountId, item)),
+      );
+    }
 
-    VideoPlayerController? controller;
+    PlaybackHandle? controller;
     try {
       final session = _session;
       if (session == null) {
@@ -309,34 +414,32 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final uri = ref
           .read(apiProvider)
           .streamUri(session, item, episode: _episode);
-      controller = VideoPlayerController.networkUrl(
-        uri,
-        formatHint: uri.path.toLowerCase().endsWith('.m3u8')
-            ? VideoFormat.hls
-            : null,
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
-          allowBackgroundPlayback: false,
-        ),
-      );
+      controller = ref.read(playbackFactoryProvider)(uri, _engine);
       _controller = controller;
       controller.addListener(_onControllerChanged);
       await _initialize(controller);
+      if (controller.value.hasError) {
+        throw StateError('Stream initialization failed');
+      }
       if (!mounted || generation != _generation || _exiting) {
         await _release(controller);
         return;
       }
       if (!_isLive && startPosition > Duration.zero) {
         await controller.seekTo(
-          clampPlaybackPosition(startPosition, controller.value.duration),
+          controller.value.duration > Duration.zero
+              ? clampPlaybackPosition(startPosition, controller.value.duration)
+              : startPosition,
         );
       }
       if (!mounted || generation != _generation || _exiting) return;
+      await controller.attachTracks(_tracks, _settings);
+      if (!mounted || generation != _generation || _exiting) return;
       if (_appActive && _wantsPlayback) await controller.play();
       if (!mounted || generation != _generation || _exiting) return;
-      unawaited(_tracks.attach(controller));
       _recordLivePlayback(controller, generation, item);
       setState(() => _loading = false);
+      _showControls();
     } catch (_) {
       // Native playback exceptions often include the complete stream URI,
       // including Xtream credentials. Never expose those exception strings.
@@ -358,6 +461,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!mounted || _exiting) return;
     final value = _controller?.value;
     if (value == null) return;
+    if (_lastPlaying != value.isPlaying ||
+        _lastBuffering != value.isBuffering) {
+      _lastPlaying = value.isPlaying;
+      _lastBuffering = value.isBuffering;
+      if (!value.isPlaying || value.hasError) {
+        _controlsTimer?.cancel();
+        _controlsVisible = true;
+      } else {
+        _armControls();
+      }
+    }
     if (value.isInitialized && !value.hasError) {
       _resumePosition = clampPlaybackPosition(value.position, value.duration);
       if (value.isPlaying && !value.isBuffering) {
@@ -372,6 +486,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (value.isCompleted &&
         !_advancing &&
         !_completionHandled &&
+        _settings.autoNext &&
         _nextEpisode != null &&
         _appActive &&
         _wantsPlayback) {
@@ -406,6 +521,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appActive = state == AppLifecycleState.resumed;
+    if (_appActive &&
+        _settings.locked(_item) &&
+        !ref.read(parentalSessionProvider)) {
+      setState(
+        () => _playbackError =
+            'Protected access has locked. Retry to enter your PIN and resume.',
+      );
+    }
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
@@ -507,7 +630,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_open(_item, startPosition: position));
   }
 
-  Future<void> _initialize(VideoPlayerController controller) {
+  Future<void> _initialize(PlaybackHandle controller) {
     final complete = Completer<void>();
     final timer = Timer(const Duration(seconds: 25), () {
       if (!complete.isCompleted) {
@@ -553,7 +676,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _scheduleReconnect() {
-    if (_retryTimer?.isActive == true ||
+    if (!_settings.reconnect ||
+        _retryTimer?.isActive == true ||
         !_appActive ||
         !_wantsPlayback ||
         _exiting ||
@@ -593,6 +717,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _startNextCountdown() {
     _completionHandled = true;
     _nextSeconds = 8;
+    _controlsVisible = true;
+    _controlsTimer?.cancel();
     unawaited(_persistProgress());
     _nextTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted || _exiting || !_appActive) {
@@ -625,6 +751,302 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _advancing = false;
   }
 
+  void _cyclePicture() {
+    setState(
+      () => _pictureFit = _pictureFit == BoxFit.contain
+          ? BoxFit.cover
+          : _pictureFit == BoxFit.cover
+          ? BoxFit.fill
+          : BoxFit.contain,
+    );
+    _showControls();
+    unawaited(
+      ref.read(settingsProvider.notifier).patch({
+        'picture': _pictureFit == BoxFit.cover
+            ? 'fill'
+            : _pictureFit == BoxFit.fill
+            ? 'stretch'
+            : 'fit',
+      }),
+    );
+  }
+
+  Widget _nowNext() {
+    final schedule = ref.watch(epgProvider(_item.id));
+    final now = DateTime.now();
+    final entries = schedule.asData?.value ?? <EpgEntry>[];
+    final current = entries
+        .where((entry) => !entry.start.isAfter(now) && entry.end.isAfter(now))
+        .firstOrNull;
+    final next = entries.where((entry) => entry.start.isAfter(now)).firstOrNull;
+    if (current == null && next == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (current != null)
+            Text(
+              'NOW  ${current.title}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Text(
+                'NEXT  ${next.title}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _options() async {
+    _menuOpen = true;
+    _controlsTimer?.cancel();
+    _showControls();
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Player options'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'engine'),
+            child: Text(
+              'Player · ${_engine == PlayerEngine.native ? 'ExoPlayer' : 'Compatibility'}',
+            ),
+          ),
+          if (_isLive)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, 'channels'),
+              child: const Text('Switch channel'),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'info'),
+            child: const Text('Playback diagnostics'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || _exiting) return;
+    if (action == 'engine') {
+      await _chooseEngine();
+    } else if (action == 'channels') {
+      await _chooseChannel();
+    } else if (action == 'info') {
+      await _diagnostics();
+    }
+    _menuOpen = false;
+    _showControls();
+  }
+
+  Future<void> _chooseEngine() async {
+    final override =
+        ref
+            .read(settingsProvider.notifier)
+            .current
+            .playerOverrides[AppSettings.mediaKey(_item)] ??
+        'default';
+    final engine = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(
+          _isLive ? 'Player for this channel' : 'Player for this title',
+        ),
+        children: [
+          for (final entry in {
+            'default': 'Use default player',
+            'native': 'ExoPlayer',
+            'compatibility': 'Compatibility · media_kit',
+          }.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, entry.key),
+              child: Row(
+                children: [
+                  Expanded(child: Text(entry.value)),
+                  if (override == entry.key) const Icon(Icons.check),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (engine == null || !mounted || _exiting) return;
+    final position = _resumePosition;
+    await _persistProgress();
+    final saved = await ref.read(settingsProvider.notifier).update((settings) {
+      final overrides = {...settings.playerOverrides};
+      if (engine == 'default') {
+        overrides.remove(AppSettings.mediaKey(_item));
+      } else {
+        overrides[AppSettings.mediaKey(_item)] = engine;
+      }
+      return settings.patch({'playerOverrides': overrides});
+    });
+    if (!mounted || _exiting) return;
+    if (!saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Player preference could not be saved.')),
+      );
+      return;
+    }
+    _retryCount = 0;
+    await _open(_item, startPosition: position);
+  }
+
+  Future<void> _chooseChannel() async {
+    final settings = ref.read(settingsProvider.notifier).current;
+    final unlocked = ref.read(parentalSessionProvider);
+    final channels = _channels
+        .where(
+          (item) =>
+              !settings.hidden(item) && (unlocked || !settings.locked(item)),
+        )
+        .toList();
+    final selected = await showDialog<MediaItem>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Switch channel'),
+        content: SizedBox(
+          width: 450,
+          height: MediaQuery.sizeOf(context).height * .55,
+          child: ListView.builder(
+            itemCount: channels.length,
+            itemBuilder: (context, index) => ListTile(
+              title: Text(channels[index].name),
+              selected: channels[index].id == _item.id,
+              trailing: channels[index].id == _item.id
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.pop(context, channels[index]),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted || _exiting) return;
+    _retryCount = 0;
+    _wantsPlayback = true;
+    await _open(selected);
+  }
+
+  Future<void> _diagnostics() async {
+    _menuOpen = true;
+    _controlsTimer?.cancel();
+    final controller = _controller;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Playback diagnostics'),
+        content: SizedBox(
+          width: 450,
+          child: ValueListenableBuilder<TrackSnapshot>(
+            valueListenable: _tracks,
+            builder: (context, tracks, _) {
+              Widget details(VideoPlayerValue? value) {
+                final state = _playbackError != null
+                    ? (_retryTimer?.isActive == true
+                          ? 'Reconnecting ($_retryCount/3)'
+                          : 'Stream unavailable')
+                    : _loading
+                    ? 'Opening'
+                    : value?.isBuffering == true
+                    ? 'Buffering'
+                    : value?.isPlaying == true
+                    ? 'Playing'
+                    : 'Paused';
+                final fields = {
+                  'Player': _engine == PlayerEngine.native
+                      ? 'ExoPlayer'
+                      : 'Compatibility · media_kit',
+                  'Connection': state,
+                  'Resolution': value != null && value.size.width > 0
+                      ? '${value.size.width.round()} × ${value.size.height.round()}'
+                      : 'Not reported',
+                  'Video codec': tracks.videoCodec.isEmpty
+                      ? 'Not reported'
+                      : tracks.videoCodec,
+                  'Audio codec': tracks.audioCodec.isEmpty
+                      ? 'Not reported'
+                      : tracks.audioCodec,
+                  'Audio channels': tracks.audioChannels > 0
+                      ? tracks.audioChannels.toString()
+                      : 'Not reported',
+                  if (tracks.decoder.isNotEmpty) 'Decoder': tracks.decoder,
+                };
+                return SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final entry in fields.entries)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  entry.key,
+                                  style: const TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 18),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  entry.value,
+                                  textAlign: TextAlign.end,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              }
+
+              return controller == null
+                  ? details(null)
+                  : ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: controller,
+                      builder: (_, value, __) => details(value),
+                    );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    _menuOpen = false;
+    _showControls();
+  }
+
   Widget _extraControls() => Padding(
     padding: const EdgeInsets.only(top: 8),
     child: Wrap(
@@ -642,13 +1064,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           label: const Text('Subtitles'),
         ),
         TextButton.icon(
-          onPressed: () => setState(
-            () => _pictureFit = _pictureFit == BoxFit.contain
-                ? BoxFit.cover
-                : _pictureFit == BoxFit.cover
-                ? BoxFit.fill
-                : BoxFit.contain,
-          ),
+          onPressed: _cyclePicture,
           icon: const Icon(Icons.aspect_ratio, size: 18),
           label: Text(
             'Picture: ${_pictureFit == BoxFit.contain
@@ -657,6 +1073,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ? 'Fill'
                 : 'Stretch'}',
           ),
+        ),
+        TextButton.icon(
+          onPressed: _options,
+          icon: const Icon(Icons.tune, size: 18),
+          label: const Text('Options'),
         ),
         if (_nextEpisode != null)
           TextButton.icon(
@@ -669,6 +1090,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   );
 
   Future<void> _chooseTracks(String type) async {
+    _menuOpen = true;
+    _controlsTimer?.cancel();
+    _showControls();
     final snapshot = _tracks.value;
     final tracks = snapshot.tracks
         .where((track) => track.type == type)
@@ -736,8 +1160,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ],
       ),
     );
+    _menuOpen = false;
+    _showControls();
     if (key == null || !mounted || _exiting) return;
-    if (!await _tracks.select(type, key) && mounted) {
+    final selected = tracks.where((track) => track.key == key).firstOrNull;
+    final success = await _tracks.select(type, key);
+    if (success) {
+      unawaited(
+        ref.read(settingsProvider.notifier).patch({
+          if (type == 'text') 'subtitles': key != 'off',
+          if (type == 'text' && selected?.language.isNotEmpty == true)
+            'subtitleLanguage': selected!.language,
+          if (type == 'audio') 'audioLanguage': selected?.language ?? '',
+        }),
+      );
+    }
+    if (!success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -753,8 +1191,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return KeyEventResult.ignored;
     }
     final key = event.logicalKey;
+    if (_controlsVisible) _armControls();
     if (key == LogicalKeyboardKey.escape) {
-      if (event is KeyDownEvent) unawaited(_leave());
+      if (event is KeyDownEvent) unawaited(_handleBack());
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.mediaPlayPause ||
@@ -783,11 +1222,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _zap(-1);
       return KeyEventResult.handled;
     }
+    if (key == LogicalKeyboardKey.contextMenu) {
+      _showControls();
+      _playFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
     if (!_surfaceFocus.hasPrimaryFocus) return KeyEventResult.ignored;
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
       if (event is KeyDownEvent) {
+        if (!_chromeVisible) {
+          _showControls();
+          return KeyEventResult.handled;
+        }
         if (_playbackError != null) {
           _retry();
         } else {
@@ -797,10 +1245,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowLeft && !_isLive) {
+      _showControls();
       _seekRelative(-10);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowRight && !_isLive) {
+      _showControls();
       _seekRelative(30);
       return KeyEventResult.handled;
     }
@@ -814,6 +1264,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
     if (key == LogicalKeyboardKey.contextMenu ||
         (!_isLive && key == LogicalKeyboardKey.arrowDown)) {
+      _showControls();
       _playFocus.requestFocus();
       return KeyEventResult.handled;
     }
@@ -824,6 +1275,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
+    _controlsTimer?.cancel();
     _retryTimer?.cancel();
     _nextTimer?.cancel();
     _initializationTimer?.cancel();
@@ -850,12 +1302,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final ready = value?.isInitialized ?? false;
     final error = _playbackError;
     final title = _episode?.title ?? _item.name;
-    final compact = MediaQuery.sizeOf(context).height < 460;
+    final compact =
+        MediaQuery.sizeOf(context).height < 460 || _settings.compact;
+    final preferences = ref.watch(settingsProvider).asData?.value ?? _settings;
+    final visible = _chromeVisible;
 
     return PopScope<Object?>(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) unawaited(_leave());
+        if (!didPop) unawaited(_handleBack());
       },
       child: Focus(
         autofocus: true,
@@ -863,200 +1318,247 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         onKeyEvent: _onKey,
         child: Scaffold(
           backgroundColor: Colors.black,
-          body: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _surfaceFocus.requestFocus(),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (ready && controller != null && error == null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onDoubleTap: () => unawaited(_togglePlayback()),
-                    child: Center(
-                      child: SizedBox.expand(
-                        child: ClipRect(
-                          child: FittedBox(
-                            fit: _pictureFit,
-                            child: SizedBox(
-                              width: value!.size.width > 0
-                                  ? value.size.width
-                                  : 16,
-                              height: value.size.height > 0
-                                  ? value.size.height
-                                  : 9,
-                              child: VideoPlayer(controller),
+          body: Listener(
+            onPointerDown: (_) => _armControls(),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleControls,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (ready && controller != null && error == null)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onDoubleTap: () => unawaited(_togglePlayback()),
+                      child: Center(
+                        child: SizedBox.expand(
+                          child: ClipRect(
+                            child: FittedBox(
+                              fit: _pictureFit,
+                              child: SizedBox(
+                                width: value!.size.width > 0
+                                    ? value.size.width
+                                    : 16,
+                                height: value.size.height > 0
+                                    ? value.size.height
+                                    : 9,
+                                child: controller.buildView(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ValueListenableBuilder<TrackSnapshot>(
+                    valueListenable: _tracks,
+                    builder: (context, tracks, _) => Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: visible
+                          ? (compact ? 170 : 230)
+                          : MediaQuery.paddingOf(context).bottom + 28,
+                      child: IgnorePointer(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final bytes in tracks.images)
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 120,
+                                ),
+                                child: Image.memory(
+                                  bytes,
+                                  errorBuilder: (_, __, ___) =>
+                                      const SizedBox.shrink(),
+                                ),
+                              ),
+                            if (tracks.caption.isNotEmpty)
+                              Text(
+                                tracks.caption,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: preferences.subtitleSize,
+                                  color: Colors.white,
+                                  backgroundColor:
+                                      preferences.subtitleBackground
+                                      ? Colors.black87
+                                      : Colors.transparent,
+                                  shadows: [
+                                    Shadow(blurRadius: 3, color: Colors.black),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    child: AnimatedOpacity(
+                      key: const ValueKey('player-scrim'),
+                      opacity: visible ? 1 : 0,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 180),
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0xE3080A0D),
+                              Color(0x23080A0D),
+                              Color(0x10080A0D),
+                              Color(0xF2080A0D),
+                            ],
+                            stops: [0, .28, .52, 1],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_loading && error == null)
+                    _waitingIndicator(context, 'Opening stream'),
+                  if (error != null) _buildPlaybackError(context, error),
+                  if (ready && value!.isBuffering && !_loading && error == null)
+                    _waitingIndicator(context, 'Buffering'),
+                  IgnorePointer(
+                    ignoring: !visible,
+                    child: ExcludeFocus(
+                      excluding: !visible,
+                      child: ExcludeSemantics(
+                        excluding: !visible,
+                        child: AnimatedOpacity(
+                          key: const ValueKey('player-chrome'),
+                          opacity: visible ? 1 : 0,
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : const Duration(milliseconds: 180),
+                          child: SafeArea(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: tv
+                                    ? 44
+                                    : compact
+                                    ? 22
+                                    : 20,
+                                vertical: tv
+                                    ? 30
+                                    : compact
+                                    ? 12
+                                    : 20,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _playerHeader(context, title, tv, compact),
+                                  const Spacer(),
+                                  if (_nextSeconds != null)
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Card(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: Wrap(
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            spacing: 12,
+                                            children: [
+                                              Text(
+                                                'Next episode in $_nextSeconds',
+                                              ),
+                                              FilledButton(
+                                                onPressed: () => unawaited(
+                                                  _advanceEpisode(),
+                                                ),
+                                                child: const Text('Play next'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () =>
+                                                    setState(_cancelNext),
+                                                child: const Text('Cancel'),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  if (_saveFailed)
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline_rounded,
+                                            color: AppColors.accent,
+                                            size: 16,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Flexible(
+                                            child: Text(
+                                              'Playback progress could not be saved.',
+                                              style: TextStyle(
+                                                color: AppColors.accent,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  if (ready &&
+                                      error == null &&
+                                      _isLive &&
+                                      !compact)
+                                    _nowNext(),
+                                  if (ready && error == null)
+                                    _buildControls(context, value!, tv),
+                                  if (ready && error == null) _extraControls(),
+                                  if (tv)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 22),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.settings_remote_outlined,
+                                            size: 14,
+                                            color: AppColors.subdued,
+                                          ),
+                                          const SizedBox(width: 9),
+                                          Flexible(
+                                            child: Text(
+                                              error != null
+                                                  ? 'OK Retry   ·   Back Exit'
+                                                  : _isLive
+                                                  ? '↑ / ↓ Channel   ·   OK Play / pause   ·   Menu Controls'
+                                                  : '← / → Seek   ·   OK Play / pause   ·   ↓ Controls',
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                color: AppColors.muted,
+                                                fontSize: 11,
+                                                letterSpacing: .3,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ValueListenableBuilder<TrackSnapshot>(
-                  valueListenable: _tracks,
-                  builder: (context, tracks, _) => Positioned(
-                    left: 24,
-                    right: 24,
-                    bottom: compact ? 175 : 230,
-                    child: IgnorePointer(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final bytes in tracks.images)
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 120),
-                              child: Image.memory(
-                                bytes,
-                                errorBuilder: (_, __, ___) =>
-                                    const SizedBox.shrink(),
-                              ),
-                            ),
-                          if (tracks.caption.isNotEmpty)
-                            Text(
-                              tracks.caption,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                color: Colors.white,
-                                backgroundColor: Colors.black87,
-                                shadows: [
-                                  Shadow(blurRadius: 3, color: Colors.black),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0xE3080A0D),
-                          Color(0x23080A0D),
-                          Color(0x10080A0D),
-                          Color(0xF2080A0D),
-                        ],
-                        stops: [0, .28, .52, 1],
-                      ),
-                    ),
-                  ),
-                ),
-                if (_loading && error == null)
-                  _waitingIndicator(context, 'Opening stream'),
-                if (error != null) _buildPlaybackError(context, error),
-                if (ready && value!.isBuffering && !_loading && error == null)
-                  _waitingIndicator(context, 'Buffering'),
-                SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: tv
-                          ? 44
-                          : compact
-                          ? 22
-                          : 20,
-                      vertical: tv
-                          ? 30
-                          : compact
-                          ? 12
-                          : 20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _playerHeader(context, title, tv, compact),
-                        const Spacer(),
-                        if (_nextSeconds != null)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Wrap(
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  spacing: 12,
-                                  children: [
-                                    Text('Next episode in $_nextSeconds'),
-                                    FilledButton(
-                                      onPressed: () =>
-                                          unawaited(_advanceEpisode()),
-                                      child: const Text('Play next'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => setState(_cancelNext),
-                                      child: const Text('Cancel'),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (_saveFailed)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  color: AppColors.accent,
-                                  size: 16,
-                                ),
-                                SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    'Playback progress could not be saved.',
-                                    style: TextStyle(
-                                      color: AppColors.accent,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        if (ready && error == null)
-                          _buildControls(context, value!, tv),
-                        if (ready && error == null) _extraControls(),
-                        if (tv)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 22),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.settings_remote_outlined,
-                                  size: 14,
-                                  color: AppColors.subdued,
-                                ),
-                                const SizedBox(width: 9),
-                                Flexible(
-                                  child: Text(
-                                    error != null
-                                        ? 'OK Retry   ·   Back Exit'
-                                        : _isLive
-                                        ? '↑ / ↓ Channel   ·   OK Play / pause   ·   Menu Controls'
-                                        : '← / → Seek   ·   OK Play / pause   ·   ↓ Controls',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 11,
-                                      letterSpacing: .3,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1213,6 +1715,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 icon: const Icon(Icons.refresh_rounded, size: 19),
                 label: const Text('Try again'),
               ),
+              TextButton(
+                onPressed: _diagnostics,
+                child: const Text('Playback diagnostics'),
+              ),
               if (_retryTimer?.isActive == true)
                 TextButton(
                   onPressed: () => setState(() {
@@ -1269,7 +1775,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final position = (_dragPosition ?? positionMs.toDouble())
         .clamp(0, durationMs > 0 ? durationMs.toDouble() : 1.0)
         .toDouble();
-    final compact = MediaQuery.sizeOf(context).height < 460;
+    final compact =
+        MediaQuery.sizeOf(context).height < 460 || _settings.compact;
 
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
@@ -1364,6 +1871,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   onChanged: (value) => setState(() => _dragPosition = value),
                   onChangeEnd: (value) {
                     setState(() => _dragPosition = null);
+                    _showControls();
                     unawaited(_seekTo(Duration(milliseconds: value.round())));
                   },
                 ),

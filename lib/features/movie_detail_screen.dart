@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
+import '../widgets/parental_access.dart';
 import '../widgets/media_card.dart';
 import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart';
@@ -30,6 +31,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   }
 
   Future<void> _recordOpened() async {
+    if (!await allowMedia(context, ref, widget.item) || !mounted) return;
     final session = ref.read(sessionProvider);
     if (session == null) return;
     try {
@@ -139,6 +141,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final protection = protectedLibraryView(context, ref, widget.item);
+    if (protection != null) return protection;
     final detail = ref.watch(movieDetailProvider(widget.item));
     final history = ref.watch(historyProvider).asData?.value ?? <WatchEntry>[];
     WatchEntry? saved;

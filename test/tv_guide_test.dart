@@ -7,9 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/core/providers.dart';
+import 'package:streamline_iptv/data/local_store.dart';
+import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/features/tv_guide_screen.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
+
+class _GuidePreferencesStore implements LocalStore {
+  @override
+  Future<AppSettings> readSettings(String accountId) async =>
+      const AppSettings();
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   setUpAll(() async {
@@ -93,6 +103,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              storeProvider.overrideWithValue(_GuidePreferencesStore()),
               isTvProvider.overrideWithValue(tv),
               itemsProvider.overrideWith(
                 (ref, kind) async => [

@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 /// Shared visual tokens for the mobile and ten-foot interfaces.
 abstract final class AppColors {
-  static const canvas = Color(0xFF0B0D10);
-  static const surface = Color(0xFF14171C);
-  static const surfaceRaised = Color(0xFF1C2026);
-  static const border = Color(0xFF2C3035);
-  static const accent = Color(0xFFDEC48D);
-  static const accentStrong = Color(0xFFB79250);
-  static const text = Color(0xFFF5F2EA);
+  static const canvas = Color(0xFF060E1B);
+  static const surface = Color(0xFF101D30);
+  static const surfaceRaised = Color(0xFF172840);
+  static const border = Color(0xFF25384F);
+  static const accent = Color(0xFF64D9F5);
+  static const accentStrong = Color(0xFF1B99CD);
+  static const text = Color(0xFFF4F8FF);
   static const muted = Color(0xFFABB0B8);
   static const subdued = Color(0xFF6B737F);
   static const danger = Color(0xFFF0A09B);
@@ -16,18 +16,23 @@ abstract final class AppColors {
 }
 
 abstract final class StreamlineTheme {
-  static ThemeData get dark {
+  static ThemeData get dark => _create(false);
+  static ThemeData get cinema => _create(true);
+  static ThemeData _create(bool cinema) {
+    final accent = cinema ? Color(0xFFF3EEE3) : AppColors.accent;
+    final canvas = cinema ? Color(0xFF090A0C) : AppColors.canvas;
+    final surface = cinema ? Color(0xFF191A1D) : AppColors.surface;
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       fontFamily: 'Streamline Sans',
-      scaffoldBackgroundColor: AppColors.canvas,
-      colorScheme: const ColorScheme.dark(
-        primary: AppColors.accent,
-        onPrimary: AppColors.canvas,
-        secondary: AppColors.accent,
-        onSecondary: AppColors.canvas,
-        surface: AppColors.surface,
+      scaffoldBackgroundColor: canvas,
+      colorScheme: ColorScheme.dark(
+        primary: accent,
+        onPrimary: canvas,
+        secondary: accent,
+        onSecondary: canvas,
+        surface: surface,
         onSurface: AppColors.text,
         error: AppColors.danger,
         outline: AppColors.border,
@@ -66,7 +71,7 @@ abstract final class StreamlineTheme {
           letterSpacing: .1,
         ),
       ),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
@@ -76,32 +81,29 @@ abstract final class StreamlineTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface,
-        hintStyle: const TextStyle(color: AppColors.subdued, fontSize: 14),
-        labelStyle: const TextStyle(color: AppColors.muted, fontSize: 14),
+        fillColor: surface,
+        hintStyle: TextStyle(color: AppColors.subdued, fontSize: 14),
+        labelStyle: TextStyle(color: AppColors.muted, fontSize: 14),
         prefixIconColor: AppColors.subdued,
         suffixIconColor: AppColors.muted,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 18,
-        ),
+        contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+          borderSide: BorderSide(color: accent, width: 1.5),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size(48, 52)),
-          padding: const WidgetStatePropertyAll(
+          minimumSize: WidgetStatePropertyAll(Size(48, 52)),
+          padding: WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 24, vertical: 15),
           ),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
@@ -110,17 +112,17 @@ abstract final class StreamlineTheme {
                 states.contains(WidgetState.hovered)) {
               return AppColors.text;
             }
-            return AppColors.accent;
+            return accent;
           }),
           foregroundColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.disabled)
                 ? AppColors.muted
-                : AppColors.canvas,
+                : canvas,
           ),
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          textStyle: const WidgetStatePropertyAll(
+          textStyle: WidgetStatePropertyAll(
             TextStyle(
               fontFamily: 'Streamline Sans',
               fontWeight: FontWeight.w700,
@@ -131,35 +133,33 @@ abstract final class StreamlineTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.text,
-          side: const BorderSide(color: AppColors.border),
-          minimumSize: const Size(48, 50),
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+          side: BorderSide(color: AppColors.border),
+          minimumSize: Size(48, 50),
+          padding: EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+        style: TextButton.styleFrom(foregroundColor: accent),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: const WidgetStatePropertyAll(AppColors.text),
-          overlayColor: WidgetStatePropertyAll(
-            AppColors.accent.withValues(alpha: .15),
-          ),
+          foregroundColor: WidgetStatePropertyAll(AppColors.text),
+          overlayColor: WidgetStatePropertyAll(accent.withValues(alpha: .15)),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 74,
-        backgroundColor: AppColors.surface,
+        backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: AppColors.accent.withValues(alpha: .12),
+        indicatorColor: accent.withValues(alpha: .12),
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
             size: 23,
             color: states.contains(WidgetState.selected)
-                ? AppColors.accent
+                ? accent
                 : AppColors.subdued,
           ),
         ),
@@ -180,23 +180,23 @@ abstract final class StreamlineTheme {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: const BorderSide(color: AppColors.border),
+          side: BorderSide(color: AppColors.border),
         ),
       ),
       sliderTheme: base.sliderTheme.copyWith(
-        activeTrackColor: AppColors.accent,
+        activeTrackColor: accent,
         inactiveTrackColor: Colors.white.withValues(alpha: .15),
         thumbColor: AppColors.text,
         trackHeight: 3,
-        overlayColor: AppColors.accent.withValues(alpha: .12),
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+        overlayColor: accent.withValues(alpha: .12),
+        thumbShape: RoundSliderThumbShape(enabledThumbRadius: 5),
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.accent,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
         linearTrackColor: AppColors.border,
       ),
       dividerColor: AppColors.border,
-      focusColor: AppColors.accent.withValues(alpha: .16),
+      focusColor: accent.withValues(alpha: .16),
       hoverColor: Colors.white.withValues(alpha: .04),
       splashFactory: InkSparkle.splashFactory,
     );

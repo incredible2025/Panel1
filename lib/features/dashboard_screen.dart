@@ -1,8 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
+import '../core/settings_controller.dart';
+import '../data/app_settings.dart';
+import '../widgets/parental_access.dart';
+import '../widgets/library_shelves.dart';
+import '../widgets/live_channel_preview.dart';
+import 'home_screen.dart';
+import 'settings_screen.dart';
 import '../data/models.dart';
 import '../widgets/media_card.dart';
 import '../widgets/status_view.dart';
@@ -20,17 +28,91 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  String _clock(DateTime value) => guideClock(value);
   MediaKind _kind = MediaKind.live;
   final _search = TextEditingController();
   final _scroll = ScrollController();
   final _liveHeroKey = GlobalKey();
+  final _previewKey = GlobalKey<LiveChannelPreviewState>();
   final Map<MediaKind, String?> _category = {};
   final Map<MediaKind, CatalogSort> _sort = {};
   final Set<MediaKind> _browseAll = {};
   final Set<MediaKind> _myListOnly = {};
   final Set<String> _savingFavorites = {};
   MediaItem? _channel;
-  bool _signingOut = false;
+  String _destination = 'home';
+  bool _restoring = true;
+  bool _navExpanded = false;
+  AppSettings get _preferences =>
+      ref.read(settingsProvider).asData?.value ?? const AppSettings();
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restore());
+  }
+
+  Future<void> _restore() async {
+    await ref.read(settingsProvider.notifier).ready;
+    if (!mounted) return;
+    final preferences = _preferences;
+    setState(() {
+      _destination =
+          {
+            'home',
+            'live',
+            'movie',
+            'series',
+            'settings',
+          }.contains(preferences.lastSection)
+          ? preferences.lastSection
+          : 'home';
+      _kind =
+          MediaKind.values
+              .where((kind) => kind.name == _destination)
+              .firstOrNull ??
+          MediaKind.live;
+      for (final entry in preferences.lastCategories.entries) {
+        final kind = MediaKind.values
+            .where((kind) => kind.name == entry.key)
+            .firstOrNull;
+        if (kind != null) {
+          _category[kind] = entry.value.isEmpty ? null : entry.value;
+        }
+      }
+      _restoring = false;
+    });
+  }
+
+  void _remember({MediaItem? item}) {
+    unawaited(
+      ref
+          .read(settingsProvider.notifier)
+          .update(
+            (settings) => settings.patch({
+              'lastSection': _destination,
+              'lastCategories': {
+                ...settings.lastCategories,
+                _kind.name: _category[_kind] ?? '',
+              },
+              if (item?.kind == MediaKind.live) 'lastChannel': item!.id,
+              if (item != null)
+                'lastItems': {...settings.lastItems, item.kind.name: item.id},
+            }),
+          ),
+    );
+  }
+
+  void _selectDestination(String value) {
+    if (value == _destination) return;
+    unawaited(_previewKey.currentState?.stop() ?? Future.value());
+    setState(() {
+      _destination = value;
+      _search.clear();
+    });
+    _remember();
+    _scrollToTop();
+  }
+
   bool _favoritesOnly = false;
 
   @override
@@ -47,11 +129,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   };
 
   void _selectSection(MediaKind kind) {
-    if (_kind == kind) return;
+    if (_kind == kind && _destination == kind.name) return;
+    unawaited(_previewKey.currentState?.stop() ?? Future.value());
     setState(() {
       _kind = kind;
+      _destination = kind.name;
       _search.clear();
     });
+    _remember();
     _scrollToTop();
   }
 
@@ -70,11 +155,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     });
   }
 
-  void _showCategory(String? id) {
+  Future<void> _showCategory(String? id) async {
+    if (id != null &&
+        _preferences.lockedCategories.contains(
+          AppSettings.categoryKey(_kind, id),
+        ) &&
+        !await requestParentalAccess(
+          context,
+          ref,
+          reason: 'Unlock this category',
+        )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _category[_kind] = id;
       _myListOnly.remove(_kind);
     });
+    _remember();
     _scrollToTop();
   }
 
@@ -142,6 +240,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     MediaItem item, {
     List<MediaItem> channels = const [],
   }) async {
+    if (!await allowMedia(context, ref, item) || !mounted) return;
+    await _previewKey.currentState?.stop();
+    if (!mounted) return;
+    _remember(item: item);
+    if (item.kind == MediaKind.live && channels.isEmpty) {
+      channels = (ref.read(itemsProvider(MediaKind.live)).asData?.value ?? [])
+          .where(
+            (channel) =>
+                !_preferences.hidden(channel) &&
+                (ref.read(parentalSessionProvider) ||
+                    !_preferences.locked(channel)),
+          )
+          .toList();
+    }
     final Widget screen = switch (item.kind) {
       MediaKind.live => PlayerScreen(item: item, channels: channels),
       MediaKind.movie => MovieDetailScreen(item: item),
@@ -157,47 +269,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  Future<void> _signOut() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text(
-          'Your watch history stays on this device for the next time you sign in.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Sign out'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-    setState(() => _signingOut = true);
-    try {
-      await ref.read(storeProvider).clearSession();
-      if (mounted) ref.read(sessionProvider.notifier).state = null;
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not sign out. Please try again.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _signingOut = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isTv = ref.watch(isTvProvider);
+    final settings = ref.watch(settingsProvider);
+    final unlocked = ref.watch(parentalSessionProvider);
+    final preferences = settings.asData?.value ?? const AppSettings();
+    if (settings.hasError) {
+      return Scaffold(
+        body: StatusView(
+          title: 'Preferences unavailable',
+          message:
+              'Reload before browsing so parental protection remains active.',
+          onRetry: () => ref.read(settingsProvider.notifier).reload(),
+        ),
+      );
+    }
+    if (_restoring || settings.isLoading) {
+      return const Scaffold(
+        body: StatusView(title: 'Preparing Streamline', loading: true),
+      );
+    }
     final categories = ref.watch(categoriesProvider(_kind));
     final items = ref.watch(itemsProvider(_kind));
     final favoritesState = ref.watch(favoritesProvider);
@@ -208,7 +300,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             .toSet() ??
         <String>{};
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       bottomNavigationBar: isTv
           ? null
           : DecoratedBox(
@@ -217,10 +309,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
               child: NavigationBar(
                 height: 72,
-                selectedIndex: MediaKind.values.indexOf(_kind),
-                onDestinationSelected: (index) =>
-                    _selectSection(MediaKind.values[index]),
+                selectedIndex: const [
+                  'home',
+                  'live',
+                  'movie',
+                  'series',
+                  'settings',
+                ].indexOf(_destination),
+                onDestinationSelected: (index) {
+                  if (index == 0 || index == 4) {
+                    _selectDestination(index == 0 ? 'home' : 'settings');
+                  } else {
+                    _selectSection(MediaKind.values[index - 1]);
+                  }
+                },
                 destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home_rounded),
+                    label: 'Home',
+                  ),
                   NavigationDestination(
                     icon: Icon(Icons.live_tv_outlined),
                     selectedIcon: Icon(Icons.live_tv),
@@ -236,6 +344,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     selectedIcon: Icon(Icons.video_library),
                     label: 'Series',
                   ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_outlined),
+                    selectedIcon: Icon(Icons.settings),
+                    label: 'Settings',
+                  ),
                 ],
               ),
             ),
@@ -245,171 +358,210 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             children: [
               if (isTv) _sidebar(),
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, viewport) {
-                    final margin = isTv
-                        ? 32.0
-                        : viewport.maxWidth > 700
-                        ? 28.0
-                        : 20.0;
-                    final contentWidth = viewport.maxWidth - margin * 2;
-                    final query = _search.text.trim().toLowerCase();
-                    final selectedCategory = _category[_kind];
-                    final browsing =
-                        query.isEmpty &&
-                        selectedCategory == null &&
-                        !_browseAll.contains(_kind);
-                    return CustomScrollView(
-                      controller: _scroll,
-                      key: PageStorageKey('dashboard-${_kind.name}'),
-                      cacheExtent: viewport.maxHeight,
-                      slivers: [
-                        SliverPadding(
-                          padding: EdgeInsets.fromLTRB(
-                            margin,
-                            isTv ? 25 : 20,
-                            margin,
-                            20,
-                          ),
-                          sliver: SliverToBoxAdapter(child: _header(isTv)),
-                        ),
-                        SliverPadding(
-                          padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                          sliver: SliverToBoxAdapter(
-                            child: _toolbar(categories),
-                          ),
-                        ),
-                        ...items.when(
-                          loading: () => [
-                            _status(
-                              const StatusView(
-                                title: 'Loading your library',
-                                loading: true,
+                child: _destination == 'settings'
+                    ? const SettingsScreen(embedded: true)
+                    : _destination == 'home'
+                    ? HomeScreen(
+                        onOpen: (item) => _open(item),
+                        onBrowse: _selectSection,
+                        onSettings: () => _selectDestination('settings'),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, viewport) {
+                          final margin = isTv
+                              ? 32.0
+                              : viewport.maxWidth > 700
+                              ? 28.0
+                              : 20.0;
+                          final contentWidth = viewport.maxWidth - margin * 2;
+                          final query = _search.text.trim().toLowerCase();
+                          final selectedCategory = _category[_kind];
+                          final browsing =
+                              query.isEmpty &&
+                              selectedCategory == null &&
+                              !_browseAll.contains(_kind);
+                          return CustomScrollView(
+                            controller: _scroll,
+                            key: PageStorageKey('dashboard-${_kind.name}'),
+                            cacheExtent: viewport.maxHeight,
+                            slivers: [
+                              SliverPadding(
+                                padding: EdgeInsets.fromLTRB(
+                                  margin,
+                                  isTv ? 25 : 20,
+                                  margin,
+                                  20,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: _header(isTv),
+                                ),
                               ),
-                            ),
-                          ],
-                          error: (_, __) => [
-                            _status(
-                              StatusView(
-                                title: 'Your library is unavailable',
-                                message:
-                                    'Check your connection or refresh your provider.',
-                                icon: Icons.wifi_off_rounded,
-                                onRetry: _refresh,
+                              SliverPadding(
+                                padding: EdgeInsets.fromLTRB(
+                                  margin,
+                                  0,
+                                  margin,
+                                  24,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: _toolbar(categories),
+                                ),
                               ),
-                            ),
-                          ],
-                          data: (allItems) {
-                            if (((_kind == MediaKind.live && _favoritesOnly) ||
-                                    _myListOnly.contains(_kind)) &&
-                                favoritesState.isLoading) {
-                              return [
-                                _status(
-                                  const StatusView(
-                                    title: 'Loading favorite channels',
-                                    loading: true,
+                              SliverPadding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: margin,
+                                ),
+                                sliver: SliverToBoxAdapter(
+                                  child: AccountExpiryNotice(
+                                    onAccount: () =>
+                                        _selectDestination('settings'),
                                   ),
                                 ),
-                              ];
-                            }
-                            if (((_kind == MediaKind.live && _favoritesOnly) ||
-                                    _myListOnly.contains(_kind)) &&
-                                favoritesState.hasError) {
-                              return [
-                                _status(
-                                  StatusView(
-                                    title: 'Favorite channels are unavailable',
-                                    message:
-                                        'Please reload your saved channels.',
-                                    onRetry: () =>
-                                        ref.invalidate(favoritesProvider),
+                              ),
+                              ...items.when(
+                                loading: () => [
+                                  _status(
+                                    const StatusView(
+                                      title: 'Loading your library',
+                                      loading: true,
+                                    ),
                                   ),
-                                ),
-                              ];
-                            }
-                            final matching = allItems
-                                .where(
-                                  (item) =>
-                                      (_kind != MediaKind.live ||
-                                          !_favoritesOnly ||
-                                          favoriteIds.contains(item.id)) &&
-                                      (!_myListOnly.contains(_kind) ||
-                                          favoriteIds.contains(item.id)) &&
-                                      (selectedCategory == null ||
-                                          item.categoryId ==
-                                              selectedCategory) &&
-                                      (query.isEmpty ||
-                                          item.name.toLowerCase().contains(
-                                            query,
-                                          )),
-                                )
-                                .toList(growable: false);
-                            final filtered = _kind == MediaKind.live
-                                ? matching
-                                : sortMediaItems(
-                                    matching,
-                                    _sort[_kind] ?? CatalogSort.recentlyAdded,
+                                ],
+                                error: (_, __) => [
+                                  _status(
+                                    StatusView(
+                                      title: 'Your library is unavailable',
+                                      message:
+                                          'Check your connection or refresh your provider.',
+                                      icon: Icons.wifi_off_rounded,
+                                      onRetry: _refresh,
+                                    ),
+                                  ),
+                                ],
+                                data: (allItems) {
+                                  if (((_kind == MediaKind.live &&
+                                              _favoritesOnly) ||
+                                          _myListOnly.contains(_kind)) &&
+                                      favoritesState.isLoading) {
+                                    return [
+                                      _status(
+                                        const StatusView(
+                                          title: 'Loading favorite channels',
+                                          loading: true,
+                                        ),
+                                      ),
+                                    ];
+                                  }
+                                  if (((_kind == MediaKind.live &&
+                                              _favoritesOnly) ||
+                                          _myListOnly.contains(_kind)) &&
+                                      favoritesState.hasError) {
+                                    return [
+                                      _status(
+                                        StatusView(
+                                          title:
+                                              'Favorite channels are unavailable',
+                                          message:
+                                              'Please reload your saved channels.',
+                                          onRetry: () =>
+                                              ref.invalidate(favoritesProvider),
+                                        ),
+                                      ),
+                                    ];
+                                  }
+                                  final matching = allItems
+                                      .where(
+                                        (item) =>
+                                            !preferences.hidden(item) &&
+                                            (unlocked ||
+                                                !preferences.locked(item)) &&
+                                            (_kind != MediaKind.live ||
+                                                !_favoritesOnly ||
+                                                favoriteIds.contains(
+                                                  item.id,
+                                                )) &&
+                                            (!_myListOnly.contains(_kind) ||
+                                                favoriteIds.contains(
+                                                  item.id,
+                                                )) &&
+                                            (selectedCategory == null ||
+                                                item.categoryId ==
+                                                    selectedCategory) &&
+                                            (query.isEmpty ||
+                                                item.name
+                                                    .toLowerCase()
+                                                    .contains(query)),
+                                      )
+                                      .toList(growable: false);
+                                  final filtered = _kind == MediaKind.live
+                                      ? matching
+                                      : sortMediaItems(
+                                          matching,
+                                          _sort[_kind] ??
+                                              CatalogSort.recentlyAdded,
+                                        );
+                                  if (allItems.isEmpty) {
+                                    return [
+                                      _status(
+                                        StatusView(
+                                          title:
+                                              'No ${_title.toLowerCase()} available',
+                                          message:
+                                              'Your provider has not supplied content in this section.',
+                                          onRetry: _refresh,
+                                        ),
+                                      ),
+                                    ];
+                                  }
+                                  if (filtered.isEmpty) {
+                                    return [
+                                      _status(
+                                        StatusView(
+                                          title:
+                                              _kind == MediaKind.live &&
+                                                  _favoritesOnly &&
+                                                  query.isEmpty &&
+                                                  selectedCategory == null
+                                              ? 'No favorite channels yet'
+                                              : _myListOnly.contains(_kind)
+                                              ? 'Your list is empty'
+                                              : 'No matches found',
+                                          message:
+                                              _kind == MediaKind.live &&
+                                                  _favoritesOnly
+                                              ? 'Turn off Favorites and use the star beside a channel to save it.'
+                                              : _myListOnly.contains(_kind)
+                                              ? 'Open a movie or series and choose My List to save it here.'
+                                              : 'Try another search or category.',
+                                          icon: Icons.search_off,
+                                        ),
+                                      ),
+                                    ];
+                                  }
+                                  if (_kind == MediaKind.live) {
+                                    return _liveSlivers(
+                                      filtered,
+                                      isTv,
+                                      contentWidth,
+                                      margin,
+                                    );
+                                  }
+                                  return _catalogSlivers(
+                                    filtered,
+                                    isTv,
+                                    contentWidth,
+                                    margin,
+                                    browsing,
                                   );
-                            if (allItems.isEmpty) {
-                              return [
-                                _status(
-                                  StatusView(
-                                    title:
-                                        'No ${_title.toLowerCase()} available',
-                                    message:
-                                        'Your provider has not supplied content in this section.',
-                                    onRetry: _refresh,
-                                  ),
-                                ),
-                              ];
-                            }
-                            if (filtered.isEmpty) {
-                              return [
-                                _status(
-                                  StatusView(
-                                    title:
-                                        _kind == MediaKind.live &&
-                                            _favoritesOnly &&
-                                            query.isEmpty &&
-                                            selectedCategory == null
-                                        ? 'No favorite channels yet'
-                                        : _myListOnly.contains(_kind)
-                                        ? 'Your list is empty'
-                                        : 'No matches found',
-                                    message:
-                                        _kind == MediaKind.live &&
-                                            _favoritesOnly
-                                        ? 'Turn off Favorites and use the star beside a channel to save it.'
-                                        : _myListOnly.contains(_kind)
-                                        ? 'Open a movie or series and choose My List to save it here.'
-                                        : 'Try another search or category.',
-                                    icon: Icons.search_off,
-                                  ),
-                                ),
-                              ];
-                            }
-                            if (_kind == MediaKind.live) {
-                              return _liveSlivers(
-                                filtered,
-                                isTv,
-                                contentWidth,
-                                margin,
-                              );
-                            }
-                            return _catalogSlivers(
-                              filtered,
-                              isTv,
-                              contentWidth,
-                              margin,
-                              browsing,
-                            );
-                          },
-                        ),
-                        const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                      ],
-                    );
-                  },
-                ),
+                                },
+                              ),
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: 32),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -458,110 +610,122 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
       if (!isTv)
         IconButton(
-          onPressed: _signingOut ? null : _signOut,
-          tooltip: 'Sign out',
-          icon: const Icon(Icons.person_outline_rounded, size: 23),
+          onPressed: () => _selectDestination('settings'),
+          tooltip: 'Settings',
+          icon: const Icon(Icons.settings_outlined, size: 23),
         ),
     ],
   );
 
-  Widget _sidebar() => Container(
-    width: 196,
-    decoration: const BoxDecoration(
-      color: AppColors.surface,
-      border: Border(right: BorderSide(color: AppColors.border)),
-    ),
-    child: LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 24),
-            child: IntrinsicHeight(
+  Widget _sidebar() => Focus(
+    onFocusChange: (focused) {
+      if (mounted && _navExpanded != focused) {
+        setState(() => _navExpanded = focused);
+      }
+    },
+    child: AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
+      width: _navExpanded ? 208 : 84,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: .68),
+        border: const Border(right: BorderSide(color: AppColors.border)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final expanded = constraints.maxWidth > 180;
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: StreamlineMark(size: 28, wordmark: true),
+                  SizedBox(
+                    height: 44,
+                    child: Center(
+                      child: StreamlineMark(size: 28, wordmark: expanded),
+                    ),
                   ),
-                  const SizedBox(height: 48),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 14, bottom: 16),
-                    child: Eyebrow('BROWSE'),
-                  ),
+                  const SizedBox(height: 36),
                   for (final entry in [
-                    (MediaKind.live, Icons.live_tv_outlined, 'Live TV'),
-                    (MediaKind.movie, Icons.movie_outlined, 'Movies'),
-                    (MediaKind.series, Icons.video_library_outlined, 'Series'),
-                  ]) ...[
-                    TvFocusCard(
-                      selected: _kind == entry.$1,
-                      autofocus: entry.$1 == MediaKind.live,
-                      transparent: true,
-                      borderRadius: 10,
-                      onPressed: () => _selectSection(entry.$1),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 16,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              entry.$2,
-                              size: 22,
-                              color: _kind == entry.$1
-                                  ? AppColors.accent
-                                  : AppColors.muted,
+                    ('home', Icons.home_outlined, 'Home'),
+                    ('live', Icons.live_tv_outlined, 'Live TV'),
+                    ('movie', Icons.movie_outlined, 'Movies'),
+                    ('series', Icons.video_library_outlined, 'Series'),
+                    ('settings', Icons.settings_outlined, 'Settings'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Tooltip(
+                        message: entry.$3,
+                        child: TvFocusCard(
+                          label: entry.$3,
+                          selected: _destination == entry.$1,
+                          autofocus: _destination == entry.$1,
+                          borderRadius: 12,
+                          transparent: true,
+                          onPressed: () {
+                            final kind = MediaKind.values
+                                .where((kind) => kind.name == entry.$1)
+                                .firstOrNull;
+                            if (kind == null) {
+                              _selectDestination(entry.$1);
+                            } else {
+                              _selectSection(kind);
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 17,
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                entry.$3,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: _kind == entry.$1
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: _kind == entry.$1
-                                      ? AppColors.text
+                            child: Row(
+                              mainAxisAlignment: expanded
+                                  ? MainAxisAlignment.start
+                                  : MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  entry.$2,
+                                  size: 23,
+                                  color: _destination == entry.$1
+                                      ? Theme.of(context).colorScheme.primary
                                       : AppColors.muted,
                                 ),
-                              ),
+                                if (expanded) ...[
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      entry.$3,
+                                      style: TextStyle(
+                                        color: _destination == entry.$1
+                                            ? AppColors.text
+                                            : AppColors.muted,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 7),
-                  ],
-                  const Spacer(),
-                  const SizedBox(height: 44),
-                  const Divider(color: AppColors.border, height: 1),
-                  const SizedBox(height: 20),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4),
-                    child: Eyebrow('ANDROID TV'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: _signingOut ? null : _signOut,
-                    icon: const Icon(Icons.logout_rounded, size: 17),
-                    label: const Text('Sign out'),
-                    style: TextButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      foregroundColor: AppColors.muted,
+                  const SizedBox(height: 40),
+                  if (expanded)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Eyebrow(
+                        'YOUR WORLD. ON SCREEN.',
+                        color: AppColors.subdued,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     ),
   );
@@ -751,39 +915,61 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _categoryStrip(List<Category> categories) => SizedBox(
-    height: 42,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: categories.length + (_kind == MediaKind.live ? 1 : 2),
-      separatorBuilder: (_, __) => const SizedBox(width: 8),
-      itemBuilder: (context, index) {
-        final extra = _kind == MediaKind.live ? 1 : 2;
-        final list = extra == 2 && index == 1;
-        final category = index < extra ? null : categories[index - extra];
-        final selected = list
-            ? _myListOnly.contains(_kind)
-            : !_myListOnly.contains(_kind) && _category[_kind] == category?.id;
-        return TvFocusCard(
-          selected: selected,
-          transparent: true,
-          borderRadius: 30,
-          onPressed: list ? _showMyList : () => _showCategory(category?.id),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            child: Text(
-              list ? 'My List' : category?.name ?? 'All',
-              style: TextStyle(
-                color: selected ? AppColors.accent : AppColors.muted,
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+  List<Category> _orderedCategories(List<Category> supplied) {
+    final visible = supplied
+        .where(
+          (category) => !_preferences.hiddenCategories.contains(
+            AppSettings.categoryKey(_kind, category.id),
+          ),
+        )
+        .toList();
+    final order = _preferences.categoryOrder[_kind.name] ?? [];
+    int rank(Category category) {
+      final index = order.indexOf(category.id);
+      return index < 0 ? order.length + supplied.indexOf(category) : index;
+    }
+
+    visible.sort((a, b) => rank(a).compareTo(rank(b)));
+    return visible;
+  }
+
+  Widget _categoryStrip(List<Category> supplied) {
+    final categories = _orderedCategories(supplied);
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length + (_kind == MediaKind.live ? 1 : 2),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final extra = _kind == MediaKind.live ? 1 : 2;
+          final list = extra == 2 && index == 1;
+          final category = index < extra ? null : categories[index - extra];
+          final selected = list
+              ? _myListOnly.contains(_kind)
+              : !_myListOnly.contains(_kind) &&
+                    _category[_kind] == category?.id;
+          return TvFocusCard(
+            selected: selected,
+            transparent: true,
+            borderRadius: 30,
+            onPressed: list ? _showMyList : () => _showCategory(category?.id),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              child: Text(
+                list ? 'My List' : category?.name ?? 'All',
+                style: TextStyle(
+                  color: selected ? AppColors.accent : AppColors.muted,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
             ),
-          ),
-        );
-      },
-    ),
-  );
+          );
+        },
+      ),
+    );
+  }
 
   List<Widget> _catalogSlivers(
     List<MediaItem> items,
@@ -792,14 +978,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     double margin,
     bool browsing,
   ) {
-    final columns = (width / (isTv ? 165 : 150)).floor().clamp(2, 8);
+    final columns =
+        (width / ((isTv ? 170 : 150) * (_preferences.largePosters ? 1.25 : 1)))
+            .floor()
+            .clamp(2, 8);
     final newest = sortMediaItems(items, CatalogSort.recentlyAdded);
     final dated = newest
         .where((item) => item.addedAt != null)
         .take(20)
         .toList(growable: false);
-    final categories =
-        ref.watch(categoriesProvider(_kind)).asData?.value ?? <Category>[];
+    final categories = _orderedCategories(
+      ref.watch(categoriesProvider(_kind)).asData?.value ?? <Category>[],
+    );
     final grouped = <String, List<MediaItem>>{};
     for (final item in items) {
       final group = grouped.putIfAbsent(item.categoryId, () => <MediaItem>[]);
@@ -814,7 +1004,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         SliverPadding(
           padding: EdgeInsets.fromLTRB(margin, 0, margin, 20),
           sliver: SliverToBoxAdapter(
-            child: _catalogHero(newest.first, isTv, width),
+            child: _catalogHero(
+              items
+                      .where(
+                        (item) => item.id == _preferences.lastItems[_kind.name],
+                      )
+                      .firstOrNull ??
+                  newest.first,
+              isTv,
+              width,
+            ),
           ),
         ),
       SliverPadding(
@@ -878,12 +1077,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         SliverPadding(
           padding: EdgeInsets.symmetric(horizontal: margin),
           sliver: SliverToBoxAdapter(
+            child: MovieRecommendations(
+              catalog: items,
+              onOpen: (item) => _open(item),
+            ),
+          ),
+        ),
+      if (_kind == MediaKind.movie && browsing)
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: margin),
+          sliver: SliverToBoxAdapter(
             child: ref
                 .watch(historyProvider)
                 .when(
                   data: (history) {
                     final movies = history
-                        .where((entry) => entry.item.kind == MediaKind.movie)
+                        .where(
+                          (entry) =>
+                              entry.item.kind == MediaKind.movie &&
+                              items.any((item) => item.id == entry.item.id),
+                        )
                         .toList(growable: false);
                     final continuing = movies
                         .where((entry) => entry.canResume)
@@ -1123,254 +1336,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     List<MediaItem> items,
     bool isTv, {
     required VoidCallback onViewAll,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 30),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -.4,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            TextButton(
-              onPressed: onViewAll,
-              child: const Text('View all', style: TextStyle(fontSize: 11)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 13),
-        SizedBox(
-          height: isTv ? 280 : 244,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            cacheExtent: 700,
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 15),
-            itemBuilder: (context, index) => SizedBox(
-              width: isTv ? 158 : 137,
-              child: MediaCard(
-                item: items[index],
-                onPressed: () => _open(items[index]),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
+  }) => MovieShelf(
+    title: title,
+    items: items,
+    onOpen: (item) => _open(item),
+    onViewAll: onViewAll,
   );
 
-  Widget _catalogHero(MediaItem item, bool isTv, double width) {
-    String artwork = item.imageUrl;
-    String plot = '';
-    String genre = '';
-    String rating = item.rating;
-    String year = '';
-    if (item.kind == MediaKind.movie) {
-      final detail = ref.watch(movieDetailProvider(item)).asData?.value;
-      if (detail != null) {
-        artwork = detail.backdropUrl.isNotEmpty
-            ? detail.backdropUrl
-            : item.imageUrl;
-        plot = detail.plot;
-        genre = detail.genre;
-        rating = detail.rating.isNotEmpty ? detail.rating : rating;
-        year = detail.year;
-      }
-    } else {
-      final detail = ref.watch(seriesDetailProvider(item)).asData?.value;
-      if (detail != null) {
-        artwork = detail.backdropUrl.isNotEmpty
-            ? detail.backdropUrl
-            : item.imageUrl;
-        plot = detail.plot;
-        genre = detail.genre;
-        rating = detail.rating.isNotEmpty ? detail.rating : rating;
-        year = detail.year;
-      }
-    }
-    final wide = width > 650;
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: wide ? 300 : 320),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Stack(
-          fit: StackFit.loose,
-          children: [
-            Positioned.fill(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Artwork(
-                    url: artwork,
-                    title: item.name,
-                    icon: item.kind == MediaKind.movie
-                        ? Icons.movie_outlined
-                        : Icons.video_library_outlined,
-                    alignment: wide
-                        ? Alignment.centerRight
-                        : const Alignment(.25, -.3),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: wide
-                            ? Alignment.centerLeft
-                            : Alignment.bottomCenter,
-                        end: wide ? Alignment.centerRight : Alignment.topCenter,
-                        colors: [
-                          AppColors.canvas.withValues(alpha: .98),
-                          AppColors.canvas.withValues(alpha: .72),
-                          AppColors.canvas.withValues(alpha: .02),
-                        ],
-                        stops: const [0, .48, 1],
-                      ),
-                    ),
-                  ),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0x10000000),
-                          Color(0x00000000),
-                          Color(0x55000000),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                wide ? 32 : 22,
-                wide ? 32 : 66,
-                wide ? width * .37 : 22,
-                24,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Eyebrow(
-                    item.kind == MediaKind.movie
-                        ? 'FROM YOUR MOVIE LIBRARY'
-                        : 'FROM YOUR SERIES LIBRARY',
-                    color: AppColors.accent,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    item.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontSize: wide ? 42 : 34,
-                      fontWeight: FontWeight.w600,
-                      height: 1.04,
-                      letterSpacing: -1.1,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (rating.isNotEmpty) _rating(rating),
-                      if (year.isNotEmpty)
-                        Text(
-                          year,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                          ),
-                        ),
-                      if (genre.isNotEmpty)
-                        Text(
-                          genre.split(',').take(2).join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (plot.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      plot,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 13,
-                        height: 1.6,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 22),
-                  FilledButton.icon(
-                    onPressed: () => _open(item),
-                    icon: const Icon(Icons.play_arrow_rounded, size: 21),
-                    label: Text(
-                      item.kind == MediaKind.movie
-                          ? 'View movie'
-                          : 'Explore series',
-                    ),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 23,
-                        vertical: 16,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.canvas.withValues(alpha: .65),
-                  border: Border.all(
-                    color: AppColors.text.withValues(alpha: .15),
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  item.kind == MediaKind.movie ? 'FILM' : 'SERIES',
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 9,
-                    letterSpacing: 2,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _catalogHero(MediaItem item, bool isTv, double width) =>
+      FeatureBillboard(item: item, onPressed: () => _open(item));
 
   Widget _historyRow(
     String title,
@@ -1498,7 +1472,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   ) {
     final selected = channels.any((item) => item.id == _channel?.id)
         ? _channel!
-        : channels.first;
+        : channels
+                  .where((item) => item.id == _preferences.lastChannel)
+                  .firstOrNull ??
+              channels.first;
     final epg = ref.watch(epgProvider(selected.id));
     final entries = epg.asData?.value ?? <EpgEntry>[];
     final now = DateTime.now();
@@ -1534,6 +1511,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             CatalogSort.titleAscending,
           )
         : <MediaItem>[];
+    int rankFavorite(MediaItem item) {
+      final index = _preferences.favoriteOrder.indexOf(
+        AppSettings.mediaKey(item),
+      );
+      return index < 0 ? _preferences.favoriteOrder.length : index;
+    }
+
+    favorites.sort((a, b) => rankFavorite(a).compareTo(rankFavorite(b)));
     final recent = showSaved
         ? availableSaved(
             ref.watch(recentChannelsProvider).asData?.value ?? <MediaItem>[],
@@ -1687,6 +1672,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   label: 'Play ${item.name}',
                   onPressed: () {
                     setState(() => _channel = item);
+                    _remember(item: item);
                     _open(item, channels: channels);
                   },
                   child: Padding(
@@ -1740,199 +1726,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     AsyncValue<List<EpgEntry>> epg,
     EpgEntry? programme,
     bool isTv,
-  ) {
-    final now = DateTime.now();
-    final total = programme == null
-        ? 0
-        : programme.end.difference(programme.start).inSeconds;
-    final elapsed = programme == null
-        ? 0
-        : now.difference(programme.start).inSeconds;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: AppColors.surfaceRaised,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned(
-              right: -30,
-              top: -30,
-              bottom: 60,
-              width: 320,
-              child: Opacity(
-                opacity: .12,
-                child: Artwork(
-                  url: item.imageUrl,
-                  title: item.name,
-                  icon: Icons.live_tv_outlined,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomLeft,
-                  end: Alignment.topRight,
-                  colors: [
-                    AppColors.canvas.withValues(alpha: .92),
-                    AppColors.surfaceRaised.withValues(alpha: .2),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.all(isTv ? 28 : 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.live,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'ON AIR',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 2,
-                          color: AppColors.live,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const Spacer(),
-                      Flexible(
-                        child: Text(
-                          item.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Eyebrow(
-                    programme == null
-                        ? 'LIVE CHANNEL'
-                        : '${_clock(programme.start)} — ${_clock(programme.end)}',
-                    color: AppColors.accent,
-                  ),
-                  const SizedBox(height: 11),
-                  Text(
-                    programme?.title ?? item.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      fontSize: isTv ? 36 : 30,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -.7,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (programme?.description.isNotEmpty == true)
-                    Text(
-                      programme!.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        height: 1.6,
-                      ),
-                    )
-                  else
-                    Text(
-                      epg.isLoading
-                          ? 'Loading programme guide…'
-                          : epg.hasError
-                          ? 'Programme guide unavailable'
-                          : 'No programme details supplied by your provider.',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        height: 1.6,
-                      ),
-                    ),
-                  const SizedBox(height: 19),
-                  if (programme != null && total > 0) ...[
-                    LinearProgressIndicator(
-                      value: (elapsed / total).clamp(0.0, 1.0),
-                      minHeight: 2,
-                      color: AppColors.accent,
-                      backgroundColor: AppColors.border,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _clock(now),
-                          style: const TextStyle(
-                            color: AppColors.subdued,
-                            fontSize: 10,
-                          ),
-                        ),
-                        Text(
-                          '${programme.end.difference(now).inMinutes.clamp(0, 999)} min remaining',
-                          style: const TextStyle(
-                            color: AppColors.subdued,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => _open(item, channels: channels),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 23),
-                          label: const Text(
-                            'Watch channel',
-                            style: TextStyle(fontSize: 13),
-                          ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 15,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton.outlined(
-                        onPressed: () => ref.invalidate(epgProvider(item.id)),
-                        tooltip: 'Refresh programme guide',
-                        icon: const Icon(Icons.refresh_rounded, size: 21),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  ) => LiveChannelPreview(
+    key: _previewKey,
+    item: item,
+    programme: programme,
+    onWatch: () => _open(item, channels: channels),
+  );
 
   Widget _channelRow(
     MediaItem item,
@@ -1946,6 +1745,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     label: item.name,
     onPressed: () {
       setState(() => _channel = item);
+      _remember(item: item);
       if (!isTv) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final target = _liveHeroKey.currentContext;
@@ -2114,25 +1914,4 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ],
     ],
   );
-
-  Widget _rating(String value) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      const Icon(Icons.star_rounded, size: 14, color: AppColors.accent),
-      const SizedBox(width: 4),
-      Text(
-        value,
-        style: const TextStyle(
-          color: AppColors.accent,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    ],
-  );
-
-  String _clock(DateTime value) {
-    final local = value.toLocal();
-    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-  }
 }

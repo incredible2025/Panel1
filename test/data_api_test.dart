@@ -87,6 +87,26 @@ void main() {
   );
 
   test(
+    'an HTTP 200 unsupported full-guide response still falls back to short EPG',
+    () async {
+      final api = XtreamApi(
+        client: MockClient((request) async {
+          return http.Response(
+            request.url.queryParameters['action'] == 'get_simple_data_table'
+                ? '[]'
+                : '{"epg_listings":[{"title":"News","start_timestamp":2000000000,"stop_timestamp":2000003600}]}',
+            200,
+          );
+        }),
+      );
+      addTearDown(api.dispose);
+      final result = await api.fullEpg(session, '9');
+      expect(result.limited, true);
+      expect(result.entries.single.title, 'News');
+    },
+  );
+
+  test(
     'authenticates with encoded GET credentials and normalizes server URL',
     () async {
       final api = XtreamApi(

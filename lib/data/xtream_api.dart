@@ -132,6 +132,9 @@ class XtreamApi {
           'stream_id': streamId,
         }),
       );
+      if (payload['epg_listings'] is! List) {
+        throw const XtreamApiException('Full schedule is unavailable.');
+      }
       final entries =
           objectList(
               payload['epg_listings'],

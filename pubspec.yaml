@@ -1,7 +1,7 @@
 name: streamline_iptv
 description: A dual-mode Xtream Codes player for Android phones and Android TV.
 publish_to: none
-version: 0.1.0+1
+version: 0.2.0+2
 environment:
   sdk: '>=3.9.0 <4.0.0'
 dependencies:
@@ -22,3 +22,16 @@ dev_dependencies:
   video_player_platform_interface: ^6.7.0
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Streamline Sans
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+    - family: Streamline Display
+      fonts:
+        - asset: assets/fonts/RobotoCondensed-Regular.ttf
+        - asset: assets/fonts/RobotoCondensed-Bold.ttf
+          weight: 700

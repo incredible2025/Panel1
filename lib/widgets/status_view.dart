@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/design_system.dart';
 
 class StatusView extends StatelessWidget {
   const StatusView({
@@ -31,7 +32,17 @@ class StatusView extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
-              Icon(icon, color: const Color(0xFF54E1C1), size: 40),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: .055),
+                  border: Border.all(
+                    color: AppColors.accent.withValues(alpha: .13),
+                  ),
+                ),
+                child: Icon(icon, color: AppColors.accent, size: 32),
+              ),
             const SizedBox(height: 18),
             Text(
               title,
@@ -43,7 +54,7 @@ class StatusView extends StatelessWidget {
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF91A4B9)),
+                style: const TextStyle(color: AppColors.muted),
               ),
             ],
             if (onRetry != null) ...[

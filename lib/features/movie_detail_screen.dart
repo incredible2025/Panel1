@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/models.dart';
 import '../widgets/media_card.dart';
@@ -22,7 +23,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _recordOpened());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _recordOpened();
+    });
   }
 
   Future<void> _recordOpened() async {
@@ -67,9 +70,29 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         final answer = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
+            icon: const Icon(Icons.history_rounded, color: AppColors.accent),
             title: const Text('Pick up where you left off?'),
-            content: Text(
-              'Resume ${widget.item.name} from ${formatPlaybackTime(progress.positionMs)} of ${formatPlaybackTime(progress.durationMs)}.',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.item.name,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 14),
+                LinearProgressIndicator(
+                  value: progress.progress,
+                  minHeight: 3,
+                  color: AppColors.accent,
+                  backgroundColor: AppColors.border,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '${formatPlaybackTime(progress.positionMs)} watched of ${formatPlaybackTime(progress.durationMs)}',
+                  style: const TextStyle(color: AppColors.muted, height: 1.5),
+                ),
+              ],
             ),
             actions: [
               TextButton(
@@ -116,9 +139,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(movieDetailProvider(widget.item));
-    final history = ref.watch(historyProvider).asData?.value;
+    final history = ref.watch(historyProvider).asData?.value ?? <WatchEntry>[];
     WatchEntry? saved;
-    for (final entry in history ?? <WatchEntry>[]) {
+    for (final entry in history) {
       if (entry.item.id == widget.item.id &&
           entry.item.kind == MediaKind.movie &&
           entry.canResume) {
@@ -126,201 +149,436 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         break;
       }
     }
-    final isTv = ref.watch(isTvProvider);
+    final tv = ref.watch(isTvProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Movie details'),
-        actions: [
-          IconButton(
-            onPressed: () => ref.invalidate(movieDetailProvider(widget.item)),
-            tooltip: 'Refresh details',
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final wide = constraints.maxWidth > 650;
-            return SingleChildScrollView(
-              padding: EdgeInsets.all(isTv ? 34 : 22),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1100),
-                  child: FocusTraversalGroup(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (wide)
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: isTv ? 210 : 190,
-                                child: _poster(),
-                              ),
-                              const SizedBox(width: 36),
-                              Expanded(
-                                child: _information(detail, saved, isTv),
-                              ),
-                            ],
-                          )
-                        else ...[
-                          Center(child: SizedBox(width: 172, child: _poster())),
-                          const SizedBox(height: 28),
-                          _information(detail, saved, isTv),
-                        ],
-                        const SizedBox(height: 34),
-                        detail.when(
-                          loading: () => const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 30),
-                            child: Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          error: (_, __) => StatusView(
-                            title: 'Movie details are unavailable',
-                            message: 'You can still try playing this title.',
-                            onRetry: () => ref.invalidate(
-                              movieDetailProvider(widget.item),
-                            ),
-                          ),
-                          data: (movie) => Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SectionHeading('Synopsis'),
-                              Text(
-                                movie.plot.trim().isEmpty
-                                    ? 'No synopsis supplied by your provider.'
-                                    : movie.plot,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  height: 1.7,
-                                  color: Color(0xFFB9C7D5),
+      backgroundColor: AppColors.canvas,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 760;
+          final horizontal = tv
+              ? 64.0
+              : wide
+              ? 44.0
+              : 24.0;
+          return Stack(
+            children: [
+              FocusTraversalGroup(
+                child: CustomScrollView(
+                  cacheExtent: constraints.maxHeight,
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _hero(
+                        detail.asData?.value,
+                        saved,
+                        tv,
+                        wide,
+                        horizontal,
+                        compact: constraints.maxHeight < 500,
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontal,
+                        0,
+                        horizontal,
+                        56 + MediaQuery.paddingOf(context).bottom,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1180),
+                            child: detail.when(
+                              loading: () => const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 36),
+                                child: LinearProgressIndicator(
+                                  minHeight: 2,
+                                  color: AppColors.accent,
                                 ),
                               ),
-                              if (movie.cast.trim().isNotEmpty) ...[
-                                const SizedBox(height: 24),
-                                const SectionHeading('Cast'),
-                                Text(
-                                  movie.cast,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    height: 1.6,
-                                    color: Color(0xFF91A4B9),
-                                  ),
+                              error: (_, __) => StatusView(
+                                title: 'Movie details are unavailable',
+                                message:
+                                    'You can still try playing this title.',
+                                onRetry: () => ref.invalidate(
+                                  movieDetailProvider(widget.item),
                                 ),
-                              ],
-                            ],
+                              ),
+                              data: (movie) => _story(movie, wide),
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+              _chrome(horizontal),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _poster() => AspectRatio(
-    aspectRatio: 2 / 3,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Artwork(url: widget.item.imageUrl),
-    ),
-  );
-
-  Widget _information(
-    AsyncValue<MovieDetail> detail,
+  Widget _hero(
+    MovieDetail? movie,
     WatchEntry? saved,
-    bool isTv,
-  ) {
-    final movie = detail.asData?.value;
+    bool tv,
+    bool wide,
+    double horizontal, {
+    required bool compact,
+  }) {
+    final backdrop = movie?.backdropUrl.isNotEmpty == true
+        ? movie!.backdropUrl
+        : widget.item.imageUrl;
     final rating = movie?.rating.isNotEmpty == true
         ? movie!.rating
         : widget.item.rating;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final posterWidth = wide ? (compact ? 146.0 : 210.0) : 98.0;
+    return Stack(
       children: [
-        const Text(
-          'MOVIE',
-          style: TextStyle(
-            color: Color(0xFF54E1C1),
-            fontSize: 11,
-            letterSpacing: 2,
-            fontWeight: FontWeight.w800,
+        Positioned.fill(child: ColoredBox(color: AppColors.canvas)),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: wide ? 650 : 510,
+          child: Artwork(
+            url: backdrop,
+            fit: BoxFit.cover,
+            title: widget.item.name,
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          widget.item.name,
-          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-            fontSize: isTv ? 36 : 30,
-            fontWeight: FontWeight.w800,
-            height: 1.2,
-          ),
-        ),
-        const SizedBox(height: 18),
-        Wrap(
-          spacing: 12,
-          runSpacing: 10,
-          children: [
-            if (rating.isNotEmpty) _badge('★ $rating', const Color(0xFFFFC677)),
-            if (movie?.duration.isNotEmpty == true)
-              _badge(movie!.duration, const Color(0xFFB9C7D5)),
-            if (movie?.genre.isNotEmpty == true)
-              _badge(movie!.genre, const Color(0xFFB9C7D5)),
-          ],
-        ),
-        const SizedBox(height: 24),
-        if (saved != null) ...[
-          Text(
-            'Last watched at ${formatPlaybackTime(saved.positionMs)}',
-            style: const TextStyle(color: Color(0xFF91A4B9), fontSize: 13),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: 320,
-            child: LinearProgressIndicator(
-              value: saved.progress.clamp(0.0, 1.0),
-              minHeight: 4,
-              backgroundColor: const Color(0xFF243449),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: const [0, .22, .62, 1],
+                colors: [
+                  AppColors.canvas.withValues(alpha: .1),
+                  AppColors.canvas.withValues(alpha: .36),
+                  AppColors.canvas.withValues(alpha: .91),
+                  AppColors.canvas,
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-        ],
-        FilledButton.icon(
-          autofocus: isTv,
-          onPressed: _opening ? null : _play,
-          icon: _opening
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(saved != null ? 'Resume movie' : 'Play movie'),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 18),
+        ),
+        if (wide)
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    AppColors.canvas.withValues(alpha: .78),
+                    AppColors.canvas.withValues(alpha: .12),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontal,
+            MediaQuery.paddingOf(context).top +
+                (wide
+                    ? compact
+                          ? 100
+                          : 136
+                    : 194),
+            horizontal,
+            40,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      SizedBox(width: posterWidth, child: _poster()),
+                      SizedBox(width: wide ? 36 : 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Eyebrow('MOVIE'),
+                            const SizedBox(height: 13),
+                            Text(
+                              widget.item.name,
+                              style: Theme.of(context).textTheme.headlineLarge
+                                  ?.copyWith(
+                                    fontSize: wide ? (tv ? 48 : 44) : 31,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.text,
+                                    letterSpacing: wide ? -1.8 : -.9,
+                                    height: 1.06,
+                                  ),
+                            ),
+                            const SizedBox(height: 18),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 9,
+                              children: [
+                                if (movie?.year.isNotEmpty == true)
+                                  MetaPill(movie!.year),
+                                if (rating.isNotEmpty)
+                                  MetaPill(rating, icon: Icons.star_rounded),
+                                if (movie?.duration.isNotEmpty == true)
+                                  MetaPill(
+                                    movie!.duration,
+                                    icon: Icons.schedule_rounded,
+                                  ),
+                              ],
+                            ),
+                            if (movie?.genre.isNotEmpty == true) ...[
+                              const SizedBox(height: 14),
+                              Text(
+                                movie!.genre,
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 13,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                            if (wide) ...[
+                              const SizedBox(height: 28),
+                              _playButton(saved, tv),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!wide) ...[
+                    const SizedBox(height: 30),
+                    _playButton(saved, tv),
+                  ],
+                  if (saved != null) ...[
+                    const SizedBox(height: 28),
+                    _continueCard(saved, wide),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _badge(String text, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+  Widget _poster() => DecoratedBox(
     decoration: BoxDecoration(
-      color: const Color(0xFF182638),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(7),
+      border: Border.all(color: AppColors.text.withValues(alpha: .16)),
+      boxShadow: const [
+        BoxShadow(color: Colors.black54, blurRadius: 36, offset: Offset(0, 16)),
+      ],
     ),
-    child: Text(
-      text,
-      style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: AspectRatio(
+        aspectRatio: 2 / 3,
+        child: Artwork(url: widget.item.imageUrl, title: widget.item.name),
+      ),
+    ),
+  );
+
+  Widget _playButton(WatchEntry? saved, bool tv) => FilledButton.icon(
+    autofocus: tv,
+    onPressed: _opening ? null : _play,
+    icon: _opening
+        ? const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.muted,
+            ),
+          )
+        : const Icon(Icons.play_arrow_rounded, size: 27),
+    label: Text(saved != null ? 'Resume movie' : 'Play movie'),
+    style: FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 17),
+      minimumSize: const Size(208, 56),
+      textStyle: const TextStyle(
+        fontFamily: 'Streamline Sans',
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+
+  Widget _continueCard(WatchEntry saved, bool wide) {
+    final remaining = saved.durationMs - saved.positionMs;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: wide ? 24 : 18, vertical: 19),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: .7),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history_rounded, color: AppColors.accent, size: 27),
+          const SizedBox(width: 17),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Continue your story',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ),
+                    if (wide)
+                      Text(
+                        '${formatPlaybackTime(remaining)} remaining',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 11),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: saved.progress,
+                    minHeight: 3,
+                    color: AppColors.accent,
+                    backgroundColor: AppColors.border,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  '${formatPlaybackTime(saved.positionMs)} of ${formatPlaybackTime(saved.durationMs)}${wide ? '' : '  ·  ${formatPlaybackTime(remaining)} left'}',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _story(MovieDetail movie, bool wide) {
+    final synopsis = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Eyebrow('THE STORY', color: AppColors.subdued),
+        const SizedBox(height: 16),
+        Text(
+          movie.plot.trim().isEmpty
+              ? 'No synopsis supplied by your provider.'
+              : movie.plot,
+          style: TextStyle(
+            fontSize: wide ? 17 : 15,
+            height: 1.8,
+            color: AppColors.muted,
+          ),
+        ),
+      ],
+    );
+    final cast = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Eyebrow('CAST', color: AppColors.subdued),
+        const SizedBox(height: 16),
+        Text(
+          movie.cast,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.8,
+            color: AppColors.muted,
+          ),
+        ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(color: AppColors.border, height: 1),
+        const SizedBox(height: 30),
+        if (wide && movie.cast.trim().isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 7, child: synopsis),
+              const SizedBox(width: 70),
+              Expanded(flex: 3, child: cast),
+            ],
+          )
+        else ...[
+          synopsis,
+          if (movie.cast.trim().isNotEmpty) ...[
+            const SizedBox(height: 30),
+            cast,
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _chrome(double horizontal) => Positioned(
+    top: 0,
+    left: 0,
+    right: 0,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.canvas.withValues(alpha: .88),
+            AppColors.canvas.withValues(alpha: 0),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(horizontal - 8, 12, horizontal - 8, 22),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                tooltip: 'Back',
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppColors.text,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Eyebrow('MOVIE DETAILS', color: AppColors.muted),
+              ),
+              IconButton(
+                onPressed: () =>
+                    ref.invalidate(movieDetailProvider(widget.item)),
+                tooltip: 'Refresh details',
+                icon: const Icon(Icons.refresh_rounded, color: AppColors.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
     ),
   );
 }

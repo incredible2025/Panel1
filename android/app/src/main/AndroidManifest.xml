@@ -7,7 +7,7 @@
         android:name="${applicationName}"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
-        android:banner="@drawable/tv_banner"
+        android:banner="@drawable/tv_banner_premium"
         android:icon="@drawable/streamline_icon">
         <activity
             android:name=".MainActivity"

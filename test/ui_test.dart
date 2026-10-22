@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/app.dart';
+import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
@@ -14,6 +16,12 @@ import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/features/movie_detail_screen.dart';
 import 'package:streamline_iptv/features/series_detail_screen.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
+
+import 'support/qa_artwork.dart';
+
+const _qaArtwork = bool.fromEnvironment('CAPTURE_UI_ART')
+    ? 'https://artwork.example/sample.jpg'
+    : '';
 
 const _account = Session(
   credentials: Credentials(
@@ -30,6 +38,7 @@ const _film = MediaItem(
   kind: MediaKind.movie,
   categoryId: 'drama',
   rating: '8.2',
+  imageUrl: _qaArtwork,
 );
 const _otherFilm = MediaItem(
   id: '11',
@@ -37,9 +46,15 @@ const _otherFilm = MediaItem(
   kind: MediaKind.movie,
   categoryId: 'action',
   rating: '7.6',
+  imageUrl: _qaArtwork,
 );
 const _channel = MediaItem(id: '1', name: 'World News', kind: MediaKind.live);
-const _series = MediaItem(id: '20', name: 'The Coast', kind: MediaKind.series);
+const _series = MediaItem(
+  id: '20',
+  name: 'The Coast',
+  kind: MediaKind.series,
+  imageUrl: _qaArtwork,
+);
 
 class _MemoryStore implements LocalStore {
   Session? savedSession;
@@ -171,6 +186,7 @@ Future<void> _pumpApp(
               name: item.name,
               kind: item.kind,
               containerExtension: 'mkv',
+              imageUrl: item.imageUrl,
             ),
             plot:
                 'A journey across a quiet landscape becomes an unforgettable adventure.',
@@ -178,12 +194,18 @@ Future<void> _pumpApp(
             genre: 'Drama',
             rating: '8.2',
             duration: '1:40:00',
+            backdropUrl: _qaArtwork,
+            year: '2024',
           ),
         ),
         seriesDetailProvider.overrideWith(
           (ref, item) async => SeriesDetail(
             item: item,
             plot: 'Life unfolds in a small coastal town.',
+            backdropUrl: _qaArtwork,
+            year: '2023',
+            genre: 'Drama',
+            rating: '8.4',
             seasons: const {
               '1': [
                 Episode(
@@ -191,6 +213,7 @@ Future<void> _pumpApp(
                   title: 'First Light',
                   season: '1',
                   episodeNumber: 1,
+                  imageUrl: _qaArtwork,
                 ),
               ],
               '2': [
@@ -199,6 +222,7 @@ Future<void> _pumpApp(
                   title: 'New Horizons',
                   season: '2',
                   episodeNumber: 1,
+                  imageUrl: _qaArtwork,
                 ),
               ],
             },
@@ -210,7 +234,8 @@ Future<void> _pumpApp(
         child: screen == null
             ? const StreamlineApp()
             : MaterialApp(
-                theme: ThemeData.dark(useMaterial3: true),
+                debugShowCheckedModeBanner: false,
+                theme: StreamlineTheme.dark,
                 home: screen,
               ),
       ),
@@ -244,52 +269,92 @@ FocusNode _cardFocus(WidgetTester tester, Finder label) {
   return tester.widget<FocusableActionDetector>(detector).focusNode!;
 }
 
+void _uiTest(String description, WidgetTesterCallback callback) {
+  testWidgets(description, (tester) async {
+    try {
+      await tester.runAsync(() async {
+        await installQaArtwork();
+        if (!const bool.fromEnvironment('CAPTURE_UI_ART')) return;
+        // Decode outside the test's fake clock so captures use loaded artwork.
+        final ready = Completer<void>();
+        final stream = NetworkImage(
+          _qaArtwork,
+        ).resolve(ImageConfiguration.empty);
+        final listener = ImageStreamListener(
+          (image, _) {
+            image.dispose();
+            if (!ready.isCompleted) ready.complete();
+          },
+          onError: (Object error, StackTrace? stack) {
+            if (!ready.isCompleted) ready.completeError(error, stack);
+          },
+        );
+        stream.addListener(listener);
+        try {
+          await ready.future;
+        } finally {
+          stream.removeListener(listener);
+        }
+      });
+      await callback(tester);
+    } finally {
+      // The framework checks painting globals before suite teardown runs.
+      restoreQaArtwork();
+    }
+  });
+}
+
 void main() {
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
-    final fontPath = Platform.environment['STREAMLINE_QA_FONT'];
-    if (fontPath == null || fontPath.isEmpty) return;
-    final bytes = await File(fontPath).readAsBytes();
+    await (FontLoader('Streamline Sans')
+          ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
+          ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
+          ..addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf')))
+        .load();
+    await (FontLoader('Streamline Display')
+          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Regular.ttf'))
+          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Bold.ttf')))
+        .load();
     await (FontLoader(
-      'Roboto',
-    )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
-  testWidgets(
-    'phone login validates fields then authenticates and saves session',
-    (tester) async {
-      final store = _MemoryStore();
-      final api = _TestApi();
-      addTearDown(api.dispose);
-      await _pumpApp(tester, store: store, signedIn: false, api: api);
-      await _screenshot(tester, 'phone-login');
-      final submit = find.text('Connect & start watching');
-      await tester.ensureVisible(submit);
-      await tester.tap(submit);
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Enter an http:// or https:// server URL'),
-        findsOneWidget,
-      );
-      expect(find.text('Enter your username'), findsOneWidget);
-      expect(find.text('Enter your password'), findsOneWidget);
-      expect(api.authenticationCount, 0);
-      await tester.enterText(
-        find.byType(TextFormField).at(0),
-        'https://provider.example',
-      );
-      await tester.enterText(find.byType(TextFormField).at(1), 'viewer');
-      await tester.enterText(find.byType(TextFormField).at(2), 'test-only');
-      await tester.ensureVisible(submit);
-      await tester.tap(submit);
-      await tester.pumpAndSettle();
-      expect(api.authenticationCount, 1);
-      expect(store.savedSession?.credentials.username, 'viewer');
-      expect(find.byType(NavigationBar), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  _uiTest('phone login validates fields then authenticates and saves session', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    final api = _TestApi();
+    addTearDown(api.dispose);
+    await _pumpApp(tester, store: store, signedIn: false, api: api);
+    await _screenshot(tester, 'phone-login');
+    final submit = find.text('Connect & start watching');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Enter an http:// or https:// server URL'),
+      findsOneWidget,
+    );
+    expect(find.text('Enter your username'), findsOneWidget);
+    expect(find.text('Enter your password'), findsOneWidget);
+    expect(api.authenticationCount, 0);
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'https://provider.example',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'viewer');
+    await tester.enterText(find.byType(TextFormField).at(2), 'test-only');
+    await tester.ensureVisible(submit);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(api.authenticationCount, 1);
+    expect(store.savedSession?.credentials.username, 'viewer');
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets('TV login fits a landscape screen and autofocuses server input', (
+  _uiTest('TV login fits a landscape screen and autofocuses server input', (
     tester,
   ) async {
     await _pumpApp(tester, store: _MemoryStore(), tv: true, signedIn: false);
@@ -300,60 +365,60 @@ void main() {
     await _screenshot(tester, 'tv-login');
   });
 
-  testWidgets(
-    'phone dashboard shows EPG, history, category and search filtering',
-    (tester) async {
-      final store = _MemoryStore()
-        ..entries = [
-          WatchEntry(
-            item: _film,
-            positionMs: 1200000,
-            durationMs: 6000000,
-            lastAccessed: DateTime.now(),
-          ),
-        ];
-      await _pumpApp(tester, store: store);
-      expect(find.byType(NavigationBar), findsOneWidget);
-      expect(find.text('The World Today'), findsOneWidget);
-      await _screenshot(tester, 'phone-live');
-      await tester.tap(find.text('Movies'));
-      await tester.pumpAndSettle();
-      expect(find.text('Continue watching'), findsOneWidget);
-      expect(find.text('Recently watched'), findsOneWidget);
-      await _screenshot(tester, 'phone-movies');
-      await tester.tap(find.text('Drama'));
-      await tester.pumpAndSettle();
-      expect(find.text('Zephyr'), findsOneWidget);
-      expect(find.text('Night Shift'), findsNothing);
-      await tester.enterText(find.byType(TextField), 'no such film');
-      await tester.pumpAndSettle();
-      expect(find.text('No matches found'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), 'zephyr');
-      await tester.pumpAndSettle();
-      expect(find.text('Zephyr'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  _uiTest('phone dashboard shows EPG, history, category and search filtering', (
+    tester,
+  ) async {
+    final store = _MemoryStore()
+      ..entries = [
+        WatchEntry(
+          item: _film,
+          positionMs: 1200000,
+          durationMs: 6000000,
+          lastAccessed: DateTime.now(),
+        ),
+      ];
+    await _pumpApp(tester, store: store);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.text('The World Today'), findsOneWidget);
+    await _screenshot(tester, 'phone-live');
+    await tester.tap(find.text('Movies'));
+    await tester.pumpAndSettle();
+    expect(find.text('Continue watching'), findsOneWidget);
+    expect(find.text('Recently watched'), findsOneWidget);
+    await _screenshot(tester, 'phone-movies');
+    await tester.ensureVisible(find.text('Drama').first);
+    await tester.tap(find.text('Drama').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Zephyr'), findsOneWidget);
+    expect(find.text('Night Shift'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'no such film');
+    await tester.pumpAndSettle();
+    expect(find.text('No matches found'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'zephyr');
+    await tester.pumpAndSettle();
+    expect(find.text('Zephyr'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
-  testWidgets(
-    'TV dashboard uses remote focus and select for section navigation',
-    (tester) async {
-      await _pumpApp(tester, store: _MemoryStore(), tv: true);
-      expect(find.byType(NavigationBar), findsNothing);
-      expect(find.text('ANDROID TV'), findsOneWidget);
-      final moviesLabel = find.text('Movies');
-      _cardFocus(tester, moviesLabel).requestFocus();
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
-      await tester.pumpAndSettle();
-      expect(find.text('Browse movies'), findsOneWidget);
-      expect(find.text('Zephyr'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await _screenshot(tester, 'tv-movies');
-    },
-  );
+  _uiTest('TV dashboard uses remote focus and select for section navigation', (
+    tester,
+  ) async {
+    await _pumpApp(tester, store: _MemoryStore(), tv: true);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.text('ANDROID TV'), findsOneWidget);
+    await _screenshot(tester, 'tv-live');
+    final moviesLabel = find.text('Movies');
+    _cardFocus(tester, moviesLabel).requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Browse movies'), findsOneWidget);
+    expect(find.text('Zephyr'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await _screenshot(tester, 'tv-movies');
+  });
 
-  testWidgets('landscape phone scrolls live guide without overflowing', (
+  _uiTest('landscape phone scrolls live guide without overflowing', (
     tester,
   ) async {
     await _pumpApp(
@@ -374,7 +439,7 @@ void main() {
     await _screenshot(tester, 'phone-landscape-live');
   });
 
-  testWidgets('movie resume dialog uses persisted time and can be dismissed', (
+  _uiTest('movie resume dialog uses persisted time and can be dismissed', (
     tester,
   ) async {
     final store = _MemoryStore()
@@ -393,6 +458,7 @@ void main() {
     );
     final play = find.text('Resume movie');
     await tester.ensureVisible(play);
+    await _screenshot(tester, 'phone-movie-detail');
     await tester.tap(play);
     // The opening indicator continues animating behind the modal.
     await tester.pump();
@@ -408,9 +474,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('series season selector replaces its episode list', (
-    tester,
-  ) async {
+  _uiTest('series season selector replaces its episode list', (tester) async {
     await _pumpApp(
       tester,
       store: _MemoryStore(),
@@ -426,7 +490,7 @@ void main() {
     await _screenshot(tester, 'tv-series');
   });
 
-  testWidgets('remote traversal scrolls lazy focus targets down and back up', (
+  _uiTest('remote traversal scrolls lazy focus targets down and back up', (
     tester,
   ) async {
     await tester.pumpWidget(

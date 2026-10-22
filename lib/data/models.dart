@@ -177,6 +177,8 @@ class MovieDetail {
     this.genre = '',
     this.rating = '',
     this.duration = '',
+    this.backdropUrl = '',
+    this.year = '',
   });
 
   final MediaItem item;
@@ -185,6 +187,8 @@ class MovieDetail {
   final String genre;
   final String rating;
   final String duration;
+  final String backdropUrl;
+  final String year;
 
   factory MovieDetail.fromJson(MediaItem item, Map<String, dynamic> json) {
     final info = objectValue(json['info']);
@@ -195,6 +199,15 @@ class MovieDetail {
       genre: textValue(info['genre']),
       rating: textValue(info['rating'] ?? info['rating_5based'], item.rating),
       duration: textValue(info['duration'] ?? info['duration_secs']),
+      backdropUrl: artworkValue(
+        info['backdrop_path'] ?? info['backdrop'] ?? info['cover_big'],
+      ),
+      year: releaseYear(
+        info['releasedate'] ??
+            info['releaseDate'] ??
+            info['release_date'] ??
+            info['year'],
+      ),
     );
   }
 }
@@ -238,12 +251,20 @@ class SeriesDetail {
     this.plot = '',
     this.cast = '',
     this.seasons = const {},
+    this.backdropUrl = '',
+    this.genre = '',
+    this.rating = '',
+    this.year = '',
   });
 
   final MediaItem item;
   final String plot;
   final String cast;
   final Map<String, List<Episode>> seasons;
+  final String backdropUrl;
+  final String genre;
+  final String rating;
+  final String year;
 
   factory SeriesDetail.fromJson(MediaItem item, Map<String, dynamic> json) {
     final info = objectValue(json['info']);
@@ -278,9 +299,40 @@ class SeriesDetail {
       plot: textValue(info['plot'] ?? info['description']),
       cast: textValue(info['cast'] ?? info['actors']),
       seasons: {for (final key in sortedKeys) key: seasons[key]!},
+      backdropUrl: artworkValue(
+        info['backdrop_path'] ?? info['backdrop'] ?? info['cover_big'],
+      ),
+      genre: textValue(info['genre']),
+      rating: textValue(info['rating'] ?? info['rating_5based'], item.rating),
+      year: releaseYear(
+        info['releaseDate'] ??
+            info['releasedate'] ??
+            info['release_date'] ??
+            info['year'],
+      ),
     );
   }
 }
+
+String artworkValue(dynamic value) {
+  if (value is List) {
+    for (final entry in value) {
+      final artwork = artworkValue(entry);
+      if (artwork.isNotEmpty) return artwork;
+    }
+    return '';
+  }
+  final text = textValue(value);
+  final uri = Uri.tryParse(text);
+  return uri != null &&
+          {'http', 'https'}.contains(uri.scheme) &&
+          uri.host.isNotEmpty
+      ? text
+      : '';
+}
+
+String releaseYear(dynamic value) =>
+    RegExp(r'\b(?:19|20)\d{2}\b').firstMatch(textValue(value))?.group(0) ?? '';
 
 class EpgEntry {
   const EpgEntry({

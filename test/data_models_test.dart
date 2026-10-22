@@ -5,6 +5,37 @@ import 'package:streamline_iptv/data/models.dart';
 
 void main() {
   group('provider data parsing', () {
+    test('reads cinematic artwork and release metadata from provider info', () {
+      const movie = MediaItem(id: 'm', name: 'Movie', kind: MediaKind.movie);
+      final detail = MovieDetail.fromJson(movie, {
+        'info': {
+          'backdrop_path': [
+            null,
+            '/relative.jpg',
+            'https://art.example/backdrop.jpg',
+          ],
+          'releasedate': '2024-09-02',
+        },
+      });
+      expect(detail.backdropUrl, 'https://art.example/backdrop.jpg');
+      expect(detail.year, '2024');
+      const series = MediaItem(id: 's', name: 'Series', kind: MediaKind.series);
+      final show = SeriesDetail.fromJson(series, {
+        'info': {
+          'backdrop_path': 'https://art.example/show.jpg',
+          'releaseDate': '2023-01-01',
+          'genre': 'Drama',
+          'rating': 8.4,
+        },
+      });
+      expect(show.backdropUrl, 'https://art.example/show.jpg');
+      expect(show.year, '2023');
+      expect(show.genre, 'Drama');
+      expect(show.rating, '8.4');
+      expect(artworkValue(['bad', null, {}]), '');
+      expect(releaseYear(null), '');
+    });
+
     test('tolerates numeric IDs, null artwork and missing metadata', () {
       final category = Category.fromJson({
         'category_id': 7,

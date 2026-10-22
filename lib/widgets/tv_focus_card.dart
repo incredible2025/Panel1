@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
+import '../core/design_system.dart';
 
 /// A single focus target that works with touch, a mouse and an Android remote.
 class TvFocusCard extends StatefulWidget {
@@ -11,6 +13,7 @@ class TvFocusCard extends StatefulWidget {
     this.selected = false,
     this.borderRadius = 16,
     this.label,
+    this.transparent = false,
   });
 
   final Widget child;
@@ -19,6 +22,7 @@ class TvFocusCard extends StatefulWidget {
   final bool selected;
   final double borderRadius;
   final String? label;
+  final bool transparent;
 
   @override
   State<TvFocusCard> createState() => _TvFocusCardState();
@@ -42,7 +46,9 @@ class _TvFocusCardState extends State<TvFocusCard> {
 
   @override
   Widget build(BuildContext context) {
-    final highlighted = _focused || widget.selected;
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
     return FocusableActionDetector(
       focusNode: _focusNode,
       autofocus: widget.autofocus,
@@ -63,12 +69,12 @@ class _TvFocusCardState extends State<TvFocusCard> {
         setState(() => _focused = focused);
         if (focused) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
+            if (mounted && _focused && _needsReveal()) {
               Scrollable.ensureVisible(
                 context,
                 alignment: .5,
                 alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-                duration: const Duration(milliseconds: 160),
+                duration: duration,
               );
             }
           });
@@ -78,36 +84,71 @@ class _TvFocusCardState extends State<TvFocusCard> {
         button: true,
         label: widget.label,
         selected: widget.selected,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          decoration: BoxDecoration(
-            color: highlighted
-                ? const Color(0xFF193C3D)
-                : const Color(0xFF121D2E),
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-            border: Border.all(
-              color: _focused
-                  ? const Color(0xFF54E1C1)
-                  : widget.selected
-                  ? const Color(0xFF318B7D)
-                  : const Color(0xFF223047),
-              width: _focused ? 3 : 1,
+        child: AnimatedScale(
+          scale: _focused ? 1.025 : 1,
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          child: AnimatedContainer(
+            duration: duration,
+            decoration: BoxDecoration(
+              color: _focused || widget.selected
+                  ? AppColors.accent.withValues(alpha: .075)
+                  : widget.transparent
+                  ? Colors.transparent
+                  : AppColors.surface,
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+              border: Border.all(
+                color: _focused
+                    ? AppColors.text
+                    : widget.selected
+                    ? AppColors.accent.withValues(alpha: .65)
+                    : widget.transparent
+                    ? Colors.transparent
+                    : AppColors.border,
+                width: 1.5,
+              ),
+              boxShadow: _focused
+                  ? [
+                      BoxShadow(
+                        color: AppColors.accent.withValues(alpha: .15),
+                        blurRadius: 24,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
-            boxShadow: _focused
-                ? const [BoxShadow(color: Color(0x4054E1C1), blurRadius: 15)]
-                : null,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              canRequestFocus: false,
-              onTap: widget.onPressed,
-              child: widget.child,
+            clipBehavior: Clip.antiAlias,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                canRequestFocus: false,
+                onTap: widget.onPressed,
+                child: widget.child,
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  bool _needsReveal() {
+    final target = context.findRenderObject();
+    if (target is! RenderBox || !target.hasSize) return false;
+    RenderObject? parent = target.parent;
+    while (parent != null) {
+      if (parent is RenderAbstractViewport && parent is RenderBox) {
+        final bounds = MatrixUtils.transformRect(
+          target.getTransformTo(parent),
+          Offset.zero & target.size,
+        );
+        if (!parent.paintBounds.inflate(1).contains(bounds.topLeft) ||
+            !parent.paintBounds.inflate(1).contains(bounds.bottomRight)) {
+          return true;
+        }
+      }
+      parent = parent.parent;
+    }
+    return false;
   }
 }

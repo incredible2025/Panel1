@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 
+import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
@@ -461,6 +462,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final ready = value?.isInitialized ?? false;
     final error = _playbackError;
     final title = widget.episode?.title ?? _item.name;
+    final compact = MediaQuery.sizeOf(context).height < 460;
 
     return PopScope<Object?>(
       canPop: false,
@@ -499,104 +501,94 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0xC9000000),
-                          Colors.transparent,
-                          Colors.transparent,
-                          Color(0xE6000000),
+                          Color(0xE3080A0D),
+                          Color(0x23080A0D),
+                          Color(0x10080A0D),
+                          Color(0xF2080A0D),
                         ],
-                        stops: [0, 0.25, 0.55, 1],
+                        stops: [0, .28, .52, 1],
                       ),
                     ),
                   ),
                 ),
                 if (_loading && error == null)
-                  const Center(child: CircularProgressIndicator()),
-                if (error != null)
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, size: 42),
-                            const SizedBox(height: 16),
-                            Text(error, textAlign: TextAlign.center),
-                            const SizedBox(height: 20),
-                            FilledButton.icon(
-                              onPressed: _retry,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Try again'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  _waitingIndicator(context, 'Opening stream'),
+                if (error != null) _buildPlaybackError(context, error),
                 if (ready && value!.isBuffering && !_loading && error == null)
-                  const Center(child: CircularProgressIndicator()),
+                  _waitingIndicator(context, 'Buffering'),
                 SafeArea(
                   child: Padding(
-                    padding: EdgeInsets.all(tv ? 28 : 12),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: tv
+                          ? 44
+                          : compact
+                          ? 22
+                          : 20,
+                      vertical: tv
+                          ? 30
+                          : compact
+                          ? 12
+                          : 20,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              tooltip: 'Back',
-                              onPressed: () => unawaited(_leave()),
-                              icon: const Icon(Icons.arrow_back),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleLarge,
-                                  ),
-                                  if (_isLive)
-                                    Text(
-                                      'LIVE  •  Channel ${_channelIndex + 1} of ${_channels.length}',
-                                      style: const TextStyle(
-                                        color: Color(0xFF54E1C1),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                        _playerHeader(context, title, tv, compact),
                         const Spacer(),
                         if (_saveFailed)
                           const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Text(
-                              'Playback progress could not be saved.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Color(0xFFFFC66D)),
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: AppColors.accent,
+                                  size: 16,
+                                ),
+                                SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Playback progress could not be saved.',
+                                    style: TextStyle(
+                                      color: AppColors.accent,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         if (ready && error == null)
                           _buildControls(context, value!, tv),
                         if (tv)
                           Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: Text(
-                              error != null
-                                  ? 'OK Retry   •   Back Exit'
-                                  : _isLive
-                                  ? '↑ / ↓ Channel   •   OK Play / pause   •   Menu Controls'
-                                  : '← / → Seek   •   OK Play / pause   •   ↓ Controls',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodySmall,
+                            padding: const EdgeInsets.only(top: 22),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.settings_remote_outlined,
+                                  size: 14,
+                                  color: AppColors.subdued,
+                                ),
+                                const SizedBox(width: 9),
+                                Flexible(
+                                  child: Text(
+                                    error != null
+                                        ? 'OK Retry   ·   Back Exit'
+                                        : _isLive
+                                        ? '↑ / ↓ Channel   ·   OK Play / pause   ·   Menu Controls'
+                                        : '← / → Seek   ·   OK Play / pause   ·   ↓ Controls',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: AppColors.muted,
+                                      fontSize: 11,
+                                      letterSpacing: .3,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -611,6 +603,193 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Widget _playerHeader(
+    BuildContext context,
+    String title,
+    bool tv,
+    bool compact,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        IconButton(
+          tooltip: 'Back',
+          onPressed: () => unawaited(_leave()),
+          icon: const Icon(Icons.arrow_back_rounded),
+          style: _transportStyle(tv, compact: compact),
+        ),
+        SizedBox(width: tv ? 20 : 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (_isLive) ...[
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        color: AppColors.live,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                  ],
+                  Text(
+                    _isLive
+                        ? 'LIVE TELEVISION'
+                        : widget.episode == null
+                        ? 'MOVIE'
+                        : 'SERIES',
+                    style: TextStyle(
+                      color: _isLive ? AppColors.live : AppColors.accent,
+                      letterSpacing: 2.2,
+                      fontSize: compact ? 9 : 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                maxLines: compact ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppColors.text,
+                  fontSize: tv
+                      ? 30
+                      : compact
+                      ? 20
+                      : 25,
+                  height: 1.15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (_isLive && !compact) ...[
+                const SizedBox(height: 7),
+                Text(
+                  'Channel ${_channelIndex + 1} / ${_channels.length}',
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                    letterSpacing: .25,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (MediaQuery.sizeOf(context).width >= 700) ...[
+          const SizedBox(width: 24),
+          const StreamlineMark(size: 25),
+        ],
+      ],
+    );
+  }
+
+  Widget _waitingIndicator(BuildContext context, String label) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: 32,
+            child: MediaQuery.disableAnimationsOf(context)
+                ? const Icon(
+                    Icons.hourglass_empty_rounded,
+                    color: AppColors.accent,
+                    size: 28,
+                  )
+                : const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 12,
+              letterSpacing: .7,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaybackError(BuildContext context, String error) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.videocam_off_outlined,
+                color: AppColors.accent,
+                size: 34,
+              ),
+              const SizedBox(height: 20),
+              const Eyebrow('PLAYBACK UNAVAILABLE'),
+              const SizedBox(height: 12),
+              Text(
+                error,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.muted,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _retry,
+                icon: const Icon(Icons.refresh_rounded, size: 19),
+                label: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  ButtonStyle _transportStyle(bool tv, {bool compact = false}) {
+    final dimension = tv
+        ? 62.0
+        : compact
+        ? 44.0
+        : 52.0;
+    return ButtonStyle(
+      minimumSize: WidgetStatePropertyAll(Size.square(dimension)),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? AppColors.subdued
+            : AppColors.text,
+      ),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused)
+            ? AppColors.accent.withValues(alpha: .2)
+            : AppColors.surface.withValues(alpha: .45),
+      ),
+      side: WidgetStateProperty.resolveWith(
+        (states) => BorderSide(
+          color: states.contains(WidgetState.focused)
+              ? AppColors.accent
+              : AppColors.text.withValues(alpha: .12),
+          width: states.contains(WidgetState.focused) ? 2 : 1,
+        ),
+      ),
+      shape: const WidgetStatePropertyAll(CircleBorder()),
+      iconSize: WidgetStatePropertyAll(tv ? 30 : 26),
+    );
+  }
+
   Widget _buildControls(BuildContext context, VideoPlayerValue value, bool tv) {
     final durationMs = value.duration.inMilliseconds;
     final positionMs = clampPlaybackPosition(
@@ -621,6 +800,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final position = (_dragPosition ?? positionMs.toDouble())
         .clamp(0, durationMs > 0 ? durationMs.toDouble() : 1.0)
         .toDouble();
+    final compact = MediaQuery.sizeOf(context).height < 460;
 
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
@@ -637,21 +817,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (hasTimeline) ...[
-              Slider(
-                value: position,
-                max: durationMs.toDouble(),
-                label: formatPlaybackTime(
-                  Duration(milliseconds: position.round()),
-                ),
-                onChanged: (value) => setState(() => _dragPosition = value),
-                onChangeEnd: (value) {
-                  setState(() => _dragPosition = null);
-                  unawaited(_seekTo(Duration(milliseconds: value.round())));
-                },
+            if (_isLive) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 5,
+                    height: 5,
+                    decoration: const BoxDecoration(
+                      color: AppColors.live,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'WATCHING LIVE',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ],
               ),
+              SizedBox(height: compact ? 14 : 24),
+            ],
+            if (hasTimeline) ...[
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -659,66 +853,133 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       formatPlaybackTime(
                         Duration(milliseconds: position.round()),
                       ),
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: .7,
+                      ),
                     ),
-                    Text(formatPlaybackTime(value.duration)),
+                    Text(
+                      formatPlaybackTime(value.duration),
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        letterSpacing: .7,
+                      ),
+                    ),
                   ],
                 ),
               ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  activeTrackColor: AppColors.accent,
+                  inactiveTrackColor: AppColors.text.withValues(alpha: .18),
+                  thumbColor: AppColors.text,
+                  overlayColor: AppColors.accent.withValues(alpha: .15),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 5,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
+                  ),
+                  trackShape: const RectangularSliderTrackShape(),
+                ),
+                child: Slider(
+                  value: position,
+                  max: durationMs.toDouble(),
+                  label: formatPlaybackTime(
+                    Duration(milliseconds: position.round()),
+                  ),
+                  onChanged: (value) => setState(() => _dragPosition = value),
+                  onChangeEnd: (value) {
+                    setState(() => _dragPosition = null);
+                    unawaited(_seekTo(Duration(milliseconds: value.round())));
+                  },
+                ),
+              ),
+              SizedBox(height: compact ? 2 : 10),
             ],
-            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (_isLive)
-                  IconButton(
-                    tooltip: 'Previous channel',
-                    iconSize: tv ? 36 : 30,
-                    onPressed: _channels.length > 1 ? () => _zap(-1) : null,
-                    icon: const Icon(Icons.skip_previous),
-                  )
-                else
-                  IconButton(
-                    tooltip: 'Rewind 10 seconds',
-                    iconSize: tv ? 36 : 30,
-                    onPressed: hasTimeline ? () => _seekRelative(-10) : null,
-                    icon: const Icon(Icons.replay_10),
-                  ),
-                const SizedBox(width: 24),
+                IconButton(
+                  tooltip: _isLive ? 'Previous channel' : 'Rewind 10 seconds',
+                  style: _transportStyle(tv, compact: compact),
+                  onPressed: _isLive
+                      ? _channels.length > 1
+                            ? () => _zap(-1)
+                            : null
+                      : hasTimeline
+                      ? () => _seekRelative(-10)
+                      : null,
+                  icon: Icon(_isLive ? Icons.skip_previous : Icons.replay_10),
+                ),
+                SizedBox(width: tv ? 28 : 20),
                 FilledButton(
                   focusNode: _playFocus,
                   onPressed: () => unawaited(_togglePlayback()),
                   style: ButtonStyle(
-                    padding: const WidgetStatePropertyAll(EdgeInsets.all(16)),
-                    side: WidgetStateProperty.resolveWith((states) {
-                      return BorderSide(
+                    minimumSize: WidgetStatePropertyAll(
+                      Size(
+                        tv ? 148 : 124,
+                        tv
+                            ? 66
+                            : compact
+                            ? 48
+                            : 56,
+                      ),
+                    ),
+                    padding: WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(
+                        horizontal: tv ? 28 : 22,
+                        vertical: compact ? 10 : 14,
+                      ),
+                    ),
+                    shape: const WidgetStatePropertyAll(StadiumBorder()),
+                    foregroundColor: const WidgetStatePropertyAll(
+                      AppColors.canvas,
+                    ),
+                    backgroundColor: WidgetStateProperty.resolveWith(
+                      (states) => states.contains(WidgetState.focused)
+                          ? AppColors.text
+                          : AppColors.accent,
+                    ),
+                    side: WidgetStateProperty.resolveWith(
+                      (states) => BorderSide(
                         color: states.contains(WidgetState.focused)
-                            ? Colors.white
+                            ? AppColors.text
                             : Colors.transparent,
-                        width: 3,
-                      );
-                    }),
+                        width: 2,
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    value.isPlaying ? Icons.pause : Icons.play_arrow,
-                    size: tv ? 36 : 30,
-                    semanticLabel: value.isPlaying ? 'Pause' : 'Play',
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        value.isPlaying ? Icons.pause : Icons.play_arrow,
+                        size: tv ? 30 : 26,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(value.isPlaying ? 'Pause' : 'Play'),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 24),
-                if (_isLive)
-                  IconButton(
-                    tooltip: 'Next channel',
-                    iconSize: tv ? 36 : 30,
-                    onPressed: _channels.length > 1 ? () => _zap(1) : null,
-                    icon: const Icon(Icons.skip_next),
-                  )
-                else
-                  IconButton(
-                    tooltip: 'Forward 30 seconds',
-                    iconSize: tv ? 36 : 30,
-                    onPressed: hasTimeline ? () => _seekRelative(30) : null,
-                    icon: const Icon(Icons.forward_30),
-                  ),
+                SizedBox(width: tv ? 28 : 20),
+                IconButton(
+                  tooltip: _isLive ? 'Next channel' : 'Forward 30 seconds',
+                  style: _transportStyle(tv, compact: compact),
+                  onPressed: _isLive
+                      ? _channels.length > 1
+                            ? () => _zap(1)
+                            : null
+                      : hasTimeline
+                      ? () => _seekRelative(30)
+                      : null,
+                  icon: Icon(_isLive ? Icons.skip_next : Icons.forward_30),
+                ),
               ],
             ),
           ],

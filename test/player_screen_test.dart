@@ -20,6 +20,24 @@ const _session = Session(
   serverInfo: {},
 );
 const _movie = MediaItem(id: '42', name: 'Test movie', kind: MediaKind.movie);
+const _firstChannel = MediaItem(
+  id: '101',
+  name: 'First channel',
+  kind: MediaKind.live,
+  containerExtension: 'm3u8',
+);
+const _secondChannel = MediaItem(
+  id: '102',
+  name: 'Second channel',
+  kind: MediaKind.live,
+  containerExtension: 'm3u8',
+);
+const _thirdChannel = MediaItem(
+  id: '103',
+  name: 'Third channel',
+  kind: MediaKind.live,
+  containerExtension: 'm3u8',
+);
 const _duration = Duration(minutes: 10);
 
 class _SavedPosition {
@@ -39,6 +57,11 @@ class _SavedPosition {
 class _HistoryStore implements LocalStore {
   final opened = <MediaItem>[];
   final saved = <_SavedPosition>[];
+  final channelPlays = <MediaItem>[];
+  final channelWriteAttempts = <MediaItem>[];
+  final channelAccounts = <String>[];
+  bool failChannelWrites = false;
+  Completer<void>? channelWriteGate;
   Completer<void>? saveGate;
 
   @override
@@ -59,6 +82,15 @@ class _HistoryStore implements LocalStore {
 
   @override
   Future<List<WatchEntry>> history(String accountId) async => [];
+
+  @override
+  Future<void> recordChannelPlayed(String accountId, MediaItem item) async {
+    if (failChannelWrites) throw StateError('Database unavailable');
+    channelWriteAttempts.add(item);
+    await channelWriteGate?.future;
+    channelPlays.add(item);
+    channelAccounts.add(accountId);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -87,6 +119,9 @@ class _VideoPlatform extends VideoPlayerPlatform {
       sync: true,
       onCancel: () async {},
     );
+    // Allocate done before cancellation as well: close() would otherwise
+    // return the shared root-zone null future once its subscriber is gone.
+    unawaited(events[id]!.done);
     positions[id] = Duration.zero;
     await creationGate?.future;
     return id;
@@ -103,6 +138,15 @@ class _VideoPlatform extends VideoPlayerPlatform {
         ),
       );
     }
+  }
+
+  void failInitialization(int id) {
+    events[id]!.addError(
+      PlatformException(
+        code: 'VideoError',
+        message: 'Test initialization failure',
+      ),
+    );
   }
 
   @override
@@ -159,6 +203,8 @@ Future<void> _mountPlayer(
   WidgetTester tester,
   _HistoryStore store, {
   Duration startPosition = Duration.zero,
+  MediaItem item = _movie,
+  List<MediaItem> channels = const [],
 }) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
@@ -166,6 +212,10 @@ Future<void> _mountPlayer(
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     if (store.saveGate != null && !store.saveGate!.isCompleted) {
       store.saveGate!.complete();
+    }
+    if (store.channelWriteGate != null &&
+        !store.channelWriteGate!.isCompleted) {
+      store.channelWriteGate!.complete();
     }
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -187,8 +237,9 @@ Future<void> _mountPlayer(
                   onPressed: () => Navigator.of(context).push<void>(
                     MaterialPageRoute(
                       builder: (_) => PlayerScreen(
-                        item: _movie,
+                        item: item,
                         startPosition: startPosition,
+                        channels: channels,
                       ),
                     ),
                   ),
@@ -210,7 +261,7 @@ Future<void> _finishInitialization(
   WidgetTester tester,
   _VideoPlatform platform,
 ) async {
-  platform.initialize(platform.sources.keys.single);
+  platform.initialize(platform.sources.keys.last);
   await tester.pump();
   await tester.pump();
 }
@@ -370,5 +421,142 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(platform.calls.where((call) => call.startsWith('play:')), isEmpty);
+  });
+
+  testWidgets('records only successfully played live channels when zapping', (
+    tester,
+  ) async {
+    await _mountPlayer(
+      tester,
+      store,
+      item: _firstChannel,
+      channels: const [_firstChannel, _secondChannel],
+    );
+    expect(store.channelPlays, isEmpty);
+    await _finishInitialization(tester, platform);
+    expect(store.channelPlays, [_firstChannel]);
+    expect(store.channelAccounts, [_session.accountId]);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.pump();
+    expect(platform.sources, hasLength(2));
+    expect(store.channelPlays, [_firstChannel]);
+    await _finishInitialization(tester, platform);
+    expect(store.channelPlays, [_firstChannel, _secondChannel]);
+    expect(store.channelAccounts, [_session.accountId, _session.accountId]);
+
+    // Pausing/resuming the same native player is not another channel visit.
+    await tester.tap(find.byIcon(Icons.pause));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pump();
+    expect(store.channelPlays, [_firstChannel, _secondChannel]);
+    expect(store.opened, isEmpty);
+    expect(store.saved, isEmpty);
+  });
+
+  testWidgets('failed live initialization is not added to recent channels', (
+    tester,
+  ) async {
+    await _mountPlayer(tester, store, item: _firstChannel);
+    final failedId = platform.sources.keys.single;
+    platform.failInitialization(failedId);
+    await tester.pump();
+    await tester.pump();
+
+    expect(store.channelPlays, isEmpty);
+    expect(platform.calls.where((call) => call.startsWith('play:')), isEmpty);
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    await tester.pump();
+    await _finishInitialization(tester, platform);
+    expect(store.channelPlays, [_firstChannel]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('live playback continues when recent-channel storage fails', (
+    tester,
+  ) async {
+    store.failChannelWrites = true;
+    await _mountPlayer(tester, store, item: _firstChannel);
+    await _finishInitialization(tester, platform);
+
+    expect(find.byIcon(Icons.pause), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+    expect(find.text('Playback progress could not be saved.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('background live initialization waits for first play to record', (
+    tester,
+  ) async {
+    await _mountPlayer(tester, store, item: _firstChannel);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _finishInitialization(tester, platform);
+    expect(store.channelPlays, isEmpty);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pump();
+    expect(store.channelPlays, [_firstChannel]);
+  });
+
+  testWidgets('an obsolete account does not receive a new recent channel', (
+    tester,
+  ) async {
+    await _mountPlayer(tester, store, item: _firstChannel);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PlayerScreen)),
+    );
+    container.read(sessionProvider.notifier).state = null;
+    await _finishInitialization(tester, platform);
+
+    expect(store.channelPlays, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('queued live visits survive later zapping and leaving playback', (
+    tester,
+  ) async {
+    store.channelWriteGate = Completer<void>();
+    await _mountPlayer(
+      tester,
+      store,
+      item: _firstChannel,
+      channels: const [_firstChannel, _secondChannel, _thirdChannel],
+    );
+    await _finishInitialization(tester, platform);
+    expect(store.channelWriteAttempts, [_firstChannel]);
+    expect(store.channelPlays, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.pump();
+    await _finishInitialization(tester, platform);
+    // Zapping uses DateTime.now rather than the test scheduler's fake clock.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 275)),
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.pump();
+    await _finishInitialization(tester, platform);
+    expect(platform.sources, hasLength(3));
+    expect(store.channelWriteAttempts, [_firstChannel]);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PlayerScreen), findsNothing);
+    store.channelWriteGate!.complete();
+    await tester.pump();
+    await tester.pump();
+
+    expect(store.channelPlays, [_firstChannel, _secondChannel, _thirdChannel]);
+    expect(store.channelAccounts, List.filled(3, _session.accountId));
+    expect(tester.takeException(), isNull);
   });
 }

@@ -1,4 +1,4 @@
-name: Android test APK
+name: Android APK release
 
 on:
   push:
@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -36,14 +36,80 @@ jobs:
         run: flutter analyze
       - name: Unit and widget tests
         run: flutter test
-      - name: Build installable test APK
+
+  release:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Configure permanent signing
+        env:
+          ANDROID_SIGNING_JSON: ${{ secrets.ANDROID_SIGNING }}
+        run: python3 scripts/configure_android_signing.py
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build signed APK
         run: flutter build apk --release
-      - name: Name test APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/streamline-test.apk
-      - name: Upload APK for sideload testing
+      - name: Verify signing certificate and name APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp build/app/outputs/flutter-apk/app-release.apk build/streamline.apk
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose --print-certs build/streamline.apk | tee build/signature.txt
+          expected="$(tr -d '[:space:]:' < android/release-certificate.sha256 | tr '[:upper:]' '[:lower:]')"
+          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build/signature.txt | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          test -n "$expected" && test "$expected" = "$actual"
+          sha256sum build/streamline.apk > build/streamline.apk.sha256
+      - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: streamline-test-apk
-          path: build/streamline-test.apk
+          name: streamline-apk
+          path: |
+            build/streamline.apk
+            build/streamline.apk.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+      - name: Publish direct APK download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::Version $tag already belongs to another commit. Increase the version before releasing."
+              exit 1
+            fi
+            gh release upload "$tag" build/streamline.apk build/streamline.apk.sha256 --clobber
+          else
+            notes="docs/RELEASE_NOTES_$version.md"
+            if [ ! -f "$notes" ]; then
+              notes="build/release-notes.md"
+              printf 'Streamline %s for Android phones and Android TV.\n\nDownload streamline.apk to install.\n' "$version" > "$notes"
+            fi
+            gh release create "$tag" build/streamline.apk build/streamline.apk.sha256 \
+              --target "$GITHUB_SHA" --title "Streamline $version" --notes-file "$notes" --latest
+          fi
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f android/key.properties android/signing/streamline-release.p12

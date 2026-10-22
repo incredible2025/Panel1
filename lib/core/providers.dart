@@ -23,6 +23,18 @@ final historyProvider = FutureProvider<List<WatchEntry>>((ref) async {
   return ref.watch(storeProvider).history(session.accountId);
 });
 
+final favoritesProvider = FutureProvider<List<MediaItem>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.watch(storeProvider).favorites(session.accountId);
+});
+
+final recentChannelsProvider = FutureProvider<List<MediaItem>>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return [];
+  return ref.watch(storeProvider).recentChannels(session.accountId);
+});
+
 final categoriesProvider = FutureProvider.family<List<Category>, MediaKind>((
   ref,
   kind,

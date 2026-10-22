@@ -14,6 +14,7 @@ import '../data/app_settings.dart';
 import '../widgets/parental_access.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
+import 'connection_diagnosis_screen.dart';
 
 /// Keeps every seek within a known, finite on-demand timeline.
 Duration clampPlaybackPosition(Duration target, Duration duration) {
@@ -946,6 +947,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     await _open(selected);
   }
 
+  Future<void> _connectionDiagnosis() async {
+    if (_exiting) return;
+    final navigator = Navigator.of(context);
+    final item = _item;
+    final episode = _episode;
+    _exiting = true;
+    _generation++;
+    _retryTimer?.cancel();
+    _initializationTimer?.cancel();
+    _progressTimer?.cancel();
+    _controlsTimer?.cancel();
+    _cancelNext();
+    await _pauseAndSave();
+    await _tracks.detach();
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) await _release(controller);
+    await _keepScreenOn(false);
+    if (!mounted || !navigator.mounted) return;
+    navigator.pop();
+    unawaited(
+      navigator.push<void>(
+        MaterialPageRoute(
+          builder: (_) => ConnectionDiagnosisScreen(
+            item: item,
+            episode: episode,
+            canTestStream: true,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _diagnostics() async {
     _menuOpen = true;
     _controlsTimer?.cancel();
@@ -1688,7 +1722,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1718,6 +1752,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               TextButton(
                 onPressed: _diagnostics,
                 child: const Text('Playback diagnostics'),
+              ),
+              TextButton.icon(
+                onPressed: _connectionDiagnosis,
+                icon: const Icon(Icons.network_check),
+                label: const Text('Connection diagnosis'),
               ),
               if (_retryTimer?.isActive == true)
                 TextButton(

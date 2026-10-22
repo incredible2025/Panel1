@@ -12,6 +12,7 @@ import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/features/player_screen.dart';
+import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 const _session = Session(
@@ -966,6 +967,28 @@ void main() {
     expect(store.opened, isEmpty);
     expect(store.saved, isEmpty);
   });
+
+  testWidgets(
+    'connection diagnosis releases the failed player before opening and keeps stream opt-in off',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      platform.failInitialization(platform.sources.keys.single);
+      await tester.pump();
+      await tester.pump();
+      await tester.ensureVisible(find.text('Connection diagnosis'));
+      await tester.tap(find.text('Connection diagnosis'));
+      await tester.pumpAndSettle();
+      expect(platform.disposed, contains(1));
+      expect(find.byType(PlayerScreen), findsNothing);
+      expect(find.byType(ConnectionDiagnosisScreen), findsOneWidget);
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        false,
+      );
+      await tester.pump(const Duration(seconds: 10));
+      expect(platform.sources.length, 1);
+    },
+  );
 
   testWidgets('failed live initialization is not added to recent channels', (
     tester,

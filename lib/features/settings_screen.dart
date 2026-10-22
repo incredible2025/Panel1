@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
+import '../core/app_version.dart';
+import 'connection_diagnosis_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
-
-const appVersion = '0.5.0 (5)';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, this.embedded = false});
@@ -423,6 +423,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
       _group('App & maintenance', Icons.settings_outlined, [
+        _action(
+          'Connection diagnosis',
+          'Check the network, provider, HTTPS, account and library. See error explanations and practical next steps.',
+          Icons.network_check,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const ConnectionDiagnosisScreen(),
+            ),
+          ),
+        ),
         _info('Streamline', appVersion),
         _action(
           'Open source licences',

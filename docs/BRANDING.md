@@ -1,6 +1,6 @@
 # ULTRAVPN PLAYER branding
 
-Prepared for the next release; not yet published as an APK.
+Branding introduced in ULTRAVPN PLAYER 0.5.2. Download the release asset `ultravpn-player.apk`.
 
 ## Assets and use
 

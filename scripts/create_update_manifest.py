@@ -15,8 +15,10 @@ def create_manifest(apk, badging, apk_url, notes):
     url = urlparse(apk_url)
     if not package or not sdk or package[1] != 'com.streamline.iptv':
         raise ValueError('APK metadata must identify ULTRAVPN PLAYER with a minimum SDK.')
-    if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
-        raise ValueError('The APK address must use HTTPS without credentials or a fragment.')
+    absolute = url.scheme == 'https' and url.hostname and not (url.username or url.password or url.fragment)
+    relative = not url.scheme and not url.netloc and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.apk', apk_url)
+    if not (absolute or relative):
+        raise ValueError('Use an HTTPS APK address or a relative APK filename without folders or credentials.')
     if not 0 < apk.stat().st_size <= 512 * 1024 * 1024:
         raise ValueError('APK size must be between 1 byte and 512 MB.')
     if len(notes) > 20000:

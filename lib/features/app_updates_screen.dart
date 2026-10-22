@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/app_version.dart';
 import '../core/update_controller.dart';
-import '../data/app_update.dart';
 
 class AppUpdatesScreen extends ConsumerStatefulWidget {
   const AppUpdatesScreen({super.key});
@@ -44,7 +43,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
     final c = ref.watch(updateControllerProvider);
     final update = c.update;
     final status = switch (c.stage) {
-      UpdateStage.idle => 'Ready to check',
+      UpdateStage.idle => c.configured ? 'Ready to check' : 'Set up remote updates',
       UpdateStage.checking => 'Checking for updates…',
       UpdateStage.current => 'You’re up to date',
       UpdateStage.available => 'A new version is available',
@@ -72,6 +71,8 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                   'Last attempt: ${c.lastCheck!.toLocal().toString().split('.').first}',
                 ),
               const SizedBox(height: 20),
+              if (!c.configured && _loaded)
+                const Padding(padding: EdgeInsets.only(bottom: 16), child: Text('Enter the HTTPS address of your update.json file below to enable remote updates.')),
               if (c.error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -128,7 +129,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 ),
               const SizedBox(height: 16),
               OutlinedButton(
-                onPressed: c.busy || !_loaded ? null : () => c.check(),
+                onPressed: c.busy || !_loaded || !c.configured ? null : () => c.check(),
                 child: const Text('Check for updates'),
               ),
               const SizedBox(height: 24),
@@ -148,10 +149,11 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 keyboardType: TextInputType.url,
                 autocorrect: false,
                 decoration: const InputDecoration(
-                  labelText: 'Update file address',
+                  labelText: 'Remote update address',
+                  hintText: 'https://yourdomain.com/updates/update.json',
                   helperText:
-                      'HTTPS update.json supplied by the app administrator',
-                  helperMaxLines: 2,
+                      'Full HTTPS link to update.json. Save an empty address to turn off remote updates.',
+                  helperMaxLines: 3,
                 ),
               ),
               const SizedBox(height: 12),
@@ -164,6 +166,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                         : () async {
                             if (await c.save(_address.text, c.automatic) &&
                                 context.mounted) {
+                              _address.text = c.url;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Update address saved.'),
@@ -173,16 +176,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                           },
                     child: const Text('Save address'),
                   ),
-                  TextButton(
-                    onPressed: c.busy || !_loaded
-                        ? null
-                        : () async {
-                            if (await c.save(defaultUpdateUrl, c.automatic)) {
-                              _address.text = c.url;
-                            }
-                          },
-                    child: const Text('Use official updates'),
-                  ),
+
                 ],
               ),
               const SizedBox(height: 20),

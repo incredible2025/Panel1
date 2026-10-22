@@ -18,6 +18,16 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(result['sha256'], 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
             self.assertEqual(json.loads(json.dumps(result))['releaseNotes'], 'Fixes — TV and phones')
 
+    def test_portable_relative_apk_filename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / 'ultravpn-player-0.6.1.apk'
+            apk.write_bytes(b'abc')
+            metadata = "package: name='com.streamline.iptv' versionCode='9' versionName='0.6.1'\nminSdkVersion:'24'\n"
+            self.assertEqual(create_manifest(apk, metadata, apk.name, 'Notes')['apkUrl'], apk.name)
+            for url in ['../app.apk', '//other.example/app.apk', '', 'app.apk#fragment']:
+                with self.subTest(url=url), self.assertRaises(ValueError):
+                    create_manifest(apk, metadata, url, 'Notes')
+
     def test_wrong_package_and_insecure_url_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             apk = Path(directory) / 'app.apk'

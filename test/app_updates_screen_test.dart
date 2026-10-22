@@ -8,6 +8,27 @@ import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'app_update_test.dart' show FakePlatform, FakeTransport;
 
 void main() {
+  testWidgets('unconfigured screen has remote setup, no preset and no error', (tester) async {
+    final transport = FakeTransport();
+    final c = UpdateController(FakePlatform()..url = '', transport);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [updateControllerProvider.overrideWith((ref) => c)],
+      child: const MaterialApp(home: AppUpdatesScreen())));
+    await tester.pumpAndSettle();
+    expect(find.text('Set up remote updates'), findsOneWidget);
+    expect(find.text('Use official updates'), findsNothing);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Check for updates')).onPressed, null);
+    await tester.enterText(find.byType(TextField), 'https://own.example/updates/update.json');
+    await tester.ensureVisible(find.text('Save address'));
+    await tester.tap(find.text('Save address'));
+    await tester.pumpAndSettle();
+    expect(c.configured, true);
+    expect(c.url, 'https://own.example/updates/update.json');
+    expect(transport.checks, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final size in [const Size(390, 844), const Size(1280, 720)]) {
     testWidgets('check, download and installer permission flow at $size', (
       tester,

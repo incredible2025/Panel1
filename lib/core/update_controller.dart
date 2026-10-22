@@ -31,6 +31,7 @@ class UpdateController extends ChangeNotifier {
   AppUpdate? update;
   UpdateStage stage = UpdateStage.idle;
   String url = defaultUpdateUrl;
+  bool get configured => url.isNotEmpty;
   bool automatic = true;
   DateTime? lastCheck;
   String? error, _path;
@@ -49,9 +50,12 @@ class UpdateController extends ChangeNotifier {
   Future<void> _load() async {
     try {
       device = await platform.load();
-      url = device!.url;
+      url = remoteUpdateAddress(device!.url);
       automatic = device!.automatic;
-      lastCheck = device!.lastCheck;
+      lastCheck = configured ? device!.lastCheck : null;
+      if (url != device!.url) {
+        await platform.preferences(url, automatic, lastCheck);
+      }
     } catch (_) {
       _loading = null;
       rethrow;
@@ -66,7 +70,7 @@ class UpdateController extends ChangeNotifier {
       final elapsed = lastCheck == null
           ? null
           : DateTime.now().difference(lastCheck!);
-      if (automatic &&
+      if (configured && automatic &&
           !busy &&
           (elapsed == null ||
               elapsed.isNegative ||
@@ -81,7 +85,7 @@ class UpdateController extends ChangeNotifier {
   Future<bool> save(String value, bool enabled) async {
     if (busy) return false;
     try {
-      final next = updateUri(value).toString();
+      final next = value.trim().isEmpty ? '' : updateUri(value).toString();
       await load();
       final changed = next != url;
       await platform.preferences(next, enabled, changed ? null : lastCheck);
@@ -110,6 +114,11 @@ class UpdateController extends ChangeNotifier {
     _changed();
     try {
       await load();
+      if (!configured) {
+        stage = UpdateStage.idle;
+        _changed();
+        return;
+      }
       final candidate = await transport.check(url);
       if (candidate.code > device!.code && candidate.minSdk > device!.sdk) {
         throw UpdateFailure(

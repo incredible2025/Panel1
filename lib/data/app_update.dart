@@ -5,8 +5,14 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
-const defaultUpdateUrl =
+const defaultUpdateUrl = '';
+const _legacyUpdateUrl =
     'https://github.com/incredible2025/Panel1/releases/latest/download/update.json';
+
+String remoteUpdateAddress(String value) {
+  final address = value.trim();
+  return address == _legacyUpdateUrl ? defaultUpdateUrl : address;
+}
 const maxApkBytes = 512 * 1024 * 1024;
 
 class UpdateFailure implements Exception {
@@ -43,7 +49,7 @@ class AppUpdate {
   final int code, bytes, minSdk;
   final Uri url;
 
-  factory AppUpdate.parse(String source) {
+  factory AppUpdate.parse(String source, {Uri? sourceUri}) {
     try {
       final json = jsonDecode(source) as Map<String, dynamic>;
       final version = json['versionName'] as String;
@@ -65,10 +71,12 @@ class AppUpdate {
           !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(hash)) {
         throw const FormatException();
       }
+      final address = json['apkUrl'] as String;
+      if (address.trim().isEmpty) throw const FormatException();
       return AppUpdate(
         version: version,
         code: code,
-        url: updateUri(json['apkUrl'] as String),
+        url: updateUri(sourceUri == null ? address : sourceUri.resolve(address).toString()),
         sha256: hash.toLowerCase(),
         bytes: size,
         minSdk: minSdk,
@@ -197,7 +205,7 @@ class UpdateTransport {
     }
   }
 
-  Future<HttpClientResponse> _get(HttpClient client, Uri url) async {
+  Future<({HttpClientResponse response, Uri uri})> _get(HttpClient client, Uri url) async {
     for (var redirects = 0; redirects <= 5; redirects++) {
       final request = await client
           .getUrl(updateUri(url.toString()))
@@ -224,13 +232,14 @@ class UpdateTransport {
               : 'The update server returned HTTP ${response.statusCode}. Please try again later.',
         );
       }
-      return response;
+      return (response: response, uri: url);
     }
     throw const UpdateFailure('The update server redirected too many times.');
   }
 
   Future<AppUpdate> check(String url) => _run((client) async {
-    final response = await _get(client, updateUri(url));
+    final remote = await _get(client, updateUri(url));
+    final response = remote.response;
     final buffer = <int>[];
     await for (final chunk in response.timeout(const Duration(seconds: 30))) {
       buffer.addAll(chunk);
@@ -238,7 +247,7 @@ class UpdateTransport {
         throw const UpdateFailure('The update file exceeds the 64 KB limit.');
       }
     }
-    return AppUpdate.parse(utf8.decode(buffer));
+    return AppUpdate.parse(utf8.decode(buffer), sourceUri: remote.uri);
   });
   Future<String> download(
     AppUpdate update,
@@ -253,7 +262,7 @@ class UpdateTransport {
     final output = await partial.open(mode: FileMode.write);
     var closed = false;
     try {
-      final response = await _get(client, update.url);
+      final response = (await _get(client, update.url)).response;
       if (response.contentLength >= 0 &&
           response.contentLength != update.bytes) {
         throw const UpdateFailure(

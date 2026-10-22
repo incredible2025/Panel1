@@ -38,7 +38,7 @@ class AppUpdater(private val activity: Activity, messenger: BinaryMessenger) {
                 "preferences" -> {
                     val url = call.argument<String>("url") ?: ""
                     val uri = Uri.parse(url)
-                    if (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.userInfo != null || uri.fragment != null) {
+                    if (url.isNotEmpty() && (uri.scheme != "https" || uri.host.isNullOrEmpty() || uri.userInfo != null || uri.fragment != null)) {
                         result.error("address", "Use a valid HTTPS update address.", null)
                     } else {
                         val saved = prefs.edit().putString("url", url)

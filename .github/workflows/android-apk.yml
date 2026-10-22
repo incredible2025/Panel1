@@ -106,7 +106,7 @@ jobs:
             test -n "$expected" && test "$expected" = "$actual"
           fi
           (cd build && sha256sum ultravpn-player.apk > ultravpn-player.apk.sha256)
-      - name: Generate verified update manifest
+      - name: Generate portable remote update package
         shell: bash
         run: |
           set -euo pipefail
@@ -117,9 +117,12 @@ jobs:
             notes="build/update-notes.md"
             printf 'Improvements and fixes for ULTRAVPN PLAYER.\n' > "$notes"
           fi
-          python3 scripts/create_update_manifest.py --apk build/ultravpn-player.apk --aapt "$aapt" \
-            --apk-url "https://github.com/${{ github.repository }}/releases/download/v$version/ultravpn-player.apk" \
-            --notes "$notes" --output build/update.json
+          mkdir -p build/remote-update
+          apk="ultravpn-player-$version.apk"
+          cp build/ultravpn-player.apk "build/remote-update/$apk"
+          python3 scripts/create_update_manifest.py --apk "build/remote-update/$apk" --aapt "$aapt" \
+            --apk-url "$apk" --notes "$notes" --output build/remote-update/update.json
+          (cd build/remote-update && zip -q ../remote-update.zip update.json "$apk")
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
@@ -127,7 +130,7 @@ jobs:
           path: |
             build/ultravpn-player.apk
             build/ultravpn-player.apk.sha256
-            build/update.json
+            build/remote-update.zip
           if-no-files-found: error
           retention-days: 30
       - name: Publish direct APK download
@@ -139,8 +142,7 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
-          assets=(build/ultravpn-player.apk build/ultravpn-player.apk.sha256)
-          if [ "$SIGNING_MODE" = "permanent" ]; then assets+=(build/update.json); fi
+          assets=(build/ultravpn-player.apk build/ultravpn-player.apk.sha256 build/remote-update.zip)
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then

@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/data/app_update.dart';
 
+const testUpdateUrl = 'https://updates.example/update.json';
+
 Map<String, dynamic> manifest({int code = 9}) => {
   'schemaVersion': 1,
   'applicationId': 'com.streamline.iptv',
@@ -25,6 +27,7 @@ AppUpdate candidate({int code = 9}) =>
 class FakePlatform implements UpdatePlatform {
   bool allowed = false, requested = false;
   bool automatic = true;
+  String url = testUpdateUrl;
   DateTime? checked;
   int installs = 0, validations = 0;
   Object? validationError;
@@ -34,7 +37,7 @@ class FakePlatform implements UpdatePlatform {
     code: 8,
     sdk: 30,
     directory: '/private/updates',
-    url: defaultUpdateUrl,
+    url: url,
     automatic: automatic,
     lastCheck: checked,
   );
@@ -44,6 +47,7 @@ class FakePlatform implements UpdatePlatform {
     bool automatic,
     DateTime? checked,
   ) async {
+    this.url = url;
     this.automatic = automatic;
     this.checked = checked;
   }
@@ -173,6 +177,60 @@ Response bytes(List<int> value, {int length = -1}) =>
     Response(Stream.value(value), contentLength: length);
 
 void main() {
+  test('unconfigured updates make no requests and show no error', () async {
+    final platform = FakePlatform()..url = '';
+    final transport = FakeTransport();
+    final c = UpdateController(platform, transport);
+    addTearDown(c.dispose);
+    await c.autoCheck();
+    await c.check();
+    expect(c.configured, false);
+    expect(c.stage, UpdateStage.idle);
+    expect(c.error, null);
+    expect(transport.checks, 0);
+    expect(await c.save('', false), true);
+    expect(platform.url, '');
+  });
+  test('legacy default is cleared but custom server addresses are retained', () async {
+    final platform = FakePlatform()
+      ..url = 'https://github.com/incredible2025/Panel1/releases/latest/download/update.json'
+      ..checked = DateTime.now();
+    final transport = FakeTransport();
+    final c = UpdateController(platform, transport);
+    addTearDown(c.dispose);
+    await c.autoCheck();
+    expect(c.url, '');
+    expect(platform.url, '');
+    expect(platform.checked, null);
+    expect(transport.checks, 0);
+    expect(await c.save(testUpdateUrl, true), true);
+    await c.check();
+    expect(transport.checks, 1);
+    expect(await c.save('', false), true);
+    expect(c.update, null);
+    expect(c.stage, UpdateStage.idle);
+  });
+  test('relative APK addresses resolve against the manifest location', () {
+    final data = {...manifest(), 'apkUrl': 'ultravpn-player-0.6.1.apk'};
+    final update = AppUpdate.parse(jsonEncode(data),
+      sourceUri: Uri.parse('https://own.example/updates/update.json'));
+    expect(update.url.toString(), 'https://own.example/updates/ultravpn-player-0.6.1.apk');
+    for (final value in ['', 'http://other.example/app.apk', 'https://user:pass@other.example/app.apk']) {
+      expect(() => AppUpdate.parse(jsonEncode({...data, 'apkUrl': value}),
+        sourceUri: Uri.parse('https://own.example/update.json')),
+        throwsA(isA<UpdateFailure>()));
+    }
+  });
+  test('relative APK address follows the final HTTPS manifest location', () async {
+    final client = Client([
+      Response(const Stream.empty(), statusCode: 302,
+        headers: {'location': 'https://cdn.example/releases/update.json'}),
+      bytes(utf8.encode(jsonEncode({...manifest(), 'apkUrl': 'version-9.apk'}))),
+    ]);
+    final update = await UpdateTransport(clientFactory: () => client).check(testUpdateUrl);
+    expect(update.url.toString(), 'https://cdn.example/releases/version-9.apk');
+  });
+
   test('manifest round trip and uppercase SHA-256', () {
     final data = manifest()..['sha256'] = manifest()['sha256'].toUpperCase();
     expect(AppUpdate.parse(jsonEncode(data)).sha256, candidate().sha256);
@@ -419,7 +477,7 @@ void main() {
         expect(
           (await UpdateTransport(
             clientFactory: () => client,
-          ).check(defaultUpdateUrl)).code,
+          ).check(testUpdateUrl)).code,
           9,
         );
         expect(client.urls.last.host, 'cdn.example');
@@ -431,7 +489,7 @@ void main() {
           ),
         ]);
         await expectLater(
-          UpdateTransport(clientFactory: () => unsafe).check(defaultUpdateUrl),
+          UpdateTransport(clientFactory: () => unsafe).check(testUpdateUrl),
           throwsA(isA<UpdateFailure>()),
         );
         expect(unsafe.urls.length, 1);
@@ -445,7 +503,7 @@ void main() {
         await expectLater(
           UpdateTransport(
             clientFactory: () => Client([response]),
-          ).check(defaultUpdateUrl),
+          ).check(testUpdateUrl),
           throwsA(isA<UpdateFailure>()),
         );
       }

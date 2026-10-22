@@ -2,26 +2,31 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
-**v0.2.0** introduces a cinematic interface with charcoal surfaces, ivory typography, champagne accents, bundled fonts and richer artwork-led browsing. Movie and series details, the live guide, login and playback controls share the new [visual system](docs/PREMIUM_DESIGN.md).
+**v0.3.0** adds horizontal movie/series shelves, recently added titles, Newest/A–Z/Z–A sorting, favorite channels and recently played channels. The cinematic [visual system](docs/PREMIUM_DESIGN.md) pairs charcoal surfaces, ivory typography, champagne accents and bundled fonts.
 
-## Download the testing APK
+## Download the APK
 
-Open **[Actions → Android test APK](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful run, then download **streamline-test-apk** from its Artifacts section. Unzip it and install `streamline-test.apk` on your phone or TV. GitHub requires you to be signed in to download workflow artifacts. Runs are also available from Actions → Run workflow, and artifacts expire after 14 days.
+**[Download the latest streamline.apk](https://github.com/incredible2025/Panel1/releases/latest/download/streamline.apk)** and install it on your phone or TV. The direct release download requires no ZIP extraction. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
 
-The release-mode test APK uses a disposable Android debug signing key. It is suitable for sideload testing. A future build made on another runner may require uninstalling the previous APK first, which removes its local history. Production distribution needs your own persistent signing key.
+As a fallback, open **[Actions → Android APK release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **streamline-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
+
+The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is optional and deferred; see [release signing](docs/SIGNING.md) for the prepared setup.
 
 ## Stack
 
 - Flutter **3.35.7**, Dart 3.9, Material 3 and **Riverpod** state management.
 - `video_player`, backed by Android ExoPlayer, for HLS (`.m3u8`), MPEG-TS (`.ts`) and provider-supported VOD containers. Codec and hardware decoder availability depend on the device.
-- **SQLite** for account-scoped watch history and EPG cache; **flutter_secure_storage** for encrypted saved credentials and session metadata.
+- **SQLite** for account-scoped watch history, favorites, recent channels and EPG cache; **flutter_secure_storage** for encrypted saved credentials and session metadata.
 - Native Android `UiModeManager` detection for TV mode, Leanback launcher support and D-pad focus traversal.
 
 ## Features
 
 - Login using server URL, username and password; restores the encrypted session after relaunch.
 - Live TV category filters, channel search, short EPG preview and full-screen channel zapping.
-- Movie categories and poster grids, details, recently opened films and Continue Watching.
+- Favorite channel toggles/filter and the latest **20 distinct successfully played live channels**, stored separately for each account.
+- Movie/series home shelves, including up to five provider-category rows, with **Browse all** opening a lazy poster grid.
+- **Newest**, **Title: A–Z** and **Title: Z–A** sorting. Recently added rows use real provider timestamps; missing dates are left unknown and sort after dated titles under Newest.
+- Movie details, recently opened films and Continue Watching.
 - Resume or restart prompt when movie progress is **strictly above 5% and below 95%**.
 - Series categories, details, season selectors and episode playback.
 - Movie progress snapshots every five seconds, on pause/background and before navigating back. Recent opens update the access timestamp without erasing saved progress.
@@ -57,6 +62,7 @@ test/                          # API, SQLite, playback and widget tests
 .github/workflows/android-apk.yml
 docs/TESTING.md
 docs/PREMIUM_DESIGN.md
+docs/SIGNING.md
 ```
 
 ## Run locally
@@ -68,12 +74,13 @@ flutter pub get --enforce-lockfile
 flutter analyze
 flutter test
 flutter run
+# Uses the testing key unless optional release signing is configured.
 flutter build apk --release
 ```
 
 The APK is written to `build/app/outputs/flutter-apk/app-release.apk`. The application ID is `com.streamline.iptv`, minimum Android API 24 (Android 7). Both phone and TV launchers can discover it.
 
-The v0.2 suite contains **35 automated tests**, covering API/model parsing, SQLite account isolation, resume thresholds, playback lifecycle/cleanup and phone/TV widget behavior. See [TESTING.md](docs/TESTING.md) for screenshot capture and device checks.
+The automated suite covers API/model parsing, provider dates and sorting, SQLite migration/account isolation, favorites/recent channels, resume thresholds, playback lifecycle/cleanup and phone/TV widget behavior. See [TESTING.md](docs/TESTING.md) for commands, screenshot capture and device checks.
 
 ## Xtream API
 

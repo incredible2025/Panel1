@@ -15,6 +15,7 @@ import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/features/movie_detail_screen.dart';
 import 'package:streamline_iptv/features/series_detail_screen.dart';
+import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 
 import 'support/qa_artwork.dart';
@@ -32,23 +33,37 @@ const _account = Session(
   userInfo: {'auth': 1, 'status': 'Active'},
   serverInfo: {},
 );
-const _film = MediaItem(
+final _film = MediaItem(
   id: '10',
   name: 'Zephyr',
   kind: MediaKind.movie,
   categoryId: 'drama',
   rating: '8.2',
   imageUrl: _qaArtwork,
+  addedAt: DateTime.utc(2026, 10, 18),
 );
-const _otherFilm = MediaItem(
+final _otherFilm = MediaItem(
   id: '11',
   name: 'Night Shift',
   kind: MediaKind.movie,
   categoryId: 'action',
   rating: '7.6',
   imageUrl: _qaArtwork,
+  addedAt: DateTime.utc(2026, 10, 22),
+);
+const _undatedFilm = MediaItem(
+  id: '12',
+  name: 'Amber Road',
+  kind: MediaKind.movie,
+  categoryId: 'action',
+  imageUrl: _qaArtwork,
 );
 const _channel = MediaItem(id: '1', name: 'World News', kind: MediaKind.live);
+const _sportsChannel = MediaItem(
+  id: '2',
+  name: 'Arena Sports',
+  kind: MediaKind.live,
+);
 const _series = MediaItem(
   id: '20',
   name: 'The Coast',
@@ -59,6 +74,36 @@ const _series = MediaItem(
 class _MemoryStore implements LocalStore {
   Session? savedSession;
   List<WatchEntry> entries = [];
+  List<MediaItem> favoriteItems = [];
+  List<MediaItem> recentItems = [];
+  int favoriteWrites = 0;
+
+  @override
+  Future<List<MediaItem>> favorites(String accountId) async =>
+      List.of(favoriteItems);
+  @override
+  Future<void> setFavorite(
+    String accountId,
+    MediaItem item,
+    bool favorite,
+  ) async {
+    favoriteWrites++;
+    favoriteItems.removeWhere(
+      (entry) => entry.id == item.id && entry.kind == item.kind,
+    );
+    if (favorite) favoriteItems.add(item);
+  }
+
+  @override
+  Future<List<MediaItem>> recentChannels(String accountId) async =>
+      List.of(recentItems);
+  @override
+  Future<void> recordChannelPlayed(String accountId, MediaItem item) async {
+    if (item.kind != MediaKind.live) return;
+    recentItems.removeWhere((entry) => entry.id == item.id);
+    recentItems.insert(0, item);
+    recentItems = recentItems.take(20).toList();
+  }
 
   @override
   Future<Session?> readSession() async => savedSession;
@@ -140,6 +185,7 @@ Future<void> _pumpApp(
   Widget? screen,
   _TestApi? api,
   Size? viewport,
+  List<MediaItem>? movies,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -164,8 +210,8 @@ Future<void> _pumpApp(
         ),
         itemsProvider.overrideWith(
           (ref, kind) async => switch (kind) {
-            MediaKind.live => const [_channel],
-            MediaKind.movie => const [_film, _otherFilm],
+            MediaKind.live => const [_channel, _sportsChannel],
+            MediaKind.movie => movies ?? [_film, _otherFilm, _undatedFilm],
             MediaKind.series => const [_series],
           },
         ),
@@ -267,6 +313,63 @@ FocusNode _cardFocus(WidgetTester tester, Finder label) {
       .descendant(of: card, matching: find.byType(FocusableActionDetector))
       .first;
   return tester.widget<FocusableActionDetector>(detector).focusNode!;
+}
+
+Finder _rail(String title) =>
+    find.ancestor(of: find.text(title), matching: find.byType(Column)).first;
+
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  final pageScroll = find
+      .descendant(
+        of: find.byType(CustomScrollView).first,
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  // A rail can be unbuilt above or below the current viewport.
+  tester.state<ScrollableState>(pageScroll).position.jumpTo(0);
+  await tester.pumpAndSettle();
+  await tester.scrollUntilVisible(
+    target,
+    250,
+    scrollable: pageScroll,
+    maxScrolls: 40,
+  );
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(target), alignment: .35);
+  await tester.pumpAndSettle();
+}
+
+List<String> _gridTitles(WidgetTester tester) => tester
+    .widgetList<MediaCard>(
+      find.descendant(
+        of: find.byType(SliverGrid),
+        matching: find.byType(MediaCard),
+      ),
+    )
+    .map((card) => card.item.name)
+    .toList();
+
+Future<void> _remoteSort(
+  WidgetTester tester,
+  String currentLabel,
+  int stepsFromNewest,
+) async {
+  final trigger = find.text(currentLabel);
+  await tester.ensureVisible(trigger);
+  Focus.of(tester.element(trigger)).requestFocus();
+  await tester.pumpAndSettle();
+  await tester.sendKeyEvent(LogicalKeyboardKey.select);
+  await tester.pumpAndSettle();
+  final newestOption = find.text('Recently added');
+  expect(newestOption, findsOneWidget);
+  Focus.of(tester.element(newestOption)).requestFocus();
+  await tester.pumpAndSettle();
+  for (var step = 0; step < stepsFromNewest; step++) {
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+  }
+  await tester.sendKeyEvent(LogicalKeyboardKey.select);
+  await tester.pumpAndSettle();
 }
 
 void _uiTest(String description, WidgetTesterCallback callback) {
@@ -383,10 +486,12 @@ void main() {
     await _screenshot(tester, 'phone-live');
     await tester.tap(find.text('Movies'));
     await tester.pumpAndSettle();
-    expect(find.text('Continue watching'), findsOneWidget);
-    expect(find.text('Recently watched'), findsOneWidget);
     await _screenshot(tester, 'phone-movies');
-    await tester.ensureVisible(find.text('Drama').first);
+    await _reveal(tester, find.text('Continue watching'));
+    expect(find.text('Continue watching'), findsOneWidget);
+    await _reveal(tester, find.text('Recently watched'));
+    expect(find.text('Recently watched'), findsOneWidget);
+    await _reveal(tester, find.text('Drama').first);
     await tester.tap(find.text('Drama').first);
     await tester.pumpAndSettle();
     expect(find.text('Zephyr'), findsOneWidget);
@@ -416,6 +521,150 @@ void main() {
     expect(find.text('Zephyr'), findsWidgets);
     expect(tester.takeException(), isNull);
     await _screenshot(tester, 'tv-movies');
+  });
+
+  _uiTest(
+    'recently added movies use actual dates and Browse all shows newest first',
+    (tester) async {
+      await _pumpApp(tester, store: _MemoryStore());
+      await tester.tap(find.text('Movies'));
+      await tester.pumpAndSettle();
+      await _screenshot(tester, 'phone-movies-home');
+      await _reveal(tester, find.text('Recently added movies'));
+      final cards = tester
+          .widgetList<MediaCard>(
+            find.descendant(
+              of: _rail('Recently added movies'),
+              matching: find.byType(MediaCard),
+            ),
+          )
+          .toList();
+      expect(cards.map((card) => card.item.name), ['Night Shift', 'Zephyr']);
+      expect(cards.any((card) => card.item.name == 'Amber Road'), isFalse);
+      final browse = find.text('Browse all');
+      await _reveal(tester, browse);
+      await tester.tap(browse);
+      await tester.pumpAndSettle();
+      expect(_gridTitles(tester), ['Night Shift', 'Zephyr', 'Amber Road']);
+      expect(find.text('Recently added movies'), findsNothing);
+      await _screenshot(tester, 'phone-movies-browse');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV remote opens sort menu and selects ascending and descending titles',
+    (tester) async {
+      await _pumpApp(tester, store: _MemoryStore(), tv: true);
+      _cardFocus(tester, find.text('Movies')).requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      await _screenshot(tester, 'tv-movies-home');
+      await _reveal(tester, find.text('Browse all'));
+      await tester.tap(find.text('Browse all'));
+      await tester.pumpAndSettle();
+      await _remoteSort(tester, 'Newest', 1);
+      expect(_gridTitles(tester), ['Amber Road', 'Night Shift', 'Zephyr']);
+      await _screenshot(tester, 'tv-movies-browse');
+      await _remoteSort(tester, 'A–Z', 2);
+      expect(_gridTitles(tester), ['Zephyr', 'Night Shift', 'Amber Road']);
+      await _remoteSort(tester, 'Z–A', 0);
+      expect(_gridTitles(tester), ['Night Shift', 'Zephyr', 'Amber Road']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest('missing provider dates show an honest recently added fallback', (
+    tester,
+  ) async {
+    await _pumpApp(tester, store: _MemoryStore(), movies: const [_undatedFilm]);
+    await tester.tap(find.text('Movies'));
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.text('Recently added movies'));
+    expect(find.text('Recently added movies'), findsOneWidget);
+    expect(
+      find.text(
+        'Your provider does not include added dates. Browse all titles or explore a category.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _rail('Recently added movies'),
+        matching: find.byType(MediaCard),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  _uiTest(
+    'live favorites persist across reload and the Favorites filter handles removal',
+    (tester) async {
+      final store = _MemoryStore();
+      await _pumpApp(tester, store: store);
+      var add = find.byTooltip('Add World News to favorites');
+      await _reveal(tester, add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(store.favoriteItems.map((item) => item.id), ['1']);
+      expect(store.favoriteWrites, 1);
+      await _reveal(tester, find.text('Favorite channels'));
+      expect(find.text('Favorite channels'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await _pumpApp(tester, store: store);
+      await _reveal(tester, find.text('Favorite channels'));
+      expect(find.text('Favorite channels'), findsOneWidget);
+      await _reveal(tester, find.byTooltip('Remove World News from favorites'));
+      expect(
+        find.byTooltip('Remove World News from favorites'),
+        findsOneWidget,
+      );
+      await _reveal(tester, find.text('Favorite channels'));
+      await _screenshot(tester, 'phone-favorite-channels');
+      await _reveal(tester, find.text('Favorites'));
+      await tester.tap(find.text('Favorites'));
+      await tester.pumpAndSettle();
+      expect(find.text('World News'), findsWidgets);
+      expect(find.text('Arena Sports'), findsNothing);
+      final remove = find.byTooltip('Remove World News from favorites');
+      await _reveal(tester, remove);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      expect(store.favoriteItems, isEmpty);
+      expect(store.favoriteWrites, 2);
+      expect(find.text('No favorite channels yet'), findsOneWidget);
+      await _reveal(tester, find.text('Favorites'));
+      await tester.tap(find.text('Favorites'));
+      await tester.pumpAndSettle();
+      add = find.byTooltip('Add World News to favorites');
+      await _reveal(tester, add);
+      expect(add, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest('recent live channels retain viewing order in their horizontal row', (
+    tester,
+  ) async {
+    final store = _MemoryStore()..recentItems = [_sportsChannel, _channel];
+    await _pumpApp(tester, store: store);
+    await _reveal(tester, find.text('Recently viewed channels'));
+    final cards = tester.widgetList<TvFocusCard>(
+      find.descendant(
+        of: _rail('Recently viewed channels'),
+        matching: find.byType(TvFocusCard),
+      ),
+    );
+    expect(cards.map((card) => card.label), [
+      'Play Arena Sports',
+      'Play World News',
+    ]);
+    await _reveal(tester, find.text('Recently viewed channels'));
+    await _screenshot(tester, 'phone-recent-channels');
+    expect(tester.takeException(), isNull);
   });
 
   _uiTest('landscape phone scrolls live guide without overflowing', (
@@ -454,7 +703,7 @@ void main() {
     await _pumpApp(
       tester,
       store: store,
-      screen: const MovieDetailScreen(item: _film),
+      screen: MovieDetailScreen(item: _film),
     );
     final play = find.text('Resume movie');
     await tester.ensureVisible(play);

@@ -95,6 +95,46 @@ class Session {
 
 enum MediaKind { live, movie, series }
 
+enum CatalogSort { recentlyAdded, titleAscending, titleDescending }
+
+/// Returns a new list; a provider's original catalog order is never mutated.
+/// Unknown dates appear after all dated items when sorting by recently added.
+List<MediaItem> sortMediaItems(List<MediaItem> items, CatalogSort sort) {
+  final sorted = List<MediaItem>.of(items);
+  sorted.sort((first, second) {
+    if (sort == CatalogSort.recentlyAdded) {
+      final firstDate = first.addedAt;
+      final secondDate = second.addedAt;
+      if (firstDate == null && secondDate != null) return 1;
+      if (firstDate != null && secondDate == null) return -1;
+      if (firstDate != null && secondDate != null) {
+        final byDate = secondDate.compareTo(firstDate);
+        if (byDate != 0) return byDate;
+      }
+    }
+    final byTitle = first.name.trim().toLowerCase().compareTo(
+      second.name.trim().toLowerCase(),
+    );
+    if (byTitle != 0) {
+      return sort == CatalogSort.titleDescending ? -byTitle : byTitle;
+    }
+    final byId = first.id.compareTo(second.id);
+    if (byId != 0) return byId;
+    final byKind = first.kind.index.compareTo(second.kind.index);
+    return byKind != 0 ? byKind : first.name.compareTo(second.name);
+  });
+  return sorted;
+}
+
+/// A recently-added row uses actual provider dates, not list positions or IDs.
+List<MediaItem> recentlyAddedMovies(List<MediaItem> items, {int limit = 20}) =>
+    sortMediaItems(
+      items
+          .where((item) => item.kind == MediaKind.movie && item.addedAt != null)
+          .toList(),
+      CatalogSort.recentlyAdded,
+    ).take(limit < 0 ? 0 : limit).toList();
+
 class Category {
   const Category({required this.id, required this.name});
   final String id;
@@ -117,6 +157,7 @@ class MediaItem {
     this.imageUrl = '',
     this.containerExtension = 'mp4',
     this.rating = '',
+    this.addedAt,
   });
 
   final String id;
@@ -126,6 +167,7 @@ class MediaItem {
   final String imageUrl;
   final String containerExtension;
   final String rating;
+  final DateTime? addedAt;
 
   factory MediaItem.fromJson(Map<String, dynamic> json, {MediaKind? kind}) {
     final savedKind = textValue(json['kind']);
@@ -148,6 +190,10 @@ class MediaItem {
         parsedKind == MediaKind.live ? 'm3u8' : 'mp4',
       ),
       rating: textValue(json['rating'] ?? json['rating_5based']),
+      addedAt:
+          _catalogDate(json['addedAt']) ??
+          _catalogDate(json['added']) ??
+          _catalogDate(json['last_modified']),
     );
   }
 
@@ -159,6 +205,7 @@ class MediaItem {
     'imageUrl': imageUrl,
     'containerExtension': containerExtension,
     'rating': rating,
+    'addedAt': addedAt?.toUtc().toIso8601String(),
   };
 
   @override
@@ -167,6 +214,23 @@ class MediaItem {
 
   @override
   int get hashCode => Object.hash(id, kind);
+}
+
+DateTime? _catalogDate(dynamic value) {
+  if (value is DateTime) return value.toUtc();
+  final text = textValue(value).trim();
+  if (text.isEmpty) return null;
+  final seconds = num.tryParse(text);
+  if (seconds != null) {
+    if (!seconds.isFinite || seconds <= 0) return null;
+    final milliseconds = seconds * 1000;
+    if (!milliseconds.isFinite || milliseconds > 8640000000000000) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      milliseconds.toInt(),
+      isUtc: true,
+    );
+  }
+  return DateTime.tryParse(text)?.toUtc();
 }
 
 class MovieDetail {

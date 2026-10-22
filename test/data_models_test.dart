@@ -5,6 +5,54 @@ import 'package:streamline_iptv/data/models.dart';
 
 void main() {
   group('provider data parsing', () {
+    test(
+      'reads added timestamps in seconds and roundtrips their UTC instant',
+      () {
+        for (final value in [1800000000, '1800000000', 1800000000.5]) {
+          final item = MediaItem.fromJson({
+            'stream_id': 42,
+            'name': 'Film',
+            'added': value,
+          }, kind: MediaKind.movie);
+          expect(
+            item.addedAt,
+            DateTime.fromMillisecondsSinceEpoch(
+              (num.parse(value.toString()) * 1000).toInt(),
+              isUtc: true,
+            ),
+          );
+          expect(MediaItem.fromJson(item.toJson()).addedAt, item.addedAt);
+        }
+      },
+    );
+
+    test('uses last_modified when added is unavailable or invalid', () {
+      for (final value in [null, '', 'invalid', '0', -1, 'NaN', '1e100']) {
+        final item = MediaItem.fromJson({
+          'stream_id': '1',
+          'added': value,
+          'last_modified': '1800003600',
+        }, kind: MediaKind.movie);
+        expect(
+          item.addedAt,
+          DateTime.fromMillisecondsSinceEpoch(1800003600000, isUtc: true),
+        );
+      }
+      final preferred = MediaItem.fromJson({
+        'stream_id': '1',
+        'added': '1800000000',
+        'last_modified': '1800003600',
+      }, kind: MediaKind.movie);
+      expect(
+        preferred.addedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000, isUtc: true),
+      );
+      expect(
+        MediaItem.fromJson({'stream_id': '1'}, kind: MediaKind.movie).addedAt,
+        isNull,
+      );
+    });
+
     test('reads cinematic artwork and release metadata from provider info', () {
       const movie = MediaItem(id: 'm', name: 'Movie', kind: MediaKind.movie);
       final detail = MovieDetail.fromJson(movie, {
@@ -96,6 +144,92 @@ void main() {
         'News Tonight',
       );
     });
+  });
+
+  group('catalog sorting', () {
+    final older = DateTime.utc(2025, 1, 1);
+    final newer = DateTime.utc(2026, 1, 1);
+    final items = [
+      const MediaItem(id: '9', name: 'alpha', kind: MediaKind.movie),
+      MediaItem(id: '3', name: 'Zulu', kind: MediaKind.movie, addedAt: newer),
+      MediaItem(id: '2', name: 'BETA', kind: MediaKind.movie, addedAt: newer),
+      MediaItem(id: '1', name: 'beta', kind: MediaKind.movie, addedAt: newer),
+      MediaItem(id: '4', name: 'Oldest', kind: MediaKind.movie, addedAt: older),
+    ];
+
+    test(
+      'sorts recently added newest first with undated items last and deterministic ties',
+      () {
+        final originalOrder = items.map((item) => item.id).toList();
+        expect(
+          sortMediaItems(
+            items,
+            CatalogSort.recentlyAdded,
+          ).map((item) => item.id),
+          ['1', '2', '3', '4', '9'],
+        );
+        expect(items.map((item) => item.id), originalOrder);
+        expect(
+          sortMediaItems(
+            items.reversed.toList(),
+            CatalogSort.recentlyAdded,
+          ).map((item) => item.id),
+          ['1', '2', '3', '4', '9'],
+        );
+      },
+    );
+
+    test(
+      'sorts titles in both directions ignoring case, with IDs breaking title ties',
+      () {
+        expect(
+          sortMediaItems(
+            items,
+            CatalogSort.titleAscending,
+          ).map((item) => item.id),
+          ['9', '1', '2', '4', '3'],
+        );
+        expect(
+          sortMediaItems(
+            items.reversed.toList(),
+            CatalogSort.titleDescending,
+          ).map((item) => item.id),
+          ['3', '4', '1', '2', '9'],
+        );
+      },
+    );
+
+    test(
+      'recently added movies exclude unknown dates and other media kinds',
+      () {
+        final catalog = [
+          ...items,
+          MediaItem(
+            id: 'live',
+            name: 'Channel',
+            kind: MediaKind.live,
+            addedAt: DateTime.utc(2027),
+          ),
+          MediaItem(
+            id: 'series',
+            name: 'Show',
+            kind: MediaKind.series,
+            addedAt: DateTime.utc(2027),
+          ),
+        ];
+        expect(recentlyAddedMovies(catalog).map((item) => item.id), [
+          '1',
+          '2',
+          '3',
+          '4',
+        ]);
+        expect(recentlyAddedMovies(catalog, limit: 2).map((item) => item.id), [
+          '1',
+          '2',
+        ]);
+        expect(recentlyAddedMovies(catalog, limit: -1), isEmpty);
+      },
+    );
   });
 
   group('account isolation', () {

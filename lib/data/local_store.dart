@@ -26,7 +26,7 @@ class LocalStore {
       databasePath ??
           path.join(await factory.getDatabasesPath(), 'streamline.db'),
       options: sqlite.OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE watch_history (
@@ -52,6 +52,10 @@ class LocalStore {
               PRIMARY KEY (account_id, cache_key)
             )
           ''');
+          await _createCollections(db);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) await _createCollections(db);
         },
       ),
     );
@@ -62,6 +66,34 @@ class LocalStore {
             aOptions: AndroidOptions(encryptedSharedPreferences: true),
           ),
     );
+  }
+
+  static Future<void> _createCollections(sqlite.DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE favorites (
+        account_id TEXT NOT NULL,
+        media_kind TEXT NOT NULL,
+        media_id TEXT NOT NULL,
+        item_json TEXT NOT NULL,
+        saved_at INTEGER NOT NULL,
+        PRIMARY KEY (account_id, media_kind, media_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX favorites_saved ON favorites (account_id, saved_at DESC)
+    ''');
+    await db.execute('''
+      CREATE TABLE live_recent (
+        account_id TEXT NOT NULL,
+        media_id TEXT NOT NULL,
+        item_json TEXT NOT NULL,
+        last_played INTEGER NOT NULL,
+        PRIMARY KEY (account_id, media_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX channels_recent ON live_recent (account_id, last_played DESC)
+    ''');
   }
 
   Future<Session?> readSession() async {
@@ -91,6 +123,127 @@ class LocalStore {
   /// Signing out removes credentials. Account-scoped viewing history is retained
   /// for the next sign-in, without exposing it to a different provider/account.
   Future<void> clearSession() => _secureStorage.delete(key: _sessionKey);
+
+  Future<List<MediaItem>> favorites(String accountId) async {
+    final rows = await _database.query(
+      'favorites',
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+      orderBy: 'saved_at DESC, media_kind ASC, media_id ASC',
+    );
+    return _mediaRows(rows);
+  }
+
+  Future<void> setFavorite(
+    String accountId,
+    MediaItem item,
+    bool favorite,
+  ) async {
+    if (item.id.trim().isEmpty) return;
+    if (!favorite) {
+      await _database.delete(
+        'favorites',
+        where: 'account_id = ? AND media_kind = ? AND media_id = ?',
+        whereArgs: [accountId, item.kind.name, item.id],
+      );
+      return;
+    }
+    await _database.transaction((txn) async {
+      final existing = await txn.query(
+        'favorites',
+        columns: ['saved_at'],
+        where: 'account_id = ? AND media_kind = ? AND media_id = ?',
+        whereArgs: [accountId, item.kind.name, item.id],
+        limit: 1,
+      );
+      final savedAt = existing.isNotEmpty
+          ? intValue(existing.first['saved_at'])
+          : await _nextCollectionTime(txn, 'favorites', 'saved_at', accountId);
+      await txn.insert('favorites', {
+        'account_id': accountId,
+        'media_kind': item.kind.name,
+        'media_id': item.id,
+        'item_json': jsonEncode(item.toJson()),
+        'saved_at': savedAt,
+      }, conflictAlgorithm: sqlite.ConflictAlgorithm.replace);
+    });
+  }
+
+  /// Up to twenty distinct live channels, most recently played first.
+  Future<List<MediaItem>> recentChannels(String accountId) async {
+    final rows = await _database.query(
+      'live_recent',
+      where: 'account_id = ?',
+      whereArgs: [accountId],
+      orderBy: 'last_played DESC, media_id ASC',
+      limit: 20,
+    );
+    return _mediaRows(
+      rows,
+    ).where((item) => item.kind == MediaKind.live).toList();
+  }
+
+  Future<void> recordChannelPlayed(String accountId, MediaItem item) async {
+    if (item.kind != MediaKind.live || item.id.trim().isEmpty) return;
+    await _database.transaction((txn) async {
+      final playedAt = await _nextCollectionTime(
+        txn,
+        'live_recent',
+        'last_played',
+        accountId,
+      );
+      await txn.insert('live_recent', {
+        'account_id': accountId,
+        'media_id': item.id,
+        'item_json': jsonEncode(item.toJson()),
+        'last_played': playedAt,
+      }, conflictAlgorithm: sqlite.ConflictAlgorithm.replace);
+      await txn.rawDelete(
+        '''
+        DELETE FROM live_recent
+        WHERE account_id = ? AND media_id NOT IN (
+          SELECT media_id FROM live_recent WHERE account_id = ?
+          ORDER BY last_played DESC, media_id ASC LIMIT 20
+        )
+      ''',
+        [accountId, accountId],
+      );
+    });
+  }
+
+  List<MediaItem> _mediaRows(List<Map<String, Object?>> rows) {
+    final items = <MediaItem>[];
+    for (final row in rows) {
+      try {
+        final json = jsonDecode(row['item_json']! as String);
+        if (json is! Map) continue;
+        final item = MediaItem.fromJson(objectValue(json));
+        if (item.id.isNotEmpty) items.add(item);
+      } on FormatException {
+        // A malformed local row should not hide the rest of a collection.
+        continue;
+      }
+    }
+    return items;
+  }
+
+  Future<int> _nextCollectionTime(
+    sqlite.DatabaseExecutor db,
+    String table,
+    String column,
+    String accountId,
+  ) async {
+    // Only fixed table/column names above enter this query. The clock tie-break
+    // preserves access order even for rapid zapping within one millisecond.
+    final rows = await db.rawQuery(
+      'SELECT MAX($column) AS latest FROM $table WHERE account_id = ?',
+      [accountId],
+    );
+    return math.max(
+      DateTime.now().millisecondsSinceEpoch,
+      intValue(rows.first['latest']) + 1,
+    );
+  }
 
   Future<List<WatchEntry>> history(String accountId) async {
     final rows = await _database.query(

@@ -55,6 +55,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   final _surfaceFocus = FocusNode(debugLabel: 'Video surface');
   final _playFocus = FocusNode(debugLabel: 'Player play pause');
   final _controllerReleases = Expando<Future<void>>('controller releases');
+  final _recordedLiveControllers = Expando<bool>('recorded live controllers');
   late final LocalStore _store;
   late final Session? _session;
   late final List<MediaItem> _channels;
@@ -62,6 +63,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   VideoPlayerController? _controller;
   Timer? _progressTimer;
   Future<void> _historyWrites = Future<void>.value();
+  Future<void> _channelHistoryWrites = Future<void>.value();
   int _generation = 0;
   int _channelIndex = 0;
   bool _loading = true;
@@ -156,6 +158,52 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  bool _isCurrentChannelPlayback(
+    VideoPlayerController controller,
+    int generation,
+    MediaItem item,
+    Session session,
+  ) {
+    return mounted &&
+        !_exiting &&
+        generation == _generation &&
+        identical(controller, _controller) &&
+        item.kind == MediaKind.live &&
+        _item == item &&
+        ref.read(sessionProvider)?.accountId == session.accountId;
+  }
+
+  void _recordLivePlayback(
+    VideoPlayerController controller,
+    int generation,
+    MediaItem item,
+  ) {
+    final session = _session;
+    if (session == null ||
+        !_isCurrentChannelPlayback(controller, generation, item, session) ||
+        !controller.value.isInitialized ||
+        !controller.value.isPlaying ||
+        controller.value.hasError ||
+        _recordedLiveControllers[controller] == true) {
+      return;
+    }
+    _recordedLiveControllers[controller] = true;
+    // Keep writes in playback order without holding up opening or zapping.
+    // Capture the channel/account now; a later zap must not change either.
+    // This accepted play event remains valid after another zap or route exit.
+    _channelHistoryWrites = _channelHistoryWrites.then((_) async {
+      try {
+        await _store.recordChannelPlayed(session.accountId, item);
+        if (mounted &&
+            ref.read(sessionProvider)?.accountId == session.accountId) {
+          ref.invalidate(recentChannelsProvider);
+        }
+      } catch (_) {
+        // Recent-channel storage is optional; playback remains available.
+      }
+    });
+  }
+
   Future<void> _release(VideoPlayerController controller) {
     final existing = _controllerReleases[controller];
     if (existing != null) return existing;
@@ -234,6 +282,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted || generation != _generation || _exiting) return;
       if (_appActive) await controller.play();
       if (!mounted || generation != _generation || _exiting) return;
+      _recordLivePlayback(controller, generation, item);
       setState(() => _loading = false);
     } catch (_) {
       // Native playback exceptions often include the complete stream URI,
@@ -296,6 +345,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _togglePlayback() async {
     final controller = _controller;
+    final generation = _generation;
+    final item = _item;
     if (_exiting || controller == null || !controller.value.isInitialized) {
       return;
     }
@@ -310,6 +361,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           await controller.seekTo(Duration.zero);
         }
         await controller.play();
+        _recordLivePlayback(controller, generation, item);
       }
     } catch (_) {
       if (mounted && !_exiting) {

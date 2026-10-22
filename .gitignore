@@ -12,5 +12,8 @@ android/local.properties
 android/key.properties
 *.jks
 *.keystore
+*.p12
+.signing/
+android/signing/
 *.log
 .DS_Store

@@ -21,14 +21,20 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   MediaKind _kind = MediaKind.live;
   final _search = TextEditingController();
+  final _scroll = ScrollController();
   final _liveHeroKey = GlobalKey();
   final Map<MediaKind, String?> _category = {};
+  final Map<MediaKind, CatalogSort> _sort = {};
+  final Set<MediaKind> _browseAll = {};
+  final Set<String> _savingFavorites = {};
   MediaItem? _channel;
   bool _signingOut = false;
+  bool _favoritesOnly = false;
 
   @override
   void dispose() {
     _search.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -44,12 +50,74 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _kind = kind;
       _search.clear();
     });
+    _scrollToTop();
+  }
+
+  void _scrollToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _scroll.jumpTo(0);
+      } else {
+        _scroll.animateTo(
+          0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+
+  void _showCategory(String? id) {
+    setState(() => _category[_kind] = id);
+    _scrollToTop();
+  }
+
+  void _showAll({CatalogSort? sort}) {
+    setState(() {
+      _browseAll.add(_kind);
+      if (sort != null) _sort[_kind] = sort;
+    });
+    _scrollToTop();
+  }
+
+  Future<void> _toggleFavorite(MediaItem item) async {
+    final session = ref.read(sessionProvider);
+    if (session == null || _savingFavorites.contains(item.id)) return;
+    final saved = ref.read(favoritesProvider).asData?.value ?? <MediaItem>[];
+    final favorite = saved.any(
+      (entry) => entry.id == item.id && entry.kind == item.kind,
+    );
+    setState(() => _savingFavorites.add(item.id));
+    try {
+      await ref
+          .read(storeProvider)
+          .setFavorite(session.accountId, item, !favorite);
+      if (mounted) {
+        ref.invalidate(favoritesProvider);
+        await ref.read(favoritesProvider.future);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not update your favorite channels. Please try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingFavorites.remove(item.id));
+    }
   }
 
   void _refresh() {
     ref.invalidate(itemsProvider(_kind));
     ref.invalidate(categoriesProvider(_kind));
     ref.invalidate(historyProvider);
+    ref.invalidate(favoritesProvider);
+    ref.invalidate(recentChannelsProvider);
     if (_channel != null) ref.invalidate(epgProvider(_channel!.id));
   }
 
@@ -65,7 +133,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     await Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => screen));
-    if (mounted) ref.invalidate(historyProvider);
+    if (mounted) {
+      ref.invalidate(historyProvider);
+      ref.invalidate(recentChannelsProvider);
+    }
   }
 
   Future<void> _signOut() async {
@@ -111,6 +182,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final isTv = ref.watch(isTvProvider);
     final categories = ref.watch(categoriesProvider(_kind));
     final items = ref.watch(itemsProvider(_kind));
+    final favoritesState = ref.watch(favoritesProvider);
+    final favoriteIds =
+        favoritesState.asData?.value
+            .where((item) => item.kind == MediaKind.live)
+            .map((item) => item.id)
+            .toSet() ??
+        <String>{};
     return Scaffold(
       backgroundColor: AppColors.canvas,
       bottomNavigationBar: isTv
@@ -159,8 +237,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     final contentWidth = viewport.maxWidth - margin * 2;
                     final query = _search.text.trim().toLowerCase();
                     final selectedCategory = _category[_kind];
-                    final browsing = query.isEmpty && selectedCategory == null;
+                    final browsing =
+                        query.isEmpty &&
+                        selectedCategory == null &&
+                        !_browseAll.contains(_kind);
                     return CustomScrollView(
+                      controller: _scroll,
                       key: PageStorageKey('dashboard-${_kind.name}'),
                       cacheExtent: viewport.maxHeight,
                       slivers: [
@@ -200,9 +282,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             ),
                           ],
                           data: (allItems) {
-                            final filtered = allItems
+                            if (_kind == MediaKind.live &&
+                                _favoritesOnly &&
+                                favoritesState.isLoading) {
+                              return [
+                                _status(
+                                  const StatusView(
+                                    title: 'Loading favorite channels',
+                                    loading: true,
+                                  ),
+                                ),
+                              ];
+                            }
+                            if (_kind == MediaKind.live &&
+                                _favoritesOnly &&
+                                favoritesState.hasError) {
+                              return [
+                                _status(
+                                  StatusView(
+                                    title: 'Favorite channels are unavailable',
+                                    message:
+                                        'Please reload your saved channels.',
+                                    onRetry: () =>
+                                        ref.invalidate(favoritesProvider),
+                                  ),
+                                ),
+                              ];
+                            }
+                            final matching = allItems
                                 .where(
                                   (item) =>
+                                      (_kind != MediaKind.live ||
+                                          !_favoritesOnly ||
+                                          favoriteIds.contains(item.id)) &&
                                       (selectedCategory == null ||
                                           item.categoryId ==
                                               selectedCategory) &&
@@ -212,6 +324,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           )),
                                 )
                                 .toList(growable: false);
+                            final filtered = _kind == MediaKind.live
+                                ? matching
+                                : sortMediaItems(
+                                    matching,
+                                    _sort[_kind] ?? CatalogSort.recentlyAdded,
+                                  );
                             if (allItems.isEmpty) {
                               return [
                                 _status(
@@ -228,9 +346,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             if (filtered.isEmpty) {
                               return [
                                 _status(
-                                  const StatusView(
-                                    title: 'No matches found',
-                                    message: 'Try another search or category.',
+                                  StatusView(
+                                    title:
+                                        _kind == MediaKind.live &&
+                                            _favoritesOnly &&
+                                            query.isEmpty &&
+                                            selectedCategory == null
+                                        ? 'No favorite channels yet'
+                                        : 'No matches found',
+                                    message:
+                                        _kind == MediaKind.live &&
+                                            _favoritesOnly
+                                        ? 'Turn off Favorites and use the star beside a channel to save it.'
+                                        : 'Try another search or category.',
                                     icon: Icons.search_off,
                                   ),
                                 ),
@@ -458,21 +586,138 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
       );
+      final categoryControls = _kind != MediaKind.live
+          ? filters
+          : Row(
+              children: [
+                Expanded(child: filters),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 42,
+                  child: TvFocusCard(
+                    selected: _favoritesOnly,
+                    transparent: true,
+                    label: 'Favorites only',
+                    borderRadius: 30,
+                    onPressed: () {
+                      setState(() => _favoritesOnly = !_favoritesOnly);
+                      _scrollToTop();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _favoritesOnly
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                            size: 17,
+                            color: _favoritesOnly
+                                ? AppColors.accent
+                                : AppColors.muted,
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            'Favorites',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _favoritesOnly
+                                  ? AppColors.accent
+                                  : AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+      final searchControls = Row(
+        children: [
+          Expanded(child: search),
+          if (_kind != MediaKind.live) ...[
+            const SizedBox(width: 10),
+            _sortControl(),
+          ],
+        ],
+      );
       if (constraints.maxWidth > 760) {
         return Row(
           children: [
-            SizedBox(width: 280, child: search),
+            SizedBox(
+              width: _kind == MediaKind.live ? 280 : 400,
+              child: searchControls,
+            ),
             const SizedBox(width: 24),
-            Expanded(child: filters),
+            Expanded(child: categoryControls),
           ],
         );
       }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [search, const SizedBox(height: 12), filters],
+        children: [
+          searchControls,
+          const SizedBox(height: 12),
+          categoryControls,
+        ],
       );
     },
   );
+
+  Widget _sortControl() {
+    final selected = _sort[_kind] ?? CatalogSort.recentlyAdded;
+    final label = switch (selected) {
+      CatalogSort.recentlyAdded => 'Newest',
+      CatalogSort.titleAscending => 'A–Z',
+      CatalogSort.titleDescending => 'Z–A',
+    };
+    return PopupMenuButton<CatalogSort>(
+      tooltip: 'Sort library',
+      initialValue: selected,
+      onSelected: (value) {
+        setState(() => _sort[_kind] = value);
+        _scrollToTop();
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: CatalogSort.recentlyAdded,
+          child: Text('Recently added'),
+        ),
+        PopupMenuItem(
+          value: CatalogSort.titleAscending,
+          child: Text('Title: A–Z'),
+        ),
+        PopupMenuItem(
+          value: CatalogSort.titleDescending,
+          child: Text('Title: Z–A'),
+        ),
+      ],
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.sort_rounded, size: 18, color: AppColors.muted),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 5),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 16,
+              color: AppColors.subdued,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _categoryStrip(List<Category> categories) => SizedBox(
     height: 42,
@@ -487,7 +732,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           selected: selected,
           transparent: true,
           borderRadius: 30,
-          onPressed: () => setState(() => _category[_kind] = category?.id),
+          onPressed: () => _showCategory(category?.id),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: Text(
@@ -512,14 +757,81 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     bool browsing,
   ) {
     final columns = (width / (isTv ? 165 : 150)).floor().clamp(2, 8);
+    final newest = sortMediaItems(items, CatalogSort.recentlyAdded);
+    final dated = newest
+        .where((item) => item.addedAt != null)
+        .take(20)
+        .toList(growable: false);
+    final categories =
+        ref.watch(categoriesProvider(_kind)).asData?.value ?? <Category>[];
+    final grouped = <String, List<MediaItem>>{};
+    for (final item in items) {
+      final group = grouped.putIfAbsent(item.categoryId, () => <MediaItem>[]);
+      if (group.length < 20) group.add(item);
+    }
+    final rails = categories
+        .where((category) => grouped[category.id]?.isNotEmpty == true)
+        .take(5)
+        .toList(growable: false);
     return [
       if (browsing)
         SliverPadding(
-          padding: EdgeInsets.fromLTRB(margin, 0, margin, 32),
+          padding: EdgeInsets.fromLTRB(margin, 0, margin, 20),
           sliver: SliverToBoxAdapter(
-            child: _catalogHero(items.first, isTv, width),
+            child: _catalogHero(newest.first, isTv, width),
           ),
         ),
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(margin, 0, margin, browsing ? 12 : 24),
+        sliver: SliverToBoxAdapter(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _kind == MediaKind.movie
+                          ? 'Browse movies'
+                          : 'Browse series',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${items.length} titles in your library',
+                      style: const TextStyle(
+                        color: AppColors.subdued,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton.icon(
+                onPressed: browsing
+                    ? () => _showAll()
+                    : () {
+                        setState(() {
+                          _browseAll.remove(_kind);
+                          _category[_kind] = null;
+                          _search.clear();
+                        });
+                        _scrollToTop();
+                      },
+                icon: Icon(
+                  browsing ? Icons.arrow_forward_rounded : Icons.home_outlined,
+                  size: 17,
+                ),
+                label: Text(browsing ? 'Browse all' : 'Home'),
+              ),
+            ],
+          ),
+        ),
+      ),
       if (_kind == MediaKind.movie && browsing)
         SliverPadding(
           padding: EdgeInsets.symmetric(horizontal: margin),
@@ -561,35 +873,166 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ),
           ),
         ),
-      SliverPadding(
-        padding: EdgeInsets.fromLTRB(margin, 0, margin, 18),
-        sliver: SliverToBoxAdapter(
-          child: _sectionTitle(
-            _kind == MediaKind.movie ? 'Browse movies' : 'Discover series',
-            trailing: '${items.length} titles',
+      if (browsing)
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: margin),
+          sliver: SliverToBoxAdapter(
+            child: dated.isNotEmpty
+                ? _posterRail(
+                    _kind == MediaKind.movie
+                        ? 'Recently added movies'
+                        : 'Recently added series',
+                    dated,
+                    isTv,
+                    onViewAll: () => _showAll(sort: CatalogSort.recentlyAdded),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 30),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _sectionTitle(
+                          _kind == MediaKind.movie
+                              ? 'Recently added movies'
+                              : 'Recently added series',
+                        ),
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              top: BorderSide(color: AppColors.border),
+                              bottom: BorderSide(color: AppColors.border),
+                            ),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today_outlined,
+                                size: 22,
+                                color: AppColors.subdued,
+                              ),
+                              SizedBox(width: 14),
+                              Expanded(
+                                child: Text(
+                                  'Your provider does not include added dates. Browse all titles or explore a category.',
+                                  style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 12,
+                                    height: 1.6,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
         ),
-      ),
-      SliverPadding(
-        padding: EdgeInsets.symmetric(horizontal: margin),
-        sliver: SliverGrid(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            childAspectRatio: .60,
-            crossAxisSpacing: isTv ? 20 : 14,
-            mainAxisSpacing: 24,
-          ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) => MediaCard(
-              item: items[index],
-              onPressed: () => _open(items[index]),
+      if (browsing)
+        for (final category in rails)
+          SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: margin),
+            sliver: SliverToBoxAdapter(
+              child: _posterRail(
+                category.name,
+                grouped[category.id]!,
+                isTv,
+                onViewAll: () => _showCategory(category.id),
+              ),
             ),
-            childCount: items.length,
+          ),
+      if (browsing)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(margin, 8, margin, 8),
+          sliver: SliverToBoxAdapter(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _showAll(),
+                icon: const Icon(Icons.grid_view_rounded, size: 18),
+                label: Text(
+                  _kind == MediaKind.movie
+                      ? 'Browse all movies'
+                      : 'Browse all series',
+                ),
+              ),
+            ),
           ),
         ),
-      ),
+      if (!browsing)
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: margin),
+          sliver: SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              childAspectRatio: .60,
+              crossAxisSpacing: isTv ? 20 : 14,
+              mainAxisSpacing: 24,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => MediaCard(
+                item: items[index],
+                onPressed: () => _open(items[index]),
+              ),
+              childCount: items.length,
+            ),
+          ),
+        ),
     ];
   }
+
+  Widget _posterRail(
+    String title,
+    List<MediaItem> items,
+    bool isTv, {
+    required VoidCallback onViewAll,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 30),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -.4,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            TextButton(
+              onPressed: onViewAll,
+              child: const Text('View all', style: TextStyle(fontSize: 11)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 13),
+        SizedBox(
+          height: isTv ? 280 : 244,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            cacheExtent: 700,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 15),
+            itemBuilder: (context, index) => SizedBox(
+              width: isTv ? 158 : 137,
+              child: MediaCard(
+                item: items[index],
+                onPressed: () => _open(items[index]),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _catalogHero(MediaItem item, bool isTv, double width) {
     String artwork = item.imageUrl;
@@ -621,54 +1064,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     }
     final wide = width > 650;
-    return SizedBox(
-      height: wide ? 420 : 410,
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: wide ? 300 : 320),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Stack(
-          fit: StackFit.expand,
+          fit: StackFit.loose,
           children: [
-            Artwork(
-              url: artwork,
-              title: item.name,
-              icon: item.kind == MediaKind.movie
-                  ? Icons.movie_outlined
-                  : Icons.video_library_outlined,
-              alignment: wide
-                  ? Alignment.centerRight
-                  : const Alignment(.25, -.3),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: wide ? Alignment.centerLeft : Alignment.bottomCenter,
-                  end: wide ? Alignment.centerRight : Alignment.topCenter,
-                  colors: [
-                    AppColors.canvas.withValues(alpha: .98),
-                    AppColors.canvas.withValues(alpha: .72),
-                    AppColors.canvas.withValues(alpha: .02),
-                  ],
-                  stops: const [0, .48, 1],
-                ),
+            Positioned.fill(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Artwork(
+                    url: artwork,
+                    title: item.name,
+                    icon: item.kind == MediaKind.movie
+                        ? Icons.movie_outlined
+                        : Icons.video_library_outlined,
+                    alignment: wide
+                        ? Alignment.centerRight
+                        : const Alignment(.25, -.3),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: wide
+                            ? Alignment.centerLeft
+                            : Alignment.bottomCenter,
+                        end: wide ? Alignment.centerRight : Alignment.topCenter,
+                        colors: [
+                          AppColors.canvas.withValues(alpha: .98),
+                          AppColors.canvas.withValues(alpha: .72),
+                          AppColors.canvas.withValues(alpha: .02),
+                        ],
+                        stops: const [0, .48, 1],
+                      ),
+                    ),
+                  ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0x10000000),
+                          Color(0x00000000),
+                          Color(0x55000000),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0x10000000),
-                    Color(0x00000000),
-                    Color(0x55000000),
-                  ],
-                ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                wide ? 32 : 22,
+                wide ? 32 : 66,
+                wide ? width * .37 : 22,
+                24,
               ),
-            ),
-            Positioned(
-              left: wide ? 32 : 22,
-              right: wide ? width * .37 : 22,
-              bottom: wide ? 30 : 24,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -925,6 +1380,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         .take(4)
         .toList(growable: false);
     final split = width > 850;
+    final showSaved =
+        _search.text.trim().isEmpty &&
+        _category[MediaKind.live] == null &&
+        !_favoritesOnly;
+    final available = {for (final item in channels) item.id: item};
+    List<MediaItem> availableSaved(List<MediaItem> saved) => saved
+        .where(
+          (item) =>
+              item.kind == MediaKind.live && available.containsKey(item.id),
+        )
+        .map((item) => available[item.id]!)
+        .toList(growable: false);
+    final favorites = showSaved
+        ? sortMediaItems(
+            availableSaved(
+              ref.watch(favoritesProvider).asData?.value ?? <MediaItem>[],
+            ),
+            CatalogSort.titleAscending,
+          )
+        : <MediaItem>[];
+    final recent = showSaved
+        ? availableSaved(
+            ref.watch(recentChannelsProvider).asData?.value ?? <MediaItem>[],
+          )
+        : <MediaItem>[];
     return [
       SliverPadding(
         padding: EdgeInsets.symmetric(horizontal: margin),
@@ -994,6 +1474,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
       ),
+      if (favorites.isNotEmpty || recent.isNotEmpty)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(margin, 28, margin, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (favorites.isNotEmpty)
+                  _channelRail('Favorite channels', favorites, channels, isTv),
+                if (recent.isNotEmpty)
+                  _channelRail(
+                    'Recently viewed channels',
+                    recent,
+                    channels,
+                    isTv,
+                  ),
+              ],
+            ),
+          ),
+        ),
       if (upcoming.isNotEmpty)
         SliverPadding(
           padding: EdgeInsets.fromLTRB(margin, 28, margin, 0),
@@ -1024,6 +1524,81 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ],
     ];
   }
+
+  Widget _channelRail(
+    String title,
+    List<MediaItem> items,
+    List<MediaItem> channels,
+    bool isTv,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionTitle(title, trailing: '${items.length}'),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 98,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            cacheExtent: 600,
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 13),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return SizedBox(
+                width: isTv ? 280 : 255,
+                child: TvFocusCard(
+                  borderRadius: 9,
+                  label: 'Play ${item.name}',
+                  onPressed: () {
+                    setState(() => _channel = item);
+                    _open(item, channels: channels);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(15),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 48,
+                          height: 45,
+                          child: Artwork(
+                            url: item.imageUrl,
+                            title: item.name,
+                            icon: Icons.live_tv_outlined,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        const SizedBox(width: 13),
+                        Expanded(
+                          child: Text(
+                            item.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 22,
+                          color: AppColors.accent,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _liveFeature(
     MediaItem item,
@@ -1305,10 +1880,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 : AppColors.subdued,
             size: 18,
           ),
+          _favoriteButton(item),
         ],
       ),
     ),
   );
+
+  Widget _favoriteButton(MediaItem item) {
+    final favorite =
+        ref
+            .watch(favoritesProvider)
+            .asData
+            ?.value
+            .any((entry) => entry.id == item.id && entry.kind == item.kind) ??
+        false;
+    return IconButton(
+      onPressed: _savingFavorites.contains(item.id)
+          ? null
+          : () => _toggleFavorite(item),
+      tooltip: favorite
+          ? 'Remove ${item.name} from favorites'
+          : 'Add ${item.name} to favorites',
+      icon: Icon(
+        favorite ? Icons.star_rounded : Icons.star_outline_rounded,
+        size: 21,
+        color: favorite ? AppColors.accent : AppColors.subdued,
+      ),
+    );
+  }
 
   Widget _upNext(List<EpgEntry> entries) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,

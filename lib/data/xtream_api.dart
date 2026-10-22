@@ -108,6 +108,7 @@ class XtreamApi {
       categoryId: item.categoryId,
       imageUrl: item.imageUrl,
       containerExtension: extension,
+      addedAt: item.addedAt,
       rating: item.rating,
     );
     return MovieDetail.fromJson(enrichedItem, payload);

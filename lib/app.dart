@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
+import 'core/update_controller.dart';
 import 'core/app_brand.dart';
 import 'core/design_system.dart';
 import 'core/settings_controller.dart';
@@ -23,6 +24,9 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    Future.microtask(() {
+      if (mounted) ref.read(updateControllerProvider).autoCheck();
+    });
   }
 
   @override
@@ -33,6 +37,9 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(updateControllerProvider).autoCheck();
+    }
     if (state != AppLifecycleState.resumed) {
       ref.read(parentalSessionProvider.notifier).lock();
     }

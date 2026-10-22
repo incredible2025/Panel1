@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
+import 'app_updates_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
@@ -122,7 +123,13 @@ class HomeScreen extends ConsumerWidget {
             SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: margin),
               sliver: SliverToBoxAdapter(
-                child: AccountExpiryNotice(onAccount: onSettings),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UpdateNotice(),
+                    AccountExpiryNotice(onAccount: onSettings),
+                  ],
+                ),
               ),
             ),
             if (featured != null)

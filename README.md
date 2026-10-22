@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.0** adds a built-in updater with configurable HTTPS hosting, release notes, optional automatic checks, verified APK downloads and Android installer integration. See [online updates](docs/UPDATES.md). Reliable in-place updates require the permanent release key.
+
 **v0.5.2** introduces ULTRAVPN PLAYER branding, including the supplied artwork, shield launcher icon, splash and TV banner. See [release notes](docs/RELEASE_NOTES_0.5.2.md) and [branding notes](docs/BRANDING.md).
 
 **v0.5.1** adds comprehensive connection diagnosis with stage-by-stage error explanations, safe reports and optional stream sampling. Open it from Settings, sign-in or the player error screen. See [release notes](docs/RELEASE_NOTES_0.5.1.md) and [diagnosis details](docs/CONNECTION_DIAGNOSIS.md).
@@ -14,7 +16,7 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 As a fallback, open **[Actions → ULTRAVPN PLAYER Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 
-The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is optional and deferred; see [release signing](docs/SIGNING.md) for the prepared setup.
+The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is prepared but not enabled; it is required for reliable online updates. See [release signing](docs/SIGNING.md) for the prepared setup.
 
 ## Stack
 
@@ -25,6 +27,7 @@ The current APK uses Android's disposable testing key. Builds from different run
 
 ## Features
 
+- App updates from GitHub or your own HTTPS server, verified APK downloads and installer handoff.
 - Settings for player choice, control timeout, audio/subtitles, picture, appearance, category visibility/order and parental PIN.
 - Local movie recommendations from meaningful viewing and provider categories; watched/hidden/locked titles are excluded.
 - Refreshed account information and expiry reminders, with missing fields labelled honestly.

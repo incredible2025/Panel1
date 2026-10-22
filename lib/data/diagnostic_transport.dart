@@ -216,8 +216,10 @@ class IoDiagnosticTransport implements DiagnosticTransport {
     if (_closed) return const ProbeFailure('cancelled');
     if (error is ProbeFailure) return error;
     if (error is TimeoutException) return const ProbeFailure('timeout');
+    if (error is CertificateException) return const ProbeFailure('certificate');
     if (error is HandshakeException) {
-      final reason = error.message.toLowerCase();
+      final reason = '${error.message} ${error.osError?.message ?? ''}'
+          .toLowerCase();
       return ProbeFailure(
         reason.contains('certificate') ? 'certificate' : 'tls_handshake',
       );

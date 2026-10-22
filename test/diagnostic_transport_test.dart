@@ -5,7 +5,47 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/data/diagnostic_transport.dart';
 
+class _CertificateFailureClient implements HttpClient {
+  @override
+  set connectionTimeout(Duration? value) {}
+  @override
+  Future<HttpClientRequest> getUrl(
+    Uri url,
+  ) async => throw const HandshakeException(
+    'Handshake error in client',
+    OSError(
+      'CERTIFICATE_VERIFY_FAILED private-pass https://private-provider.example',
+      1,
+    ),
+  );
+  @override
+  void close({bool force = false}) {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  test(
+    'nested OS certificate errors are classified without exposing their private text',
+    () async {
+      await HttpOverrides.runZoned(() async {
+        final transport = IoDiagnosticTransport();
+        addTearDown(transport.close);
+        await expectLater(
+          transport.tls('private-provider.example', 443),
+          throwsA(
+            isA<ProbeFailure>()
+                .having((e) => e.code, 'code', 'certificate')
+                .having(
+                  (e) => e.toString(),
+                  'private text',
+                  isNot(contains('private-pass')),
+                ),
+          ),
+        );
+      }, createHttpClient: (_) => _CertificateFailureClient());
+    },
+  );
   test(
     'real HTTP probe caps a stream and never follows credential redirects',
     () async {

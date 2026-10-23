@@ -157,8 +157,9 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   }
 
   KeyEventResult _toolbarKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent)
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
+    }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       _nav(_section).requestFocus();
       return KeyEventResult.handled;

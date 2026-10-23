@@ -543,31 +543,36 @@ void main() {
     }
   }
 
-  _uiTest('TV movie details keep resume, synopsis and My List reachable', (
-    tester,
-  ) async {
-    final store = _MemoryStore()
-      ..entries = [
-        WatchEntry(
-          item: _film,
-          positionMs: 600000,
-          durationMs: 6000000,
-          lastAccessed: DateTime.now(),
-        ),
-      ];
-    await _pumpApp(
-      tester,
-      store: store,
-      tv: true,
-      screen: MovieDetailScreen(item: _film),
-      viewport: const Size(960, 540),
-    );
-    expect(find.text('Resume movie'), findsOneWidget);
-    expect(find.text('My List'), findsOneWidget);
-    expect(find.textContaining('A journey'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await _screenshot(tester, 'tv-redesign-movie-detail');
-  });
+  _uiTest(
+    'TV redesign visual movie details keep resume and My List reachable',
+    (tester) async {
+      final store = _MemoryStore()
+        ..entries = [
+          WatchEntry(
+            item: _film,
+            positionMs: 600000,
+            durationMs: 6000000,
+            lastAccessed: DateTime.now(),
+          ),
+        ];
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        screen: MovieDetailScreen(item: _film),
+        viewport: const Size(960, 540),
+      );
+      expect(find.text('Resume movie'), findsOneWidget);
+      expect(find.text('My List'), findsOneWidget);
+      expect(find.textContaining('A journey'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _screenshot(tester, 'tv-redesign-movie-detail');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.text('Pick up where you left off?'), findsOneWidget);
+      expect(find.text('Resume from 10:00'), findsOneWidget);
+    },
+  );
 
   _uiTest(
     'TV search is deliberate and filters without displaying a server URL',
@@ -862,7 +867,7 @@ void main() {
   });
 
   _uiTest(
-    'series selects the saved season and shows resume and watched markers',
+    'TV redesign visual series selects saved season with resume and watched markers',
     (tester) async {
       const first = Episode(
         id: '21',
@@ -903,7 +908,7 @@ void main() {
       await tester.ensureVisible(find.text('Resume · S2 E1'));
       expect(find.text('New Horizons'), findsOneWidget);
       expect(find.text('Resume · 00:45'), findsOneWidget);
-      await _screenshot(tester, 'tv-series-progress');
+      await _screenshot(tester, 'tv-redesign-series-detail');
       await tester.tap(find.text('Season 1'));
       await tester.pumpAndSettle();
       expect(find.text('Watched'), findsOneWidget);

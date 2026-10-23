@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/data/connection_diagnostics.dart';
+import 'package:streamline_iptv/data/dns_lookup.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
 
 import 'connection_diagnostics_test.dart'
@@ -121,6 +122,35 @@ void main() {
       expect(find.textContaining('private-pass'), findsNothing);
       expect(tester.takeException(), isNull);
       await capture(tester, 'v5.1-diagnosis-dns-error');
+    },
+  );
+
+  testWidgets(
+    'DNS response evidence is visible separately from possible causes',
+    (tester) async {
+      final t = FakeDiagnosticTransport()
+        ..dnsResult = const DnsLookupResult(
+          [],
+          androidResolver: true,
+          cacheBypassed: true,
+          observations: [
+            DnsObservation(DnsFamily.ipv4, responseCode: 3, elapsedMs: 25),
+            DnsObservation(DnsFamily.ipv6, responseCode: 3, elapsedMs: 27),
+          ],
+        );
+      await mount(tester, t);
+      await tester.tap(find.text('Run diagnosis'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Observed on this device'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Observed on this device'), findsOneWidget);
+      expect(find.textContaining('A / IPv4: NXDOMAIN (3)'), findsOneWidget);
+      expect(find.text('Possible causes'), findsOneWidget);
+      expect(find.textContaining('private-provider'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 

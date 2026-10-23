@@ -13,19 +13,31 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var updater: AppUpdater? = null
+    private var dnsDiagnostics: NetworkDnsDiagnostics? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         updater?.close()
         updater = null
+        dnsDiagnostics?.close()
+        dnsDiagnostics = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         updater = AppUpdater(this, flutterEngine.dartExecutor.binaryMessenger)
+        dnsDiagnostics = NetworkDnsDiagnostics(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "streamline/platform")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "dnsDiagnosis" -> dnsDiagnostics?.lookup(
+                        call.argument<String>("host"), call.argument<String>("id"),
+                        call.argument<Int>("timeoutMs"), result,
+                    ) ?: result.error("dns_unavailable", "DNS check unavailable.", null)
+                    "cancelDnsDiagnosis" -> {
+                        dnsDiagnostics?.cancel(call.argument<String>("id"))
+                        result.success(null)
+                    }
                     "isTelevision" -> {
                         val manager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
                         result.success(manager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION)
@@ -47,6 +59,8 @@ class MainActivity : FlutterActivity() {
                                 "captivePortal" to caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL),
                                 "vpn" to caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
                                 "privateDns" to if (Build.VERSION.SDK_INT >= 28) links?.isPrivateDnsActive else null,
+                                "privateDnsStrict" to if (Build.VERSION.SDK_INT >= 28) links?.privateDnsServerName?.let { true } ?: false else null,
+                                "dnsServerCount" to links?.dnsServers?.size,
                                 "metered" to manager.isActiveNetworkMetered,
                                 "transports" to transports
                             ))

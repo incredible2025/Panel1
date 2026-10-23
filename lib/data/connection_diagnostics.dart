@@ -5,6 +5,7 @@ import 'dart:io';
 import '../core/app_brand.dart';
 import '../core/app_version.dart';
 import 'diagnostic_transport.dart';
+import 'dns_lookup.dart';
 import 'models.dart';
 import 'xtream_api.dart';
 
@@ -18,10 +19,11 @@ class DiagnosticFinding {
     this.status = DiagnosticStatus.failed,
     this.causes = const [],
     this.steps = const [],
+    this.evidence = const [],
   });
   final String code, summary, description;
   final DiagnosticStatus status;
-  final List<String> causes, steps;
+  final List<String> causes, steps, evidence;
 }
 
 class DiagnosticCheck {
@@ -86,6 +88,9 @@ class DiagnosticReport {
         )
         ..writeln(f.summary)
         ..writeln(f.description);
+      for (final observed in f.evidence) {
+        out.writeln('Observed: $observed');
+      }
       for (final cause in f.causes) {
         out.writeln('Possible cause: $cause');
       }
@@ -95,6 +100,216 @@ class DiagnosticReport {
     }
     return out.toString();
   }
+}
+
+DiagnosticFinding dnsFinding(DnsLookupResult result) {
+  final observations = result.observations;
+  final evidence = [
+    result.androidResolver
+        ? 'A and AAAA queries used the Android resolver on this device’s active network.'
+        : 'System lookup used this device’s configured resolver; exact DNS response codes are unavailable.',
+    if (result.cacheBypassed)
+      'Android DNS cache bypassed for this check; upstream resolver caches may still apply.',
+    for (final item in observations) item.evidence,
+  ];
+  if (result.networkChanged) {
+    return DiagnosticFinding(
+      'DNS_NETWORK_CHANGED',
+      'The active network changed during DNS lookup',
+      'The answer was discarded because it belongs to an earlier network. Provider checks were not attempted with that result.',
+      evidence: evidence,
+      steps: const [
+        'Wait for Wi-Fi, mobile data or VPN to settle, then run diagnosis again.',
+      ],
+    );
+  }
+  final usable = result.addresses.isNotEmpty;
+  // NOERROR with no AAAA record is normal for IPv4-only providers.
+  final failures = observations
+      .where(
+        (o) =>
+            o.error != null && o.error != DnsError.noAddress ||
+            o.responseCode != null && o.responseCode != 0,
+      )
+      .toList();
+  final reasons = failures.map(_dnsReason).toList();
+  final causes = reasons.expand((r) => r.causes).toSet().toList();
+  final steps = reasons.expand((r) => r.steps).toSet().toList();
+  if (usable) {
+    final v4 = result.addresses
+        .where((a) => a.type == InternetAddressType.IPv4)
+        .length;
+    final v6 = result.addresses
+        .where((a) => a.type == InternetAddressType.IPv6)
+        .length;
+    return DiagnosticFinding(
+      failures.isEmpty ? 'DNS_RESOLVED' : 'DNS_PARTIAL',
+      failures.isEmpty
+          ? 'The provider hostname resolved'
+          : 'DNS resolved with an address-family notice',
+      '$v4 IPv4 and $v6 IPv6 address(es) returned by the system resolver. '
+      '${reasons.map((r) => r.description).toSet().join(' ')} '
+      'Resolution does not verify ownership or rule out filtering later in the connection. Provider checks continue using the current network.',
+      status: failures.isEmpty
+          ? DiagnosticStatus.passed
+          : DiagnosticStatus.warning,
+      evidence: evidence,
+      causes: causes,
+      steps: steps,
+    );
+  }
+  final codes = reasons.map((r) => r.code).toSet();
+  return DiagnosticFinding(
+    codes.length == 1
+        ? codes.single
+        : codes.isEmpty
+        ? 'DNS_NO_ADDRESS'
+        : 'DNS_MIXED_FAILURE',
+    reasons.length == 1 || codes.length == 1
+        ? reasons.first.summary
+        : 'DNS returned no usable server address',
+    '${reasons.isEmpty ? 'The resolver returned no usable IPv4 or IPv6 address.' : reasons.map((r) => r.description).toSet().join(' ')} '
+    'These observations apply to this device’s connection at the time of the check. They do not prove an ISP block or the domain’s status on other networks.',
+    evidence: evidence,
+    causes: causes,
+    steps: steps.isEmpty
+        ? const [
+            'Check the server spelling with your provider.',
+            'Reconnect this device’s network and retry.',
+            'Compare the same device on mobile data or another network if available.',
+          ]
+        : steps,
+  );
+}
+
+DiagnosticFinding _dnsReason(DnsObservation o) {
+  final key = o.error == null
+      ? 'rcode:${o.responseCode}'
+      : 'error:${o.error!.name}';
+  return switch (key) {
+    'rcode:3' => const DiagnosticFinding(
+      'DNS_NXDOMAIN',
+      'The resolver reported that the name does not exist',
+      'NXDOMAIN (3) means the resolver returned a negative name answer. A filtering resolver can also return this response, so it does not establish that the domain is absent everywhere.',
+      causes: [
+        'A misspelled, removed or newly changed provider domain.',
+        'A negative cached answer or DNS filtering policy.',
+      ],
+      steps: [
+        'Check the server spelling with your provider.',
+        'Compare the same device on another network; ask the provider to verify its DNS records.',
+      ],
+    ),
+    'rcode:2' => const DiagnosticFinding(
+      'DNS_SERVFAIL',
+      'The resolver could not complete the DNS request',
+      'SERVFAIL (2) is a failure reported by the resolver. The response does not expose which upstream step failed.',
+      causes: [
+        'An upstream or authoritative DNS outage.',
+        'A DNSSEC validation or resolver configuration problem; validation failure is not confirmed by this result.',
+      ],
+      steps: [
+        'Retry shortly.',
+        'Ask the provider or network administrator to check DNS; compare another connection.',
+      ],
+    ),
+    'rcode:5' => const DiagnosticFinding(
+      'DNS_REFUSED',
+      'The DNS resolver refused the query',
+      'REFUSED (5) means the resolver declined to answer this DNS query.',
+      causes: [
+        'Resolver access rules or DNS policy.',
+        'The selected resolver does not allow this query or client.',
+      ],
+      steps: [
+        'Check Android Private DNS settings and network sign-in.',
+        'Ask the network administrator or DNS operator about its access policy.',
+      ],
+    ),
+    'error:timeout' => const DiagnosticFinding(
+      'DNS_TIMEOUT',
+      'No DNS answer arrived before the deadline',
+      'The device did not receive a usable answer before the lookup deadline. No DNS response code was observed for this query.',
+      causes: [
+        'Packet loss, an unreachable resolver or a stalled network.',
+        'A Private DNS, VPN or router connection problem.',
+      ],
+      steps: [
+        'Reconnect the device and retry.',
+        'Check Android Private DNS and VPN settings; compare another connection.',
+      ],
+    ),
+    'error:notFound' => const DiagnosticFinding(
+      'DNS_NAME_NOT_FOUND',
+      'The system resolver could not find the name',
+      'Android reported a name/address lookup failure without an exact DNS response code. This alone cannot distinguish NXDOMAIN from every other negative answer.',
+      causes: ['An incorrect hostname, missing DNS record or resolver policy.'],
+      steps: [
+        'Check the server spelling with your provider.',
+        'Compare the same device on another network.',
+      ],
+    ),
+    'error:temporary' => const DiagnosticFinding(
+      'DNS_TEMPORARY',
+      'The system resolver reported a temporary failure',
+      'Android reported a temporary resolver failure. It did not expose an exact DNS response code.',
+      causes: ['A transient resolver, upstream DNS or network problem.'],
+      steps: [
+        'Wait briefly and retry.',
+        'Compare another connection if the problem persists.',
+      ],
+    ),
+    'error:unreachable' ||
+    'error:refused' ||
+    'error:noNetwork' => DiagnosticFinding(
+      'DNS_ROUTE_FAILED',
+      'The device could not reach its DNS resolver',
+      'Android reported ${o.error == DnsError.refused
+          ? 'a refused resolver connection'
+          : o.error == DnsError.noNetwork
+          ? 'no active network'
+          : 'an unavailable network route'}. This is a local connection error, not a DNS REFUSED response.',
+      steps: const [
+        'Reconnect Wi-Fi, Ethernet or mobile data.',
+        'Check VPN, router and Android Private DNS settings, then retry.',
+      ],
+    ),
+    'error:permission' => const DiagnosticFinding(
+      'DNS_PERMISSION',
+      'Android denied the DNS operation',
+      'The operating system denied the lookup. No DNS response code was received.',
+      steps: [
+        'Check app network restrictions, managed-device policy and VPN settings.',
+      ],
+    ),
+    'error:parse' || 'rcode:1' || 'rcode:4' => const DiagnosticFinding(
+      'DNS_PROTOCOL',
+      'The DNS answer or query could not be processed',
+      'The recorded response code or Android parser error identifies a DNS protocol failure. The observed evidence shows which occurred.',
+      causes: [
+        'A malformed response, unsupported query or resolver incompatibility.',
+      ],
+      steps: [
+        'Retry and compare another network.',
+        'Share this report with the provider or DNS operator.',
+      ],
+    ),
+    'error:busy' => const DiagnosticFinding(
+      'DNS_DEVICE_BUSY',
+      'The device’s DNS check worker was busy',
+      'No resolver answer was obtained because local diagnostic capacity was unavailable.',
+      steps: ['Wait a few seconds, then run diagnosis again.'],
+    ),
+    _ => const DiagnosticFinding(
+      'DNS_FAILED',
+      'The system resolver could not complete the lookup',
+      'The available system error or DNS response did not provide a more specific explanation. Numeric codes are included when available; raw error text is omitted for privacy.',
+      steps: [
+        'Check the server spelling with your provider.',
+        'Reconnect this device and compare another network if the error persists.',
+      ],
+    ),
+  };
 }
 
 DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
@@ -434,6 +649,12 @@ class ConnectionDiagnostics {
               : n.privateDns!
               ? 'Android reports Private DNS active; this does not hide the stream server IP.'
               : 'Android does not report Private DNS active.',
+          if (n.privateDnsStrict == true)
+            'Private DNS is configured in strict mode; an unreachable DNS-over-TLS service can prevent lookups.',
+          if (n.privateDns == true && n.privateDnsStrict == false)
+            'Private DNS is active in automatic mode.',
+          if (n.dnsServerCount != null)
+            '${n.dnsServerCount} DNS server address(es) advertised on the active network; addresses are omitted for privacy.',
           if (n.metered == true) 'This connection is metered.',
         ].join(' ');
         if (n.connected == false) {
@@ -512,23 +733,12 @@ class ConnectionDiagnostics {
           ),
         );
       } else {
-        addresses = await probe('dns', () => transport.lookup(base.host), (
-          list,
-        ) {
-          if (list.isEmpty) return diagnosticFailure('dns_failed');
-          final v4 = list
-              .where((a) => a.type == InternetAddressType.IPv4)
-              .length;
-          final v6 = list
-              .where((a) => a.type == InternetAddressType.IPv6)
-              .length;
-          return DiagnosticFinding(
-            'DNS_RESOLVED',
-            'The provider hostname resolved',
-            '$v4 IPv4 and $v6 IPv6 address(es) returned by the system resolver. Resolution does not verify ownership or rule out filtering later in the connection.',
-            status: DiagnosticStatus.passed,
-          );
-        });
+        final result = await probe(
+          'dns',
+          () => transport.lookup(base.host),
+          dnsFinding,
+        );
+        addresses = result?.networkChanged == true ? null : result?.addresses;
       }
       if (addresses == null || addresses.isEmpty || _cancelled) return;
       final tcp = await probe(

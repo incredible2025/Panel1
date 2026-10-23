@@ -313,6 +313,18 @@ class _ConnectionDiagnosisScreenState
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(f.description, style: const TextStyle(height: 1.5)),
+          if (f.evidence.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'Observed on this device',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            for (final observed in f.evidence)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('• $observed'),
+              ),
+          ],
           if (f.causes.isNotEmpty) ...[
             const SizedBox(height: 14),
             const Text(

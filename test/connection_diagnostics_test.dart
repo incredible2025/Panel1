@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/data/connection_diagnostics.dart';
 import 'package:streamline_iptv/data/diagnostic_transport.dart';
+import 'package:streamline_iptv/data/dns_lookup.dart';
 import 'package:streamline_iptv/data/models.dart';
 
 const credentials = Credentials(
@@ -33,6 +34,7 @@ class FakeDiagnosticTransport implements DiagnosticTransport {
   final uris = <Uri>[];
   bool closed = false;
   Completer<void>? dnsGate;
+  DnsLookupResult? dnsResult;
   Map<String, dynamic> user = {
     'auth': 1,
     'status': 'Active',
@@ -62,10 +64,11 @@ class FakeDiagnosticTransport implements DiagnosticTransport {
   }
 
   @override
-  Future<List<InternetAddress>> lookup(String host) async {
+  Future<DnsLookupResult> lookup(String host) async {
     check('dns');
     await dnsGate?.future;
-    return [InternetAddress('127.0.0.1'), InternetAddress('::1')];
+    return dnsResult ??
+        DnsLookupResult([InternetAddress('127.0.0.1'), InternetAddress('::1')]);
   }
 
   @override

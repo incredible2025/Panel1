@@ -1,6 +1,6 @@
 # Permanent Android release signing
 
-Permanent signing is prepared but deferred for the current testing release. With no `ANDROID_SIGNING` secret configured, GitHub builds the APK using Android's disposable testing key. It remains installable; updates from another runner can require uninstalling the prior testing app and clearing its local data.
+Permanent signing is enabled from v0.6.3 using the repository's encrypted `ANDROID_SIGNING` Actions secret. Published builds require that secret and the committed public certificate fingerprint. A missing or invalid secret fails the release instead of publishing an APK signed with a disposable testing key.
 
 The release key belongs to this app. Keep an encrypted offline backup of the entire private `.signing` folder, including the PKCS#12 keystore and its password JSON. Losing the key prevents updating existing installations. Neither file belongs in Git, release downloads or build artifacts.
 
@@ -12,9 +12,9 @@ The release key belongs to this app. Keep an encrypted offline backup of the ent
 
 The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `keyPassword`. GitHub encrypts the repository secret. Only the main-branch release job receives it; pull-request validation runs without signing credentials.
 
-When a signing secret is configured, the release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `ultravpn-player.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. An invalid configured secret fails the release; an absent secret selects the testing key explicitly in the build log.
+The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `ultravpn-player.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. Missing or invalid signing configuration fails the release before publication.
 
-Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing a versioned APK and `update.json` for uploading to your own HTTPS host. Testing packages are available too, but a different temporary key cannot upgrade an existing installation. See [remote update setup](UPDATES.md).
+Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing a versioned APK and `update.json` for uploading to your own HTTPS host. Older testing packages use a different temporary key and cannot be upgraded in place by the permanently signed APK. See [remote update setup](UPDATES.md).
 
 ## Local builds
 
@@ -33,6 +33,6 @@ Each release must have a new version in `pubspec.yaml`, including an increasing 
 
 The latest APK is available at:
 
-`https://github.com/incredible2025/Panel1/releases/latest/download/streamline.apk`
+`https://github.com/incredible2025/Panel1/releases/latest/download/ultravpn-player.apk`
 
 The first permanently signed APK cannot replace an installed APK signed by a different disposable test key. Uninstalling the older testing build may be necessary once and removes its local data. Subsequent releases retain the application ID and signing certificate so they can update in place.

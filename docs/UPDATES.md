@@ -11,23 +11,23 @@ Downloads and Android installation approval remain manual.
 
 ## First setup and checking
 
-1. Install the 0.6.2 APK. There is no address to enter or save.
+1. Install the permanently signed 0.6.3 APK (see the migration note below). There is no address to enter or save.
 2. Extract remote-update.zip and upload both files to the public HTTPS folder:
    `https://ultra-vpn.store/dl/app/`.
 3. Upload the versioned APK first, then replace update.json from the same package.
 4. Open Settings > App updates > Check for updates.
 
 The server must serve both URLs directly, without a login or browser-only
-download page. The manifest's apkUrl must match the actual file name. For 0.6.2:
+download page. The manifest's apkUrl must match the actual file name. For 0.6.3:
 
 ```text
 https://ultra-vpn.store/dl/app/update.json
-https://ultra-vpn.store/dl/app/ultravpn-player-0.6.2.apk
+https://ultra-vpn.store/dl/app/ultravpn-player-0.6.3.apk
 ```
 
-Uploading version 0.6.2 when version 0.6.2 is already installed correctly says
+Uploading version 0.6.3 when version 0.6.3 is already installed correctly says
 up to date. To test an actual update offer from that installation, publish a
-later build with a higher version code, for example 0.6.3+11. Do not edit only
+later build with a higher version code, for example 0.6.4+12. Do not edit only
 the JSON version: the actual APK must have that higher version code too.
 
 ## Each subsequent release
@@ -46,7 +46,7 @@ Example after the next update:
 updates/
   update.json                       # replace with each release
   ultravpn-player-0.6.1.apk          # keep previous APKs
-  ultravpn-player-0.6.2.apk          # upload before replacing JSON
+  ultravpn-player-0.6.3.apk          # upload before replacing JSON
 ```
 
 There is no need to enter new server details on each device. The ZIP contains
@@ -66,10 +66,10 @@ up to five times; relative APK paths use the final manifest location.
 {
   "schemaVersion": 1,
   "applicationId": "com.streamline.iptv",
-  "versionName": "0.6.2",
-  "versionCode": 10,
+  "versionName": "0.6.3",
+  "versionCode": 11,
   "minSdk": 24,
-  "apkUrl": "ultravpn-player-0.6.2.apk",
+  "apkUrl": "ultravpn-player-0.6.3.apk",
   "sizeBytes": 100000000,
   "sha256": "replace-with-the-real-64-character-apk-sha256",
   "releaseNotes": "What changed in this release."
@@ -93,9 +93,9 @@ python scripts/create_update_manifest.py --apk ultravpn-player-0.6.1.apk \
 
 Hosting on your own server does not change Android's signing requirement.
 All releases must use the same permanent key for updates that keep account,
-preferences and watch history. See [SIGNING.md](SIGNING.md). The prepared key
-still needs the one-time ANDROID_SIGNING setup for repository builds; it is not
-committed or included in a download. Temporary testing keys from different
+preferences and watch history. See [SIGNING.md](SIGNING.md). From 0.6.3, repository releases require the configured
+ANDROID_SIGNING secret and verify the expected certificate. The private key is
+not committed or included in a download. Temporary testing keys from different
 runners cannot reliably update each other. Migrating a testing installation can
 require uninstalling; uninstalling clears local app data. The updater never
 uninstalls anything.

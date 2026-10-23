@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.3** starts permanent release signing. Published builds require the configured release key and its expected certificate, so future updates retain the same Android signing identity. See [release signing](docs/SIGNING.md) for the one-time migration from older testing builds.
+
 **v0.6.2** embeds the administrator's update endpoint and simplifies App updates to status, check, download and install controls. No address entry is needed. See [remote update hosting](docs/UPDATES.md).
 
 **v0.6.1** removes the preset update host and adds portable remote-update packages. Enter your own HTTPS update.json address in App updates; new installations make no update requests until configured. See [remote update hosting](docs/UPDATES.md).
@@ -20,7 +22,7 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 As a fallback, open **[Actions → ULTRAVPN PLAYER Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 
-The current APK uses Android's disposable testing key. Builds from different runners may require uninstalling the previous testing app, which clears its saved login and local history. Permanent signing is prepared but not enabled; it is required for reliable online updates. See [release signing](docs/SIGNING.md) for the prepared setup.
+From v0.6.3, published APKs use the permanent release key. Moving from an older testing APK may require a one-time uninstall, which clears saved login, preferences and local history. Later builds signed with the same key can update in place. See [release signing](docs/SIGNING.md).
 
 ## Stack
 

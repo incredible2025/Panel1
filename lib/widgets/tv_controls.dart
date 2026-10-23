@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../core/design_system.dart';
 
+enum TvControlStyle { button, navigation, row, poster, primary }
+
 /// Large, high-contrast remote target. Focus and selection have distinct styles.
 class TvControl extends StatefulWidget {
   const TvControl({
@@ -17,6 +19,7 @@ class TvControl extends StatefulWidget {
     this.onKeyEvent,
     this.reveal = true,
     this.padding = const EdgeInsets.all(14),
+    this.style = TvControlStyle.button,
   });
   final Widget child;
   final VoidCallback onPressed;
@@ -26,6 +29,7 @@ class TvControl extends StatefulWidget {
   final VoidCallback? onFocused;
   final FocusOnKeyEventCallback? onKeyEvent;
   final EdgeInsets padding;
+  final TvControlStyle style;
   @override
   State<TvControl> createState() => _TvControlState();
 }
@@ -33,6 +37,11 @@ class TvControl extends StatefulWidget {
 class _TvControlState extends State<TvControl> {
   final _own = FocusNode();
   bool _focused = false;
+  bool get _poster => widget.style == TvControlStyle.poster;
+  bool get _navigation => widget.style == TvControlStyle.navigation;
+  bool get _row => widget.style == TvControlStyle.row;
+  bool get _light =>
+      _focused && !_poster || widget.style == TvControlStyle.primary;
   @override
   void dispose() {
     _own.dispose();
@@ -89,43 +98,84 @@ class _TvControlState extends State<TvControl> {
               ? Duration.zero
               : const Duration(milliseconds: 100),
           decoration: BoxDecoration(
-            color: _focused
+            color: _light
                 ? AppColors.text
                 : widget.selected
-                ? const Color(0xFF153F54)
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(12),
+                ? const Color(0xFF1A2735)
+                : _row || _navigation || _poster
+                ? Colors.transparent
+                : const Color(0xFF18212D),
+            borderRadius: BorderRadius.circular(_poster ? 8 : 7),
             border: Border.all(
               width: 2,
               color: _focused
-                  ? AppColors.accent
-                  : widget.selected
-                  ? AppColors.accent.withValues(alpha: .55)
-                  : const Color(0xFF203148),
+                  ? widget.style == TvControlStyle.primary
+                        ? AppColors.accent
+                        : Colors.white
+                  : Colors.transparent,
             ),
+            boxShadow: _focused && _poster
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: .45),
+                      blurRadius: 18,
+                      offset: const Offset(0, 7),
+                    ),
+                  ]
+                : null,
           ),
-          child: Material(
-            type: MaterialType.transparency,
-            child: DefaultTextStyle.merge(
-              style: TextStyle(
-                color: _focused ? AppColors.canvas : AppColors.text,
-                fontSize: 18,
-                height: 1.2,
-                fontWeight: _focused ? FontWeight.w700 : FontWeight.w500,
-              ),
-              child: IconTheme.merge(
-                data: IconThemeData(
-                  color: _focused ? AppColors.canvas : AppColors.accent,
-                  size: 23,
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              if (widget.selected && !_focused && (_row || _navigation))
+                Positioned(
+                  left: _row ? 0 : 18,
+                  right: _row ? null : 18,
+                  top: _row ? 12 : null,
+                  bottom: _row ? 12 : 0,
+                  width: _row ? 3 : null,
+                  height: _row ? null : 2,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-                child: InkWell(
-                  canRequestFocus: false,
-                  onTap: widget.onPressed,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(padding: widget.padding, child: widget.child),
+              Material(
+                type: MaterialType.transparency,
+                child: DefaultTextStyle.merge(
+                  style: TextStyle(
+                    color: _light ? AppColors.canvas : AppColors.text,
+                    fontSize: 18,
+                    height: 1.2,
+                    fontWeight: _focused
+                        ? FontWeight.w700
+                        : widget.selected ||
+                              widget.style == TvControlStyle.primary
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                  child: IconTheme.merge(
+                    data: IconThemeData(
+                      color: _light
+                          ? AppColors.canvas
+                          : const Color(0xFFB5C3D3),
+                      size: 23,
+                    ),
+                    child: InkWell(
+                      canRequestFocus: false,
+                      onTap: widget.onPressed,
+                      borderRadius: BorderRadius.circular(7),
+                      child: Padding(
+                        padding: widget.padding,
+                        child: widget.child,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -142,8 +192,9 @@ class TvListEntry {
     this.selected = false,
     this.leading,
     this.onFocused,
+    this.trailing = '',
   });
-  final String id, title, subtitle;
+  final String id, title, subtitle, trailing;
   final bool selected;
   final Widget? leading;
   final VoidCallback onPressed;
@@ -276,6 +327,7 @@ class TvRemoteListState extends State<TvRemoteList> {
         key: ValueKey(e.id),
         padding: const EdgeInsets.only(bottom: 7),
         child: TvControl(
+          style: TvControlStyle.row,
           autofocus:
               widget.autofocus &&
               (e.selected ||
@@ -291,7 +343,10 @@ class TvRemoteListState extends State<TvRemoteList> {
             e.onFocused?.call();
           },
           onPressed: e.onPressed,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: widget.extent <= 60 ? 3 : 5,
+          ),
           child: Row(
             children: [
               if (e.leading != null) ...[e.leading!, const SizedBox(width: 10)],
@@ -300,7 +355,17 @@ class TvRemoteListState extends State<TvRemoteList> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                      e.title,
+                      maxLines: e.subtitle.isEmpty && e.trailing.isEmpty
+                          ? 2
+                          : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: widget.extent <= 60 ? 17 : 18,
+                        height: 1.1,
+                      ),
+                    ),
                     if (e.subtitle.isNotEmpty)
                       Text(
                         e.subtitle,
@@ -315,9 +380,15 @@ class TvRemoteListState extends State<TvRemoteList> {
                   ],
                 ),
               ),
-              if (e.selected) ...[
-                const SizedBox(width: 7),
-                const Icon(Icons.check_rounded, size: 18),
+              if (e.trailing.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Text(
+                  e.trailing,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
               ],
             ],
           ),

@@ -81,7 +81,10 @@ class _CoverPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [color, AppColors.canvas],
+          colors: [
+            Color.lerp(const Color(0xFF101824), color, .3)!,
+            const Color(0xFF080D15),
+          ],
         ).createShader(rect),
     );
     final center = Offset(size.width * .8, size.height * .22);
@@ -92,41 +95,13 @@ class _CoverPainter extends CustomPainter {
         ..shader =
             RadialGradient(
               colors: [
-                AppColors.accent.withValues(alpha: .1),
+                AppColors.accent.withValues(alpha: .055),
                 Colors.transparent,
               ],
             ).createShader(
               Rect.fromCircle(center: center, radius: size.longestSide * .58),
             ),
     );
-    canvas.save();
-    canvas.translate(size.width * .5, size.height * .5);
-    canvas.rotate(-.45);
-    for (var i = -2; i < 6; i++) {
-      final left = i * size.width * .23;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            left,
-            -size.longestSide,
-            size.width * .105,
-            size.longestSide * 2,
-          ),
-          Radius.circular(size.width * .05),
-        ),
-        Paint()
-          ..shader =
-              LinearGradient(
-                colors: [
-                  Colors.white.withValues(alpha: .06),
-                  Colors.transparent,
-                ],
-              ).createShader(
-                Rect.fromLTWH(left, -size.height, size.width, size.height * 2),
-              ),
-      );
-    }
-    canvas.restore();
     final initials = title
         .trim()
         .split(RegExp(r'\s+'))
@@ -141,9 +116,9 @@ class _CoverPainter extends CustomPainter {
         style: TextStyle(
           fontFamily: 'Streamline Display',
           fontWeight: FontWeight.w700,
-          fontSize: math.min(size.width * .32, size.height * .32),
-          color: AppColors.text.withValues(alpha: .16),
-          letterSpacing: -2,
+          fontSize: math.min(size.width * .2, size.height * .23),
+          color: AppColors.text.withValues(alpha: .2),
+          letterSpacing: 1,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -151,13 +126,6 @@ class _CoverPainter extends CustomPainter {
     text.paint(
       canvas,
       Offset((size.width - text.width) / 2, (size.height - text.height) / 2),
-    );
-    canvas.drawRect(
-      rect.deflate(.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..color = Colors.white.withValues(alpha: .04)
-        ..strokeWidth = 1,
     );
   }
 

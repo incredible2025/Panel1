@@ -36,3 +36,36 @@ class TvGlassScope extends InheritedWidget {
   @override
   bool updateShouldNotify(TvGlassScope oldWidget) => false;
 }
+
+class TvGlassBackdrop extends StatelessWidget {
+  const TvGlassBackdrop({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: TvGlass.canvas,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment(.9, -.6),
+              radius: 1.3,
+              colors: [Color(0xFF075568), Color(0x00075568)],
+            ),
+          ),
+        ),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.topLeft,
+              radius: 1.15,
+              colors: [Color(0xFF253A7B), Color(0x00253A7B)],
+            ),
+          ),
+        ),
+        child,
+      ],
+    ),
+  );
+}

@@ -360,71 +360,72 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                 builder: (context, box) {
                   // Match the approved 1024-wide artwork at 540p, 720p and 1080p.
                   final height = box.maxHeight * 1024 / box.maxWidth;
-                  return FittedBox(
-                    fit: BoxFit.contain,
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: 1024,
-                      height: height,
-                      child: DecoratedBox(
-                        decoration: TvGlass.background,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _glassHeader(),
-                            Expanded(
-                              child: switch (_section) {
-                                'home' => _home(),
-                                'settings' => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 26,
+                  return SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      alignment: Alignment.topLeft,
+                      child: SizedBox(
+                        width: 1024,
+                        height: height,
+                        child: TvGlassBackdrop(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _glassHeader(),
+                              Expanded(
+                                child: switch (_section) {
+                                  'home' => _home(),
+                                  'settings' => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 26,
+                                    ),
+                                    child: _settingsHome(info),
                                   ),
-                                  child: _settingsHome(info),
-                                ),
-                                'list' => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 26,
+                                  'list' => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 26,
+                                    ),
+                                    child: _saved(),
                                   ),
-                                  child: _saved(),
-                                ),
-                                _ => _library(true),
-                              },
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 26,
+                                  _ => _library(true),
+                                },
                               ),
-                              child: SizedBox(
-                                height: 38,
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        info?.expiring == true
-                                            ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
-                                            : '↕ ↔  Browse     OK  Details / watch     ↶  Back',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: info?.expiring == true
-                                              ? AppColors.danger
-                                              : TvGlass.muted,
-                                          fontSize: 10,
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 26,
+                                ),
+                                child: SizedBox(
+                                  height: 38,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          info?.expiring == true
+                                              ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
+                                              : 'D-pad  Browse     OK  Details / watch     Back  Home',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: info?.expiring == true
+                                                ? AppColors.danger
+                                                : TvGlass.muted,
+                                            fontSize: 10,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    Text(
-                                      guideClock(DateTime.now()),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: TvGlass.muted,
+                                      Text(
+                                        guideClock(DateTime.now()),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: TvGlass.muted,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -645,7 +646,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final categories = <TvListEntry>[
       TvListEntry(
         id: 'all',
-        title: 'All',
+        title: _kind == MediaKind.live ? 'All channels' : 'All',
         selected: _category[_kind] == null && _liveFilter == 'all',
         trailing: '${all.length}',
         onPressed: () => _chooseCategory(null),

@@ -23,6 +23,7 @@ import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_glass_guide.dart';
+import 'package:streamline_iptv/widgets/tv_glass_theme.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
@@ -466,7 +467,10 @@ Future<void> _remoteSort(
   await tester.pumpAndSettle();
   await tester.sendKeyEvent(LogicalKeyboardKey.select);
   await tester.pumpAndSettle();
-  final newestOption = find.text('Recently added');
+  final newestOption = find.descendant(
+    of: find.byType(SimpleDialog),
+    matching: find.text('Recently added'),
+  );
   expect(newestOption, findsOneWidget);
   Focus.of(tester.element(newestOption)).requestFocus();
   await tester.pumpAndSettle();
@@ -609,6 +613,10 @@ void main() {
       await remote(tester, LogicalKeyboardKey.arrowDown);
       await remote(tester, LogicalKeyboardKey.arrowRight);
       expect(find.byType(TvGlassGuide), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(TvGlassBackdrop)),
+        Rect.fromLTWH(0, 0, size.width, size.height),
+      );
       expect(find.text('Nature HD').hitTestable(), findsOneWidget);
       expect(
         FocusManager.instance.primaryFocus?.debugLabel,
@@ -1594,7 +1602,10 @@ void main() {
           await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         }
         await tester.pumpAndSettle();
-        expect(FocusManager.instance.primaryFocus?.debugLabel, 'Category: All');
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          kind == MediaKind.live ? 'Category: All channels' : 'Category: All',
+        );
         final extra = kind == MediaKind.live ? 3 : 1;
         for (var i = 0; i < 12 + extra; i++) {
           await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);

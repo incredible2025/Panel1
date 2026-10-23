@@ -396,12 +396,7 @@ class TvRemoteListState extends State<TvRemoteList> {
                   children: [
                     Text(
                       e.title,
-                      maxLines:
-                          !widget.dense &&
-                              e.subtitle.isEmpty &&
-                              e.trailing.isEmpty
-                          ? 2
-                          : 1,
+                      maxLines: e.subtitle.isEmpty ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: widget.dense
@@ -409,7 +404,7 @@ class TvRemoteListState extends State<TvRemoteList> {
                             : widget.extent <= 60
                             ? 17
                             : 18,
-                        height: 1.1,
+                        height: widget.dense ? 1 : 1.1,
                       ),
                     ),
                     if (e.subtitle.isNotEmpty)

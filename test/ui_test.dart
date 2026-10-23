@@ -22,6 +22,11 @@ import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
+import 'package:streamline_iptv/core/update_controller.dart';
+import 'package:streamline_iptv/features/app_updates_screen.dart';
+import 'package:streamline_iptv/features/speed_test_screen.dart';
+import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
+import 'app_update_test.dart' show FakePlatform, FakeTransport;
 
 import 'support/qa_artwork.dart';
 
@@ -234,6 +239,7 @@ Future<void> _pumpApp(
   List<MediaItem>? liveChannels,
   List<MediaItem>? seriesItems,
   Map<MediaKind, List<Category>>? suppliedCategories,
+  UpdateController? updater,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -247,6 +253,8 @@ Future<void> _pumpApp(
         storeProvider.overrideWithValue(store),
         sessionProvider.overrideWith((ref) => signedIn ? _account : null),
         isTvProvider.overrideWithValue(tv),
+        if (updater != null)
+          updateControllerProvider.overrideWith((ref) => updater),
         if (api != null) apiProvider.overrideWithValue(api),
         categoriesProvider.overrideWith(
           (ref, kind) async =>
@@ -487,6 +495,155 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  Future<void> remote(
+    WidgetTester tester,
+    LogicalKeyboardKey key, [
+    int count = 1,
+  ]) async {
+    for (var i = 0; i < count; i++) {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+    }
+  }
+
+  bool focused(Finder label) {
+    final target = FocusManager.instance.primaryFocus?.context;
+    return label.evaluate().any((element) {
+      var found = identical(element, target);
+      element.visitAncestorElements((parent) {
+        if (identical(parent, target)) {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return found;
+    });
+  }
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest(
+      'TV audit remote-only Settings shortcut and maintenance update journey at $size',
+      (tester) async {
+        final platform = FakePlatform()..checked = DateTime.now();
+        final updater = UpdateController(platform, FakeTransport());
+        final store = _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'settings');
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: size,
+          updater: updater,
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(focused(find.text('Speed test')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('App updates')), isTrue);
+        expect(find.text('App updates').hitTestable(), findsOneWidget);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(AppUpdatesScreen), findsOneWidget);
+        expect(focused(find.text('Check for updates')), isTrue);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(focused(find.text('App updates')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowUp);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(SpeedTestScreen), findsOneWidget);
+        expect(find.text('Start speed test').hitTestable(), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await remote(tester, LogicalKeyboardKey.arrowLeft);
+        await remote(tester, LogicalKeyboardKey.arrowDown, 5);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(SettingsScreen), findsOneWidget);
+        expect(focused(find.text('Speed test')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('Connection diagnosis')), isTrue);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(ConnectionDiagnosisScreen), findsOneWidget);
+        expect(find.text('Run diagnosis').hitTestable(), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('App updates')), isTrue);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(focused(find.text('Check for updates')), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (var group = 0; group < 6; group++) {
+    _uiTest(
+      'TV audit all Settings group $group controls remain reachable by remote',
+      (tester) async {
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          screen: SettingsScreen(groupIndex: group),
+          viewport: const Size(960, 540),
+        );
+        final visited = <FocusNode>{};
+        for (var i = 0; i < 32; i++) {
+          final node = FocusManager.instance.primaryFocus;
+          if (node != null) visited.add(node);
+          await remote(tester, LogicalKeyboardKey.arrowDown);
+        }
+        expect(visited.length, greaterThanOrEqualTo([4, 6, 5, 3, 1, 7][group]));
+        expect(
+          focused(
+            find.text(
+              [
+                'Play the next episode',
+                'Subtitle background',
+                'Personal movie recommendations',
+                'Set parental PIN',
+                'Refresh account information',
+                'Sign out',
+              ][group],
+            ),
+          ),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  _uiTest('TV audit distant categories can be managed using only the remote', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      viewport: const Size(960, 540),
+      screen: const CategorySettingsScreen(),
+      suppliedCategories: {
+        MediaKind.live: List.generate(
+          80,
+          (i) => Category(id: '$i', name: 'Group $i'),
+        ),
+      },
+    );
+    await remote(tester, LogicalKeyboardKey.arrowDown, 45);
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Manage category: Group 45',
+    );
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(focused(find.text('Move up')), isTrue);
+    await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(store.preferences.hiddenCategories, contains('live:45'));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Manage category: Group 45',
+    );
+    expect(tester.takeException(), isNull);
+  });
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     for (final section in ['home', 'live', 'movie', 'series', 'settings']) {
       _uiTest('TV redesign visual $section fits ${size.width} x ${size.height}', (

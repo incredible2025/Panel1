@@ -7,8 +7,9 @@ import '../widgets/media_card.dart';
 import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
+import '../widgets/tv_page_navigation.dart';
 
-class TvMovieView extends StatelessWidget {
+class TvMovieView extends StatefulWidget {
   const TvMovieView({
     super.key,
     required this.item,
@@ -24,196 +25,222 @@ class TvMovieView extends StatelessWidget {
   final bool opening;
   final VoidCallback onPlay, onReload;
   @override
+  State<TvMovieView> createState() => _TvMovieViewState();
+}
+
+class _TvMovieViewState extends State<TvMovieView> {
+  final _reading = FocusNode(debugLabel: 'Movie description');
+  final _play = FocusNode(debugLabel: 'Movie play');
+  @override
+  void dispose() {
+    _reading.dispose();
+    _play.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item, detail = widget.detail, saved = widget.saved;
+    final opening = widget.opening,
+        onPlay = widget.onPlay,
+        onReload = widget.onReload;
     final movie = detail.asData?.value;
-    return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Artwork(
-            url: movie?.backdropUrl ?? item.imageUrl,
-            title: item.name,
-            darken: .9,
-          ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      TvControl(
-                        label: 'Back',
-                        onPressed: () => Navigator.maybePop(context),
-                        child: const Row(
+    return TvPageNavigation(
+      enabled: true,
+      onBottom: _reading.requestFocus,
+      child: Scaffold(
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            Artwork(
+              url: movie?.backdropUrl ?? item.imageUrl,
+              title: item.name,
+              darken: .9,
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        TvControl(
+                          label: 'Back',
+                          onPressed: () => Navigator.maybePop(context),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.arrow_back),
+                              SizedBox(width: 8),
+                              Text('Back'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        const Expanded(
+                          child: Text(
+                            'MOVIE DETAILS',
+                            style: TextStyle(
+                              fontSize: 15,
+                              letterSpacing: 2,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ),
+                        TvControl(
+                          label: 'Refresh details',
+                          onPressed: onReload,
+                          child: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, size) => Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Icon(Icons.arrow_back),
-                            SizedBox(width: 8),
-                            Text('Back'),
+                            SizedBox(
+                              width: (size.maxWidth * .23).clamp(150, 270),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: Artwork(
+                                  url: item.imageUrl,
+                                  title: item.name,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 30),
+                            Expanded(
+                              child: TvScrollPane(
+                                label: 'Movie details, synopsis and cast',
+                                focusNode: _reading,
+                                onRight: _play.requestFocus,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(
+                                        fontSize: 42,
+                                        height: 1.05,
+                                        fontWeight: FontWeight.w700,
+                                        fontFamily: 'Streamline Display',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      [
+                                            movie?.year,
+                                            movie?.genre,
+                                            if ((movie?.rating ?? item.rating)
+                                                .isNotEmpty)
+                                              'Rating ${movie?.rating ?? item.rating}',
+                                            movie?.duration,
+                                          ]
+                                          .whereType<String>()
+                                          .where((s) => s.isNotEmpty)
+                                          .join('   ·   '),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        color: AppColors.muted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        TvControl(
+                                          focusNode: _play,
+                                          autofocus: true,
+                                          onPressed: opening ? () {} : onPlay,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                saved == null
+                                                    ? Icons.play_arrow
+                                                    : Icons.history,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Text(
+                                                opening
+                                                    ? 'Opening…'
+                                                    : saved == null
+                                                    ? 'Play movie'
+                                                    : 'Resume movie',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        MyListButton(item: item),
+                                      ],
+                                    ),
+                                    if (saved != null) ...[
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Continue from ${formatPlaybackTime(saved.positionMs)}',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          color: AppColors.accent,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      LinearProgressIndicator(
+                                        value: saved.progress,
+                                        minHeight: 4,
+                                      ),
+                                    ],
+                                    const SizedBox(height: 24),
+                                    if (detail.isLoading)
+                                      const LinearProgressIndicator()
+                                    else if (detail.hasError)
+                                      TextButton(
+                                        onPressed: onReload,
+                                        child: const Text(
+                                          'Details unavailable · Retry',
+                                        ),
+                                      )
+                                    else
+                                      Text(
+                                        movie?.plot.isNotEmpty == true
+                                            ? movie!.plot
+                                            : 'Your provider has not supplied a synopsis.',
+                                        style: const TextStyle(
+                                          fontSize: 19,
+                                          height: 1.55,
+                                        ),
+                                      ),
+                                    if (movie?.cast.isNotEmpty == true)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 20),
+                                        child: Text(
+                                          'Cast  ${movie!.cast}',
+                                          style: const TextStyle(
+                                            fontSize: 17,
+                                            height: 1.5,
+                                            color: AppColors.muted,
+                                          ),
+                                        ),
+                                      ),
+                                    const SizedBox(height: 20),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 20),
-                      const Expanded(
-                        child: Text(
-                          'MOVIE DETAILS',
-                          style: TextStyle(
-                            fontSize: 15,
-                            letterSpacing: 2,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ),
-                      TvControl(
-                        label: 'Refresh details',
-                        onPressed: onReload,
-                        child: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, size) => Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: (size.maxWidth * .23).clamp(150, 270),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Artwork(
-                                url: item.imageUrl,
-                                title: item.name,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 30),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(
-                                      fontSize: 42,
-                                      height: 1.05,
-                                      fontWeight: FontWeight.w700,
-                                      fontFamily: 'Streamline Display',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    [
-                                          movie?.year,
-                                          movie?.genre,
-                                          if ((movie?.rating ?? item.rating)
-                                              .isNotEmpty)
-                                            '★ ${movie?.rating ?? item.rating}',
-                                          movie?.duration,
-                                        ]
-                                        .whereType<String>()
-                                        .where((s) => s.isNotEmpty)
-                                        .join('   ·   '),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      color: AppColors.muted,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 22),
-                                  Wrap(
-                                    spacing: 12,
-                                    runSpacing: 12,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      TvControl(
-                                        autofocus: true,
-                                        onPressed: opening ? () {} : onPlay,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              saved == null
-                                                  ? Icons.play_arrow
-                                                  : Icons.history,
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Text(
-                                              opening
-                                                  ? 'Opening…'
-                                                  : saved == null
-                                                  ? 'Play movie'
-                                                  : 'Resume movie',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      MyListButton(item: item),
-                                    ],
-                                  ),
-                                  if (saved != null) ...[
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'Continue from ${formatPlaybackTime(saved!.positionMs)}',
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        color: AppColors.accent,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    LinearProgressIndicator(
-                                      value: saved!.progress,
-                                      minHeight: 4,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 24),
-                                  if (detail.isLoading)
-                                    const LinearProgressIndicator()
-                                  else if (detail.hasError)
-                                    TextButton(
-                                      onPressed: onReload,
-                                      child: const Text(
-                                        'Details unavailable · Retry',
-                                      ),
-                                    )
-                                  else
-                                    Text(
-                                      movie?.plot.isNotEmpty == true
-                                          ? movie!.plot
-                                          : 'Your provider has not supplied a synopsis.',
-                                      style: const TextStyle(
-                                        fontSize: 19,
-                                        height: 1.55,
-                                      ),
-                                    ),
-                                  if (movie?.cast.isNotEmpty == true)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 20),
-                                      child: Text(
-                                        'Cast  ${movie!.cast}',
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          height: 1.5,
-                                          color: AppColors.muted,
-                                        ),
-                                      ),
-                                    ),
-                                  const SizedBox(height: 20),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

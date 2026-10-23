@@ -8,6 +8,7 @@ import '../data/connection_diagnostics.dart';
 import '../data/diagnostic_transport.dart';
 import '../data/models.dart';
 import '../widgets/parental_access.dart';
+import '../widgets/tv_page_navigation.dart';
 
 final connectionDiagnosticsFactoryProvider =
     Provider<ConnectionDiagnostics Function()>(
@@ -161,121 +162,129 @@ class _ConnectionDiagnosisScreenState
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Connection diagnosis')),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1040),
-            child: FocusTraversalGroup(
-              child: ListView(
-                padding: const EdgeInsets.all(24),
-                children: [
-                  const Eyebrow('UNDERSTAND YOUR CONNECTION'),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Find the cause. See the next step.',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Check the device network, provider DNS, server port, HTTPS, account and library endpoints. Each failed check explains what happened and how to respond.',
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Checks contact your configured provider and the system DNS resolver. There is no external speed-test or diagnosis service. Reports omit server addresses, login details and viewing titles.',
-                    style: TextStyle(color: AppColors.muted, height: 1.5),
-                  ),
-                  const SizedBox(height: 16),
-                  if (widget.canTestStream && widget.item != null)
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Include selected stream sample'),
-                      subtitle: const Text(
-                        'Optional: opens one short stream request, reads at most 64 KiB, then closes it. This can briefly count as a provider connection. It does not decode video or measure sustained speed.',
-                      ),
-                      value: _includeStream,
-                      onChanged: _busy
-                          ? null
-                          : (value) => setState(() => _includeStream = value),
-                    )
-                  else
-                    const Text(
-                      'No video stream will be opened. To test a selected stream, use Connection diagnosis from the player’s error screen.',
-                      style: TextStyle(color: AppColors.muted),
-                    ),
-                  const SizedBox(height: 18),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+      body: TvPageNavigation(
+        enabled: ref.watch(isTvProvider),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1040),
+              child: FocusTraversalGroup(
+                policy: WidgetOrderTraversalPolicy(),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      FilledButton.icon(
-                        autofocus: true,
-                        onPressed: credentials == null
-                            ? null
-                            : _busy
-                            ? _stop
-                            : _run,
-                        icon: Icon(
-                          _busy
-                              ? Icons.stop_circle_outlined
-                              : Icons.network_check,
-                        ),
-                        label: Text(
-                          _busy
-                              ? 'Stop diagnosis'
-                              : report == null
-                              ? 'Run diagnosis'
-                              : 'Run again',
-                        ),
+                      const Eyebrow('UNDERSTAND YOUR CONNECTION'),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Find the cause. See the next step.',
+                        style: Theme.of(context).textTheme.headlineMedium,
                       ),
-                      OutlinedButton.icon(
-                        onPressed: report == null || _busy ? null : _copy,
-                        icon: const Icon(Icons.copy_outlined),
-                        label: const Text('Copy private report'),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Check the device network, provider DNS, server port, HTTPS, account and library endpoints. Each failed check explains what happened and how to respond.',
                       ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Checks contact your configured provider and the system DNS resolver. There is no external speed-test or diagnosis service. Reports omit server addresses, login details and viewing titles.',
+                        style: TextStyle(color: AppColors.muted, height: 1.5),
+                      ),
+                      const SizedBox(height: 16),
+                      if (widget.canTestStream && widget.item != null)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Include selected stream sample'),
+                          subtitle: const Text(
+                            'Optional: opens one short stream request, reads at most 64 KiB, then closes it. This can briefly count as a provider connection. It does not decode video or measure sustained speed.',
+                          ),
+                          value: _includeStream,
+                          onChanged: _busy
+                              ? null
+                              : (value) =>
+                                    setState(() => _includeStream = value),
+                        )
+                      else
+                        const Text(
+                          'No video stream will be opened. To test a selected stream, use Connection diagnosis from the player’s error screen.',
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          FilledButton.icon(
+                            autofocus: true,
+                            onPressed: credentials == null
+                                ? null
+                                : _busy
+                                ? _stop
+                                : _run,
+                            icon: Icon(
+                              _busy
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.network_check,
+                            ),
+                            label: Text(
+                              _busy
+                                  ? 'Stop diagnosis'
+                                  : report == null
+                                  ? 'Run diagnosis'
+                                  : 'Run again',
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: report == null || _busy ? null : _copy,
+                            icon: const Icon(Icons.copy_outlined),
+                            label: const Text('Copy private report'),
+                          ),
+                        ],
+                      ),
+                      if (credentials == null)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 16),
+                          child: Text(
+                            'Enter your provider address and account details on the sign-in screen first.',
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+                      if (_busy) ...[
+                        LinearProgressIndicator(
+                          value: completed / diagnosticStages.length,
+                        ),
+                        const SizedBox(height: 12),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            'Checking: $next… Each network probe is limited to eight seconds.',
+                          ),
+                        ),
+                      ] else if (report != null)
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            report.summary,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                      const SizedBox(height: 18),
+                      if (report != null)
+                        for (final check in report.checks) _checkCard(check),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'What these checks cannot prove',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'A timeout does not prove ISP blocking. Android’s network/VPN/Private DNS indicators are a snapshot and do not verify a tunnel or DNS provider. Secure DNS does not hide the stream server IP. Successful API or sample tests do not guarantee working codecs, audio, subtitles or uninterrupted playback. Secure DNS configuration is not changed by this screen.',
+                        style: TextStyle(color: AppColors.muted, height: 1.5),
+                      ),
+                      const SizedBox(height: 32),
                     ],
                   ),
-                  if (credentials == null)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: Text(
-                        'Enter your provider address and account details on the sign-in screen first.',
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  if (_busy) ...[
-                    LinearProgressIndicator(
-                      value: completed / diagnosticStages.length,
-                    ),
-                    const SizedBox(height: 12),
-                    Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        'Checking: $next… Each network probe is limited to eight seconds.',
-                      ),
-                    ),
-                  ] else if (report != null)
-                    Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        report.summary,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                  const SizedBox(height: 18),
-                  if (report != null)
-                    for (final check in report.checks) _checkCard(check),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'What these checks cannot prove',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'A timeout does not prove ISP blocking. Android’s network/VPN/Private DNS indicators are a snapshot and do not verify a tunnel or DNS provider. Secure DNS does not hide the stream server IP. Successful API or sample tests do not guarantee working codecs, audio, subtitles or uninterrupted playback. Secure DNS configuration is not changed by this screen.',
-                    style: TextStyle(color: AppColors.muted, height: 1.5),
-                  ),
-                  const SizedBox(height: 32),
-                ],
+                ),
               ),
             ),
           ),

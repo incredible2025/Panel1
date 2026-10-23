@@ -1,12 +1,17 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../core/provider_config.dart';
+import '../core/update_controller.dart';
 import '../data/xtream_api.dart';
+import '../widgets/tv_controls.dart';
+import '../widgets/tv_glass_theme.dart';
+import '../widgets/tv_text_entry_dialog.dart';
 import 'connection_diagnosis_screen.dart';
 import 'app_updates_screen.dart';
 
@@ -21,19 +26,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _form = GlobalKey<FormState>();
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _tvUsername = FocusNode(debugLabel: 'Login username');
+  final _tvPassword = FocusNode(debugLabel: 'Login password');
+  final _tvConnect = FocusNode(debugLabel: 'Login connect');
+  final _tvUpdates = FocusNode(debugLabel: 'Login updates');
+  final _tvDiagnosis = FocusNode(debugLabel: 'Login diagnosis');
   bool _obscured = true;
   bool _busy = false;
+  bool _editing = false;
   String? _error;
 
   @override
   void dispose() {
     _username.dispose();
     _password.dispose();
+    _tvUsername.dispose();
+    _tvPassword.dispose();
+    _tvConnect.dispose();
+    _tvUpdates.dispose();
+    _tvDiagnosis.dispose();
     super.dispose();
   }
 
   Future<void> _signIn() async {
-    if (_busy || !_form.currentState!.validate()) return;
+    if (_busy || _editing) return;
+    if (ref.read(isTvProvider)) {
+      if (_username.text.trim().isEmpty || _password.text.isEmpty) {
+        setState(
+          () => _error = _username.text.trim().isEmpty
+              ? 'Enter your username'
+              : 'Enter your password',
+        );
+        (_username.text.trim().isEmpty ? _tvUsername : _tvPassword)
+            .requestFocus();
+        return;
+      }
+    } else if (!_form.currentState!.validate()) {
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -60,6 +90,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final tv = ref.watch(isTvProvider);
+    if (tv) {
+      return _tvLogin(
+        context,
+        hasUpdate: ref.watch(updateControllerProvider).update != null,
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: Stack(
@@ -133,6 +169,399 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editTvField(bool password) async {
+    if (_busy || _editing) return;
+    _editing = true;
+    bool? committed;
+    try {
+      final route = DialogRoute<bool>(
+        context: context,
+        builder: (_) => TvTextEntryDialog(
+          controller: password ? _password : _username,
+          label: password ? 'Password' : 'Username',
+          password: password,
+        ),
+      );
+      committed = await Navigator.of(context).push(route);
+      await route.completed;
+    } finally {
+      _editing = false;
+    }
+    if (!mounted) return;
+    setState(() => _error = null);
+    final current = password ? _tvPassword : _tvUsername;
+    final next = password ? _tvConnect : _tvPassword;
+    (committed == true ? next : current).requestFocus();
+  }
+
+  KeyEventResult _tvKey(
+    KeyEvent event, {
+    FocusNode? up,
+    FocusNode? down,
+    FocusNode? left,
+    FocusNode? right,
+  }) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final destination = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => up,
+      LogicalKeyboardKey.arrowDown => down,
+      LogicalKeyboardKey.arrowLeft => left,
+      LogicalKeyboardKey.arrowRight => right,
+      _ => null,
+    };
+    if ([
+      LogicalKeyboardKey.arrowUp,
+      LogicalKeyboardKey.arrowDown,
+      LogicalKeyboardKey.arrowLeft,
+      LogicalKeyboardKey.arrowRight,
+    ].contains(event.logicalKey)) {
+      destination?.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Widget _tvLogin(
+    BuildContext context, {
+    required bool hasUpdate,
+  }) => TvGlassScope(
+    child: Theme(
+      data: TvGlass.theme(Theme.of(context)),
+      child: Scaffold(
+        backgroundColor: TvGlass.canvas,
+        resizeToAvoidBottomInset: false,
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, size) => SizedBox.expand(
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: 1024,
+                  height: size.maxHeight * 1024 / size.maxWidth,
+                  child: TvGlassBackdrop(
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: 64,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 26),
+                            child: Row(
+                              children: [
+                                const StreamlineMark(size: 25, wordmark: true),
+                                const Spacer(),
+                                TvControl(
+                                  focusNode: _tvDiagnosis,
+                                  label: 'Connection diagnosis',
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 13,
+                                    vertical: 9,
+                                  ),
+                                  onKeyEvent: (_, event) => _tvKey(
+                                    event,
+                                    down: _tvUsername,
+                                    right: _tvUpdates,
+                                  ),
+                                  onPressed: () {
+                                    if (!_busy) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              ConnectionDiagnosisScreen(
+                                                credentials: portalCredentials(
+                                                  _username.text,
+                                                  _password.text,
+                                                ),
+                                              ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: const Text(
+                                    'Connection diagnosis',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                if (hasUpdate)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 12),
+                                    child: Text(
+                                      'Update available',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: TvGlass.accent,
+                                      ),
+                                    ),
+                                  ),
+                                TvControl(
+                                  style: TvControlStyle.primary,
+                                  focusNode: _tvUpdates,
+                                  label: 'App updates',
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 15,
+                                    vertical: 9,
+                                  ),
+                                  onKeyEvent: (_, event) => _tvKey(
+                                    event,
+                                    down: _tvUsername,
+                                    left: _tvDiagnosis,
+                                  ),
+                                  onPressed: () {
+                                    if (!_busy) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute<void>(
+                                          builder: (_) =>
+                                              const AppUpdatesScreen(),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.system_update, size: 15),
+                                      SizedBox(width: 7),
+                                      Text(
+                                        'App updates',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 52),
+                            child: Row(
+                              children: [
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'LIVE TELEVISION. FILMS. SERIES.',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          letterSpacing: 1.8,
+                                          color: TvGlass.accent,
+                                        ),
+                                      ),
+                                      SizedBox(height: 20),
+                                      Text(
+                                        'Your channels.\nYour cinema.',
+                                        style: TextStyle(
+                                          fontSize: 44,
+                                          height: 1.06,
+                                          letterSpacing: -1.4,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      SizedBox(height: 18),
+                                      Text(
+                                        'One place for what you love watching.\nReady when you are.',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.6,
+                                          color: TvGlass.muted,
+                                        ),
+                                      ),
+                                      SizedBox(height: 28),
+                                      Text(
+                                        'Select a field and press OK to enter text.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: TvGlass.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 60),
+                                SizedBox(
+                                  width: 400,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0x14FFFFFF),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(22),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          const Text(
+                                            'Connect your account',
+                                            style: TextStyle(
+                                              fontSize: 23,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 7),
+                                          const Text(
+                                            'Enter your username and password.',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: TvGlass.muted,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 18),
+                                          _tvLoginField(password: false),
+                                          const SizedBox(height: 10),
+                                          _tvLoginField(password: true),
+                                          SizedBox(
+                                            height: 42,
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Semantics(
+                                                liveRegion: true,
+                                                child: Text(
+                                                  _error ?? '',
+                                                  maxLines: 3,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    height: 1.25,
+                                                    color: AppColors.danger,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          TvControl(
+                                            style: TvControlStyle.primary,
+                                            focusNode: _tvConnect,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 12,
+                                            ),
+                                            onKeyEvent: (_, event) => _tvKey(
+                                              event,
+                                              up: _tvPassword,
+                                              left: _tvDiagnosis,
+                                              right: _tvUpdates,
+                                            ),
+                                            onPressed: _signIn,
+                                            child: Center(
+                                              child: Text(
+                                                _busy
+                                                    ? 'Connecting…'
+                                                    : 'Connect & start watching',
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          const Text(
+                                            'Your account is saved securely on this device.',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: TvGlass.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 42,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 26),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Ultravpn-player does not supply channels or content.',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: TvGlass.muted,
+                                  ),
+                                ),
+                                Spacer(),
+                                Text(
+                                  'D-pad  Browse     OK  Select',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: TvGlass.muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _tvLoginField({required bool password}) {
+    final value = password ? _password.text : _username.text;
+    final label = password ? 'Password' : 'Username';
+    return TvControl(
+      focusNode: password ? _tvPassword : _tvUsername,
+      autofocus: !password,
+      label: '$label${value.isEmpty ? ', not entered' : ', entered'}',
+      onKeyEvent: (_, event) => password
+          ? _tvKey(
+              event,
+              up: _tvUsername,
+              down: _tvConnect,
+              left: _tvDiagnosis,
+              right: _tvUpdates,
+            )
+          : _tvKey(
+              event,
+              up: _tvUpdates,
+              down: _tvPassword,
+              left: _tvDiagnosis,
+              right: _tvUpdates,
+            ),
+      onPressed: () => _editTvField(password),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10)),
+          const SizedBox(height: 5),
+          Text(
+            value.isEmpty
+                ? 'Press OK to enter ${label.toLowerCase()}'
+                : password
+                ? List.filled(value.length.clamp(0, 24), '•').join()
+                : value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: value.isEmpty ? 12 : 15),
           ),
         ],
       ),

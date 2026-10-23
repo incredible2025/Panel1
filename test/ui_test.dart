@@ -24,6 +24,8 @@ import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_glass_guide.dart';
 import 'package:streamline_iptv/widgets/tv_glass_theme.dart';
+import 'package:streamline_iptv/widgets/tv_text_entry_dialog.dart';
+import 'package:streamline_iptv/widgets/tv_home_shelves.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
@@ -1488,16 +1490,347 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  _uiTest('TV login fits a landscape screen and autofocuses username input', (
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest(
+      'TV redesign visual login keeps updates and validation visible at $size',
+      (tester) async {
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          signedIn: false,
+          viewport: size,
+        );
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Login username',
+        );
+        expect(find.text('App updates').hitTestable(), findsOneWidget);
+        expect(
+          find.text('Connect & start watching').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.byType(Scrollable), findsNothing);
+        expect(tester.testTextInput.isVisible, isFalse);
+        await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Enter your username').hitTestable(), findsOneWidget);
+        expect(find.text('App updates').hitTestable(), findsOneWidget);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Login username',
+        );
+        expect(tester.takeException(), isNull);
+        await _screenshot(tester, 'tv-redesign-login-${size.width.toInt()}');
+      },
+    );
+  }
+
+  for (final activation in [
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.gameButtonA,
+  ]) {
+    _uiTest(
+      'TV login $activation opens and reopens the keyboard and authenticates without touch',
+      (tester) async {
+        final store = _MemoryStore();
+        final api = _TestApi();
+        addTearDown(api.dispose);
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          signedIn: false,
+          api: api,
+          viewport: const Size(960, 540),
+        );
+        await remote(tester, activation);
+        expect(find.byType(TvTextEntryDialog), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isTrue);
+        tester.testTextInput.hide();
+        tester.testTextInput.log.clear();
+        await remote(tester, activation);
+        expect(tester.testTextInput.isVisible, isTrue);
+        expect(
+          tester.testTextInput.log.any(
+            (call) => call.method == 'TextInput.show',
+          ),
+          isTrue,
+        );
+        tester.testTextInput.enterText('viewer');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Login password',
+        );
+        await remote(tester, activation);
+        expect(tester.testTextInput.isVisible, isTrue);
+        final field = tester.widget<TextField>(find.byType(TextField));
+        expect(field.obscureText, isTrue);
+        tester.testTextInput.enterText('test-only');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login connect');
+        await remote(tester, activation);
+        expect(api.authenticationCount, 1);
+        expect(store.savedSession?.credentials.username, 'viewer');
+        expect(store.savedSession?.credentials.password, 'test-only');
+        expect(store.savedSession?.credentials.serverUrl, providerPortalUrl);
+        expect(find.textContaining('liquidmetal.vip'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  _uiTest('TV held OK opens only one credential entry dialog', (tester) async {
+    await _pumpApp(
+      tester,
+      store: _MemoryStore(),
+      tv: true,
+      signedIn: false,
+      viewport: const Size(960, 540),
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    expect(find.byType(TvTextEntryDialog), findsOneWidget);
+    expect(tester.testTextInput.isVisible, isTrue);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(TvTextEntryDialog), findsNothing);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
+    expect(tester.takeException(), isNull);
+  });
+
+  _uiTest('TV login opens updates using only the remote and restores focus', (
     tester,
   ) async {
-    await _pumpApp(tester, store: _MemoryStore(), tv: true, signedIn: false);
-    expect(find.byType(TextFormField), findsNWidgets(2));
-    expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
-    expect(find.text('Connect your account'), findsOneWidget);
+    final updater = UpdateController(FakePlatform(), FakeTransport());
+    await _pumpApp(
+      tester,
+      store: _MemoryStore(),
+      tv: true,
+      signedIn: false,
+      updater: updater,
+      viewport: const Size(960, 540),
+    );
+    await remote(tester, LogicalKeyboardKey.arrowUp);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login updates');
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(find.byType(AppUpdatesScreen), findsOneWidget);
+    expect(find.text('Check for updates').hitTestable(), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login updates');
+    await remote(tester, LogicalKeyboardKey.arrowDown);
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
     expect(tester.takeException(), isNull);
-    await _screenshot(tester, 'tv-login');
   });
+
+  _uiTest(
+    'TV text entry fits above the keyboard and retains text when returning',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 270);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(find.byType(TextField));
+      expect(rect.bottom, lessThanOrEqualTo(270));
+      tester.testTextInput.enterText('remember-me');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.text('remember-me'), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV Home stays fixed while the remote browses both complete horizontal rows',
+    (tester) async {
+      final movies = List.generate(
+        80,
+        (i) => MediaItem(
+          id: '$i',
+          name: 'Movie $i',
+          kind: MediaKind.movie,
+          addedAt: DateTime.utc(2026, 10, 23).subtract(Duration(minutes: i)),
+        ),
+      );
+      final series = List.generate(
+        30,
+        (i) => MediaItem(id: 's$i', name: 'Series $i', kind: MediaKind.series),
+      );
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(lastSection: 'home');
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        movies: movies,
+        seriesItems: series,
+        viewport: const Size(960, 540),
+      );
+      final surface = find.byKey(const ValueKey('tv-fixed-home'));
+      final before = tester.getRect(surface);
+      void fixed() {
+        expect(tester.getRect(surface), before);
+        expect(
+          tester
+              .widgetList<Scrollable>(
+                find.descendant(of: surface, matching: find.byType(Scrollable)),
+              )
+              .every(
+                (w) => axisDirectionToAxis(w.axisDirection) == Axis.horizontal,
+              ),
+          isTrue,
+        );
+        expect(find.text('Series to discover').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+
+      fixed();
+      await remote(tester, LogicalKeyboardKey.arrowDown, 3);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Title: Movie 0');
+      await remote(tester, LogicalKeyboardKey.arrowRight, 17);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Title: Movie 17');
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Title: Series 17',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 20);
+      fixed();
+      await remote(tester, LogicalKeyboardKey.arrowUp);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Title: Movie 17');
+      await remote(tester, LogicalKeyboardKey.arrowLeft, 18);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Home collection: For you',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowUp, 2);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Navigation: home',
+      );
+      fixed();
+    },
+  );
+
+  _uiTest(
+    'TV fixed Home collection selector keeps history and discovery reachable',
+    (tester) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(lastSection: 'home')
+        ..entries = [
+          WatchEntry(
+            item: _film,
+            positionMs: 600000,
+            durationMs: 6000000,
+            lastAccessed: DateTime.now(),
+          ),
+        ];
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        viewport: const Size(960, 540),
+      );
+      final shelves = tester
+          .widget<TvHomeShelves>(find.byType(TvHomeShelves))
+          .shelves
+          .where((e) => e.items.isNotEmpty)
+          .toList();
+      expect(
+        shelves.map((e) => e.title),
+        containsAll([
+          'Continue watching',
+          'Recently added movies',
+          'Recently watched',
+          'Series to discover',
+        ]),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+      for (var page = 0; page < (shelves.length / 2).ceil(); page++) {
+        expect(find.text(shelves[page * 2].title).hitTestable(), findsWidgets);
+        if (page * 2 + 1 < shelves.length) {
+          expect(
+            find.text(shelves[page * 2 + 1].title).hitTestable(),
+            findsWidgets,
+          );
+        }
+        if (page + 1 < (shelves.length / 2).ceil()) {
+          await remote(tester, LogicalKeyboardKey.arrowRight);
+        }
+      }
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Title:'),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV login password visibility and connection diagnosis work using the remote',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      await remote(tester, LogicalKeyboardKey.select);
+      tester.testTextInput.enterText('private-example');
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'TV password visibility',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).obscureText,
+        isFalse,
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).obscureText,
+        isTrue,
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login password');
+      await remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login diagnosis');
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(ConnectionDiagnosisScreen), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login diagnosis');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   _uiTest('phone dashboard shows EPG, history, category and search filtering', (
     tester,

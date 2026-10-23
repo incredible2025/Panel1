@@ -58,7 +58,11 @@ class TvGlassHero extends StatelessWidget {
         Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 26,
-            vertical: cinema ? 20 : 14,
+            vertical: cinema
+                ? height <= 160
+                      ? 12
+                      : 20
+                : 14,
           ),
           child: Align(
             alignment: Alignment.centerLeft,
@@ -83,10 +87,14 @@ class TvGlassHero extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     title,
-                    maxLines: cinema ? 2 : 1,
+                    maxLines: cinema && height > 160 ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: cinema ? 36 : 27,
+                      fontSize: cinema
+                          ? height <= 160
+                                ? 28
+                                : 36
+                          : 27,
                       fontWeight: FontWeight.w500,
                       letterSpacing: cinema ? -1.3 : -.9,
                       height: 1.08,
@@ -105,7 +113,7 @@ class TvGlassHero extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (description.isNotEmpty) ...[
+                  if (description.isNotEmpty && (!cinema || height > 160)) ...[
                     const SizedBox(height: 7),
                     Text(
                       description,

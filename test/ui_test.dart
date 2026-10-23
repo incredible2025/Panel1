@@ -20,6 +20,8 @@ import 'package:streamline_iptv/features/settings_screen.dart';
 import 'package:streamline_iptv/features/series_detail_screen.dart';
 import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
+import 'package:streamline_iptv/widgets/tv_controls.dart';
+import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 
 import 'support/qa_artwork.dart';
 
@@ -370,11 +372,8 @@ Future<void> _screenshot(WidgetTester tester, String name) async {
 }
 
 FocusNode _cardFocus(WidgetTester tester, Finder label) {
-  final card = find
-      .ancestor(of: label, matching: find.byType(TvFocusCard))
-      .first;
   final detector = find
-      .descendant(of: card, matching: find.byType(FocusableActionDetector))
+      .ancestor(of: label, matching: find.byType(FocusableActionDetector))
       .first;
   return tester.widget<FocusableActionDetector>(detector).focusNode!;
 }
@@ -383,12 +382,14 @@ Finder _rail(String title) =>
     find.ancestor(of: find.text(title), matching: find.byType(Column)).first;
 
 Future<void> _reveal(WidgetTester tester, Finder target) async {
-  final pageScroll = find
-      .descendant(
-        of: find.byType(CustomScrollView).first,
-        matching: find.byType(Scrollable),
-      )
-      .first;
+  final pageScroll = find.byType(CustomScrollView).evaluate().isEmpty
+      ? find.byType(Scrollable).first
+      : find
+            .descendant(
+              of: find.byType(CustomScrollView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first;
   // A rail can be unbuilt above or below the current viewport.
   tester.state<ScrollableState>(pageScroll).position.jumpTo(0);
   await tester.pumpAndSettle();
@@ -403,15 +404,22 @@ Future<void> _reveal(WidgetTester tester, Finder target) async {
   await tester.pumpAndSettle();
 }
 
-List<String> _gridTitles(WidgetTester tester) => tester
-    .widgetList<MediaCard>(
-      find.descendant(
-        of: find.byType(SliverGrid),
-        matching: find.byType(MediaCard),
-      ),
-    )
-    .map((card) => card.item.name)
-    .toList();
+List<String> _gridTitles(WidgetTester tester) {
+  final tv = tester
+      .widgetList<TvPosterBrowser>(find.byType(TvPosterBrowser))
+      .where((w) => !w.horizontal)
+      .firstOrNull;
+  if (tv != null) return tv.items.map((e) => e.name).toList();
+  return tester
+      .widgetList<MediaCard>(
+        find.descendant(
+          of: find.byType(SliverGrid),
+          matching: find.byType(MediaCard),
+        ),
+      )
+      .map((card) => card.item.name)
+      .toList();
+}
 
 Future<void> _remoteSort(
   WidgetTester tester,
@@ -420,7 +428,14 @@ Future<void> _remoteSort(
 ) async {
   final trigger = find.text(currentLabel);
   await tester.ensureVisible(trigger);
-  Focus.of(tester.element(trigger)).requestFocus();
+  if (find
+      .ancestor(of: trigger, matching: find.byType(TvControl))
+      .evaluate()
+      .isNotEmpty) {
+    _cardFocus(tester, trigger).requestFocus();
+  } else {
+    Focus.of(tester.element(trigger)).requestFocus();
+  }
   await tester.pumpAndSettle();
   await tester.sendKeyEvent(LogicalKeyboardKey.select);
   await tester.pumpAndSettle();
@@ -472,6 +487,150 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    for (final section in ['home', 'live', 'movie', 'series', 'settings']) {
+      _uiTest('TV redesign visual $section fits ${size.width} x ${size.height}', (
+        tester,
+      ) async {
+        final store = _MemoryStore()
+          ..preferences = AppSettings(lastSection: section);
+        final categories = List.generate(
+          12,
+          (i) => Category(
+            id: 'c$i',
+            name:
+                '${['Entertainment', 'Sports', 'Movies', 'Documentaries'][i % 4]} ${i + 1}',
+          ),
+        );
+        List<MediaItem> titles(MediaKind kind) => List.generate(
+          20,
+          (i) => MediaItem(
+            id: '${kind.name}-$i',
+            name: kind == MediaKind.live
+                ? ['World News', 'Arena Sports', 'Cinema One', 'Nature HD'][i %
+                      4]
+                : [
+                    'The Last Horizon',
+                    'Midnight City',
+                    'Ocean of Stars',
+                    'The Quiet Shore',
+                    'Northbound',
+                    'After the Rain',
+                    'Wild Frontier',
+                    'Echoes',
+                    'Breaking Dawn',
+                    'Beyond the Atlas',
+                    'Lost in Orbit',
+                    'Under Neon Skies',
+                    'A Winter Promise',
+                    'Red Harbour',
+                    'First Light',
+                    'Night Voyage',
+                    'The Glass River',
+                    'Amber Road',
+                    'Fading Starlight',
+                    'Blue Latitude',
+                  ][i % 20],
+            kind: kind,
+            categoryId: 'c${i % 12}',
+            imageUrl: _qaArtwork,
+            rating: kind == MediaKind.live ? '' : '8.2',
+            addedAt: DateTime.utc(2026, 10, 20).subtract(Duration(hours: i)),
+          ),
+        );
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: size,
+          movies: titles(MediaKind.movie),
+          liveChannels: titles(MediaKind.live),
+          seriesItems: titles(MediaKind.series),
+          suppliedCategories: {
+            for (final kind in MediaKind.values) kind: categories,
+          },
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(find.byType(TvControl), findsWidgets);
+        expect(find.byType(TextField), findsNothing);
+        await _screenshot(tester, 'tv-redesign-$section-${size.width.toInt()}');
+      });
+    }
+  }
+
+  _uiTest(
+    'TV redesign visual movie details keep resume and My List reachable',
+    (tester) async {
+      final store = _MemoryStore()
+        ..entries = [
+          WatchEntry(
+            item: _film,
+            positionMs: 600000,
+            durationMs: 6000000,
+            lastAccessed: DateTime.now(),
+          ),
+        ];
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        screen: MovieDetailScreen(item: _film),
+        viewport: const Size(960, 540),
+      );
+      expect(find.text('Resume movie'), findsOneWidget);
+      expect(find.text('My List'), findsOneWidget);
+      expect(find.textContaining('A journey'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _screenshot(tester, 'tv-redesign-movie-detail');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.text('Pick up where you left off?'), findsOneWidget);
+      expect(find.text('Resume from 10:00'), findsOneWidget);
+    },
+  );
+
+  _uiTest(
+    'TV search is deliberate and filters without displaying a server URL',
+    (tester) async {
+      await _pumpApp(tester, store: _MemoryStore(), tv: true);
+      _cardFocus(tester, find.text('Movies')).requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Zephyr');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(_gridTitles(tester), ['Zephyr']);
+      expect(find.textContaining('provider.example'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV Settings preserves parental protection before showing account details',
+    (tester) async {
+      final store = _MemoryStore()
+        ..parentalPin = '1234'
+        ..preferences = const AppSettings(lastSection: 'settings');
+      await _pumpApp(tester, store: store, tv: true);
+      expect(find.text('Settings are protected'), findsOneWidget);
+      expect(find.text('viewer'), findsNothing);
+      expect(find.text('Speed test'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
     await (FontLoader('Streamline Sans')
@@ -516,7 +675,10 @@ void main() {
           tv: tv,
           movies: [_film, _otherFilm, _undatedFilm, suggested],
         );
-        expect(find.text('Find your next favourite.'), findsOneWidget);
+        expect(
+          find.text(tv ? 'View details' : 'Find your next favourite.'),
+          findsOneWidget,
+        );
         await _screenshot(tester, tv ? 'v5-tv-home' : 'v5-phone-home');
         await _reveal(tester, find.text('Because you watched Zephyr'));
         expect(find.text('Quiet Harbour'), findsWidgets);
@@ -721,7 +883,7 @@ void main() {
   });
 
   _uiTest(
-    'series selects the saved season and shows resume and watched markers',
+    'TV redesign visual series selects saved season with resume and watched markers',
     (tester) async {
       const first = Episode(
         id: '21',
@@ -759,10 +921,10 @@ void main() {
         tv: true,
         screen: const SeriesDetailScreen(item: _series),
       );
-      await _reveal(tester, find.text('Resume · S2 E1'));
+      await tester.ensureVisible(find.text('Resume · S2 E1'));
       expect(find.text('New Horizons'), findsOneWidget);
       expect(find.text('Resume · 00:45'), findsOneWidget);
-      await _screenshot(tester, 'tv-series-progress');
+      await _screenshot(tester, 'tv-redesign-series-detail');
       await tester.tap(find.text('Season 1'));
       await tester.pumpAndSettle();
       expect(find.text('Watched'), findsOneWidget);
@@ -796,10 +958,15 @@ void main() {
         ),
       ];
     await _pumpApp(tester, store: store, tv: true);
-    await tester.tap(find.text('Series').first);
+    await tester.tap(find.text('Home').first);
     await tester.pumpAndSettle();
-    await _reveal(tester, find.text('Continue watching'));
-    expect(find.text('Resume · S1 · E1'), findsOneWidget);
+    await _reveal(tester, find.text('Continue watching series'));
+    expect(
+      tester
+          .widgetList<TvPosterBrowser>(find.byType(TvPosterBrowser))
+          .any((w) => w.progress['series:20'] == .45),
+      isTrue,
+    );
     await _screenshot(tester, 'tv-series-continue');
     expect(tester.takeException(), isNull);
   });
@@ -895,8 +1062,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('Browse movies'), findsOneWidget);
-    await _reveal(tester, find.text('Recently added movies'));
+    expect(find.textContaining('All categories'), findsOneWidget);
     expect(find.text('Zephyr'), findsWidgets);
     expect(tester.takeException(), isNull);
     await _screenshot(tester, 'tv-movies');
@@ -904,7 +1070,7 @@ void main() {
 
   for (final kind in MediaKind.values) {
     _uiTest(
-      'TV ${kind.name} categories retain focus across sidebar resize, selection and offscreen navigation',
+      'TV ${kind.name} has stable vertical category, content and navigation zones',
       (tester) async {
         final store = _MemoryStore()
           ..preferences = AppSettings(lastSection: kind.name);
@@ -935,12 +1101,12 @@ void main() {
           FocusManager.instance.primaryFocus?.debugLabel,
           'Navigation: ${kind.name}',
         );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pumpAndSettle();
         expect(FocusManager.instance.primaryFocus?.debugLabel, 'Category: All');
-        final extra = kind == MediaKind.live ? 1 : 2;
+        final extra = kind == MediaKind.live ? 3 : 1;
         for (var i = 0; i < 12 + extra; i++) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
           await tester.pumpAndSettle();
         }
         expect(
@@ -952,41 +1118,28 @@ void main() {
         await tester.pumpAndSettle();
         expect(store.preferences.lastCategories[kind.name], 'c12');
         expect(FocusManager.instance.primaryFocus, same(before));
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          '${kind == MediaKind.live ? 'Channel' : 'Title'}: Item 12',
+        );
         expect(find.text('Item 12'), findsWidgets);
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-        await tester.pumpAndSettle();
-        expect(
-          FocusManager.instance.primaryFocus?.context
-              ?.findAncestorWidgetOfExactType<CustomScrollView>(),
-          isNotNull,
-        );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-        await tester.pumpAndSettle();
-        expect(
-          FocusManager.instance.primaryFocus?.debugLabel,
-          startsWith('Category:'),
-        );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-        await tester.pumpAndSettle();
-        expect(
-          FocusManager.instance.primaryFocus?.debugLabel,
-          'Library search',
-        );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
         await tester.pumpAndSettle();
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
           'Category: Group 12',
         );
         for (var i = 0; i < 13 + extra; i++) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
           await tester.pumpAndSettle();
         }
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
           'Navigation: ${kind.name}',
         );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pumpAndSettle();
         expect(
           FocusManager.instance.primaryFocus?.debugLabel,
@@ -996,55 +1149,54 @@ void main() {
       },
     );
   }
-
-  _uiTest(
-    'TV restores an offscreen category and remote Right reaches it without touch',
-    (tester) async {
-      final store = _MemoryStore()
-        ..preferences = const AppSettings(
-          lastSection: 'movie',
-          lastCategories: {'movie': 'c27'},
-        );
-      await _pumpApp(
-        tester,
-        store: store,
-        tv: true,
-        suppliedCategories: {
-          MediaKind.movie: List.generate(
-            40,
-            (i) => Category(id: 'c$i', name: 'Group $i'),
-          ),
-        },
-        movies: [
-          const MediaItem(
-            id: '27',
-            name: 'Restored film',
-            kind: MediaKind.movie,
-            categoryId: 'c27',
-          ),
-        ],
+  _uiTest('TV restores an offscreen vertical category without touch', (
+    tester,
+  ) async {
+    final store = _MemoryStore()
+      ..preferences = const AppSettings(
+        lastSection: 'movie',
+        lastCategories: {'movie': 'c27'},
       );
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
-      expect(
-        FocusManager.instance.primaryFocus?.debugLabel,
-        'Category: Group 27',
-      );
-      final label = find.text('Group 27');
-      expect(
-        tester.getRect(label).overlaps(const Rect.fromLTWH(0, 0, 1280, 720)),
-        true,
-      );
-      await tester.sendKeyEvent(LogicalKeyboardKey.gameButtonA);
-      await tester.pumpAndSettle();
-      expect(find.text('Restored film'), findsWidgets);
-      expect(
-        FocusManager.instance.primaryFocus?.debugLabel,
-        'Category: Group 27',
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      suppliedCategories: {
+        MediaKind.movie: List.generate(
+          40,
+          (i) => Category(id: 'c$i', name: 'Group $i'),
+        ),
+      },
+      movies: [
+        const MediaItem(
+          id: '27',
+          name: 'Restored film',
+          kind: MediaKind.movie,
+          categoryId: 'c27',
+        ),
+      ],
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Category: Group 27',
+    );
+    expect(
+      tester
+          .getRect(find.text('Group 27'))
+          .overlaps(const Rect.fromLTWH(0, 0, 1280, 720)),
+      true,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.gameButtonA);
+    await tester.pumpAndSettle();
+    expect(find.text('Restored film'), findsWidgets);
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Category: Group 27',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   _uiTest(
     'recently added movies use actual dates and Browse all shows newest first',
@@ -1084,9 +1236,6 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       await _screenshot(tester, 'tv-movies-home');
-      await _reveal(tester, find.text('Browse all'));
-      await tester.tap(find.text('Browse all'));
-      await tester.pumpAndSettle();
       await _remoteSort(tester, 'Newest', 1);
       expect(_gridTitles(tester), ['Amber Road', 'Night Shift', 'Zephyr']);
       await _screenshot(tester, 'tv-movies-browse');

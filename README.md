@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.7.0** rebuilds the TV interface around a fixed navigation bar, three-panel Live TV, vertical category lists, large poster grids and dedicated TV detail screens. Mobile keeps its touch interface. See [release notes](docs/RELEASE_NOTES_0.7.0.md) and [TV controls](docs/TV_EXPERIENCE.md).
+
 **v0.6.8** fixes TV category focus, sidebar entry, offscreen and held-key navigation in Live TV, Movies and Series. TV browsing controls stay visible while content scrolls. See [release notes](docs/RELEASE_NOTES_0.6.8.md).
 
 **v0.6.7** adds a manual speed test in Settings, username/password-only sign-in using the embedded operator portal, hidden provider addresses, and correct no-expiry account labels. See [release notes](docs/RELEASE_NOTES_0.6.7.md), [speed test](docs/SPEED_TEST.md) and [operator configuration](docs/PROVIDER_CONFIGURATION.md).
@@ -48,7 +50,7 @@ From v0.6.3, published APKs use the permanent release key. Moving from an older 
 - Local movie recommendations from meaningful viewing and provider categories; watched/hidden/locked titles are excluded.
 - Refreshed account information and expiry reminders, with missing fields labelled honestly.
 - Remembered section/category/channel selection; optional muted live previews and playback diagnostics.
-- Login using server URL, username and password; restores the encrypted session after relaunch.
+- Username/password sign-in using the embedded operator portal; restores the encrypted session after relaunch.
 - Live TV category filters, channel search, short EPG preview and full-screen channel zapping.
 - Favorite channel toggles/filter and the latest **20 distinct successfully played live channels**, stored separately for each account.
 - Movie/series home shelves, including up to five provider-category rows, with **Browse all** opening a lazy poster grid.

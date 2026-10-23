@@ -9,6 +9,7 @@ import '../widgets/media_card.dart';
 import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart';
 import 'player_screen.dart' show PlayerScreen;
+import 'tv_detail_views.dart';
 
 class MovieDetailScreen extends ConsumerStatefulWidget {
   const MovieDetailScreen({super.key, required this.item});
@@ -155,6 +156,16 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       }
     }
     final tv = ref.watch(isTvProvider);
+    if (tv) {
+      return TvMovieView(
+        item: widget.item,
+        detail: detail,
+        saved: saved,
+        opening: _opening,
+        onPlay: _play,
+        onReload: () => ref.invalidate(movieDetailProvider(widget.item)),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: LayoutBuilder(

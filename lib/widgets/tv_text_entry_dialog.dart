@@ -1,12 +1,11 @@
-import 'dart:async';
-
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
+import 'tv_controls.dart';
 import 'tv_glass_theme.dart';
+import 'tv_system_text_entry_dialog.dart';
 
-/// A remote-selectable field must reopen the IME even if it already has focus.
-/// Merely requesting focus again does not replenish EditableText's keyboard token.
+/// Remote typing works without a device IME; system input is optional.
 class TvTextEntryDialog extends StatefulWidget {
   const TvTextEntryDialog({
     super.key,
@@ -22,154 +21,316 @@ class TvTextEntryDialog extends StatefulWidget {
 }
 
 class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
-  final _fieldKey = GlobalKey();
-  late final _fieldFocus = FocusNode(
-    debugLabel: 'TV ${widget.label.toLowerCase()} editor',
-  );
-  final _done = FocusNode(debugLabel: 'TV text entry done');
-  final _visibility = FocusNode(debugLabel: 'TV password visibility');
-  bool _obscured = true;
-  bool _closing = false;
-
+  final _nodes = <String, FocusNode>{};
+  bool _upper = false, _symbols = false, _obscured = true;
+  bool _systemOpen = false, _closing = false;
+  late bool _activationHeld;
+  bool _activation(LogicalKeyboardKey key) => [
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.gameButtonA,
+  ].contains(key);
   @override
   void initState() {
     super.initState();
-    _fieldFocus.addListener(_inputFocusChanged);
+    _activationHeld = HardwareKeyboard.instance.logicalKeysPressed.any(
+      _activation,
+    );
+    widget.controller.addListener(_changed);
   }
 
-  void _inputFocusChanged() {
-    if (_fieldFocus.hasFocus) return;
-    scheduleMicrotask(() {
-      // Android can close the IME connection and unfocus EditableText. When it
-      // leaves the dialog scope as the focus target, return to the credential
-      // control. Intentional moves to Show password or Done remain in the dialog.
-      if (!mounted ||
-          _closing ||
-          ModalRoute.of(context)?.isCurrent != true ||
-          _fieldFocus.hasFocus ||
-          _done.hasFocus ||
-          _visibility.hasFocus) {
-        return;
-      }
-      if (FocusManager.instance.primaryFocus is FocusScopeNode) {
-        _closing = true;
-        Navigator.pop(context, false);
-      }
-    });
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    for (final node in _nodes.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  FocusNode _node(int row, int col) => _nodes.putIfAbsent(
+    '$row:$col',
+    () => FocusNode(debugLabel: 'Remote keyboard $row:$col'),
+  );
+  List<String> get _letters => _symbols
+      ? ['!@#\$%^&*()', '-_+=[]{}\\|', ';:\'",.<>/?', '`~01234567']
+      : [
+          '1234567890',
+          _upper ? 'QWERTYUIOP' : 'qwertyuiop',
+          _upper ? 'ASDFGHJKL@' : 'asdfghjkl@',
+          _upper ? 'ZXCVBNM._-' : 'zxcvbnm._-',
+        ];
+  void _insert(String text) {
+    final c = widget.controller, s = cSelection;
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(s.start, s.end, text),
+      selection: TextSelection.collapsed(offset: s.start + text.length),
+    );
+  }
+
+  TextSelection get cSelection => widget.controller.selection.isValid
+      ? widget.controller.selection
+      : TextSelection.collapsed(offset: widget.controller.text.length);
+  void _delete() {
+    final c = widget.controller, s = cSelection;
+    var start = s.start;
+    if (start == s.end && start > 0) {
+      start -= c.text.substring(0, start).characters.last.length;
+    }
+    c.value = TextEditingValue(
+      text: c.text.replaceRange(start, s.end, ''),
+      selection: TextSelection.collapsed(offset: start),
+    );
+  }
+
+  void _press(VoidCallback action) {
+    // Block a held opening OK and repeated activation; touch stays independent.
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed.any(
+      _activation,
+    );
+    if (pressed && _activationHeld) return;
+    _activationHeld = pressed;
+    action();
   }
 
   void _finish() {
-    if (_closing) return;
+    if (_closing || _systemOpen) return;
     _closing = true;
     Navigator.pop(context, true);
   }
 
-  void _keyboard() {
-    // TextField owns the EditableText key. Use its public state API rather than
-    // sending a bare TextInput.show without an attached input connection.
-    EditableTextState? editable;
-    void visit(Element element) {
-      if (element is StatefulElement && element.state is EditableTextState) {
-        editable = element.state as EditableTextState;
-      } else {
-        element.visitChildElements(visit);
-      }
+  Future<void> _systemKeyboard() async {
+    if (_systemOpen || _closing) return;
+    _systemOpen = true;
+    final route = DialogRoute<bool>(
+      context: context,
+      builder: (_) => TvSystemTextEntryDialog(
+        controller: widget.controller,
+        label: widget.label,
+        password: widget.password,
+      ),
+    );
+    final done = await Navigator.of(context).push(route);
+    await route.completed;
+    _systemOpen = false;
+    if (!mounted) return;
+    _activationHeld = HardwareKeyboard.instance.logicalKeysPressed.any(
+      _activation,
+    );
+    if (done == true) {
+      _finish();
+    } else {
+      _node(5, widget.password ? 1 : 0).requestFocus();
     }
-
-    _fieldKey.currentContext?.visitChildElements(visit);
-    editable?.requestKeyboard();
   }
 
-  bool _activation(LogicalKeyboardKey key) =>
-      key == LogicalKeyboardKey.select ||
-      key == LogicalKeyboardKey.enter ||
-      key == LogicalKeyboardKey.numpadEnter ||
-      key == LogicalKeyboardKey.gameButtonA;
-
-  KeyEventResult _fieldKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is KeyRepeatEvent && _activation(event.logicalKey)) {
+  KeyEventResult _physicalKey(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent && _activation(event.logicalKey)) {
+      _activationHeld = false;
+    }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      _delete();
       return KeyEventResult.handled;
     }
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (_activation(event.logicalKey)) {
-      _keyboard();
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      Navigator.pop(context, false);
       return KeyEventResult.handled;
     }
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      (widget.password ? _visibility : _done).requestFocus();
+    final character = event.character;
+    if (!_activation(event.logicalKey) &&
+        !HardwareKeyboard.instance.isControlPressed &&
+        !HardwareKeyboard.instance.isMetaPressed &&
+        !HardwareKeyboard.instance.isAltPressed &&
+        character != null &&
+        character.isNotEmpty &&
+        character.runes.every((rune) => rune >= 32 && rune != 127)) {
+      _insert(character);
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
 
   @override
-  void dispose() {
-    _fieldFocus.removeListener(_inputFocusChanged);
-    _fieldFocus.dispose();
-    _done.dispose();
-    _visibility.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Theme(
-    data: TvGlass.theme(Theme.of(context)),
-    child: AlertDialog(
-      backgroundColor: TvGlass.canvas,
-      scrollable: true,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
-      title: Text(
-        'Enter ${widget.label.toLowerCase()}',
-        style: const TextStyle(fontSize: 20),
+  Widget build(BuildContext context) {
+    final footer = <(String, VoidCallback)>[
+      if (widget.password)
+        (
+          _obscured ? 'Show password' : 'Hide password',
+          () => setState(() => _obscured = !_obscured),
+        ),
+      ('Use system keyboard', _systemKeyboard),
+      ('Back', () => Navigator.pop(context, false)),
+    ];
+    final actions = <(String, VoidCallback)>[
+      (
+        'Shift',
+        () => setState(() {
+          _symbols = false;
+          _upper = !_upper;
+        }),
       ),
-      content: SizedBox(
-        width: 540,
-        child: Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
-          onKeyEvent: _fieldKeyEvent,
-          child: TextField(
-            key: _fieldKey,
-            controller: widget.controller,
-            focusNode: _fieldFocus,
-            autofocus: true,
-            obscureText: widget.password && _obscured,
-            autocorrect: false,
-            enableSuggestions: false,
-            enableIMEPersonalizedLearning: !widget.password,
-            keyboardType: widget.password
-                ? TextInputType.visiblePassword
-                : TextInputType.text,
-            autofillHints: [
-              widget.password ? AutofillHints.password : AutofillHints.username,
-            ],
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _finish(),
-            style: const TextStyle(fontSize: 20),
-            decoration: InputDecoration(
-              labelText: widget.label,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 15,
+      (_symbols ? 'ABC' : '#+=', () => setState(() => _symbols = !_symbols)),
+      ('Space', () => _insert(' ')),
+      ('Delete', _delete),
+      ('Clear', widget.controller.clear),
+      ('Done', _finish),
+    ];
+    final rows = <List<(String, VoidCallback)>>[
+      for (final row in _letters)
+        [for (final letter in row.split('')) (letter, () => _insert(letter))],
+      actions,
+      footer,
+    ];
+    Widget key(int row, int col) {
+      final (label, action) = rows[row][col];
+      return Expanded(
+        child: Padding(
+          padding: EdgeInsets.only(right: col + 1 < rows[row].length ? 6 : 0),
+          child: TvControl(
+            focusNode: _node(row, col),
+            autofocus: row == 0 && col == 0,
+            reveal: false,
+            spaceActivates: false,
+            label: row < 4 ? 'Type $label' : label,
+            selected: row == 4 && (col == 0 && _upper || col == 1 && _symbols),
+            style: row == 4 && col == 5
+                ? TvControlStyle.primary
+                : TvControlStyle.button,
+            onPressed: () => _press(action),
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+                return KeyEventResult.ignored;
+              }
+              final (nextRow, nextCol) = switch (event.logicalKey) {
+                LogicalKeyboardKey.arrowUp => (math.max(0, row - 1), col),
+                LogicalKeyboardKey.arrowDown => (math.min(5, row + 1), col),
+                LogicalKeyboardKey.arrowLeft => (row, math.max(0, col - 1)),
+                LogicalKeyboardKey.arrowRight => (
+                  row,
+                  math.min(rows[row].length - 1, col + 1),
+                ),
+                _ => (-1, -1),
+              };
+              if (nextRow < 0) return KeyEventResult.ignored;
+              _node(
+                nextRow,
+                math.min(nextCol, rows[nextRow].length - 1),
+              ).requestFocus();
+              return KeyEventResult.handled;
+            },
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+            child: Center(
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(fontSize: row < 4 ? 19 : 13),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final media = MediaQuery.of(context);
+    final scale = math
+        .min(
+          media.size.width / 900,
+          (media.size.height - media.viewInsets.bottom - 40) / 430,
+        )
+        .clamp(.4, 2.0);
+    final value = widget.controller.text;
+    final display = widget.password && _obscured
+        ? List.filled(value.characters.length, '•').join()
+        : value;
+    return TvGlassScope(
+      child: Theme(
+        data: TvGlass.theme(Theme.of(context)),
+        child: Dialog(
+          backgroundColor: TvGlass.canvas,
+          insetPadding: const EdgeInsets.all(20),
+          child: SizedBox(
+            width: 760 * scale,
+            height: 430 * scale,
+            child: FittedBox(
+              child: SizedBox(
+                width: 760,
+                height: 430,
+                child: Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onKeyEvent: _physicalKey,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Enter ${widget.label.toLowerCase()}',
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.centerLeft,
+                          decoration: BoxDecoration(
+                            color: TvGlass.panel,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Semantics(
+                            label:
+                                '${widget.label}, ${value.characters.length} characters',
+                            excludeSemantics: widget.password && _obscured,
+                            child: Text(
+                              display.isEmpty ? widget.label : display,
+                              key: const ValueKey('tv-keyboard-value'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: display.isEmpty
+                                    ? TvGlass.muted
+                                    : TvGlass.ink,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'D-pad to choose a key · OK to type · Done to continue',
+                          style: TextStyle(fontSize: 12, color: TvGlass.muted),
+                        ),
+                        const SizedBox(height: 12),
+                        for (var row = 0; row < rows.length; row++) ...[
+                          SizedBox(
+                            height: row == 5 ? 34 : 38,
+                            child: Row(
+                              children: [
+                                for (var col = 0; col < rows[row].length; col++)
+                                  key(row, col),
+                              ],
+                            ),
+                          ),
+                          if (row + 1 < rows.length)
+                            SizedBox(height: row == 3 ? 12 : 6),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-      actions: [
-        if (widget.password)
-          TextButton(
-            focusNode: _visibility,
-            onPressed: () => setState(() => _obscured = !_obscured),
-            child: Text(_obscured ? 'Show password' : 'Hide password'),
-          ),
-        FilledButton(
-          focusNode: _done,
-          onPressed: _finish,
-          child: const Text('Done'),
-        ),
-      ],
-    ),
-  );
+    );
+  }
 }

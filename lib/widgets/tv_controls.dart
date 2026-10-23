@@ -21,6 +21,7 @@ class TvControl extends StatefulWidget {
     this.reveal = true,
     this.padding = const EdgeInsets.all(14),
     this.style = TvControlStyle.button,
+    this.spaceActivates = true,
   });
   final Widget child;
   final VoidCallback onPressed;
@@ -31,6 +32,7 @@ class TvControl extends StatefulWidget {
   final FocusOnKeyEventCallback? onKeyEvent;
   final EdgeInsets padding;
   final TvControlStyle style;
+  final bool spaceActivates;
   @override
   State<TvControl> createState() => _TvControlState();
 }
@@ -60,12 +62,18 @@ class _TvControlState extends State<TvControl> {
       child: FocusableActionDetector(
         focusNode: widget.focusNode ?? _own,
         autofocus: widget.autofocus,
-        shortcuts: const {
-          SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        shortcuts: {
+          const SingleActivator(LogicalKeyboardKey.select):
+              const ActivateIntent(),
+          const SingleActivator(LogicalKeyboardKey.enter):
+              const ActivateIntent(),
+          const SingleActivator(LogicalKeyboardKey.numpadEnter):
+              const ActivateIntent(),
+          const SingleActivator(LogicalKeyboardKey.gameButtonA):
+              const ActivateIntent(),
+          if (widget.spaceActivates)
+            const SingleActivator(LogicalKeyboardKey.space):
+                const ActivateIntent(),
         },
         actions: {
           ActivateIntent: CallbackAction<ActivateIntent>(

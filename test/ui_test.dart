@@ -25,6 +25,7 @@ import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_glass_guide.dart';
 import 'package:streamline_iptv/widgets/tv_glass_theme.dart';
 import 'package:streamline_iptv/widgets/tv_text_entry_dialog.dart';
+import 'package:streamline_iptv/widgets/tv_system_text_entry_dialog.dart';
 import 'package:streamline_iptv/widgets/tv_home_shelves.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
@@ -529,6 +530,46 @@ void main() {
       await tester.sendKeyEvent(key);
       await tester.pumpAndSettle();
     }
+  }
+
+  Future<void> useSystemKeyboard(
+    WidgetTester tester, {
+    bool password = false,
+  }) async {
+    await remote(tester, LogicalKeyboardKey.arrowDown, 5);
+    if (password) await remote(tester, LogicalKeyboardKey.arrowRight);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(find.byType(TvSystemTextEntryDialog), findsOneWidget);
+  }
+
+  Future<void> keyboardKey(
+    WidgetTester tester,
+    int row,
+    int col, {
+    LogicalKeyboardKey activation = LogicalKeyboardKey.select,
+  }) async {
+    List<int> position() => FocusManager.instance.primaryFocus!.debugLabel!
+        .split(' ')
+        .last
+        .split(':')
+        .map(int.parse)
+        .toList();
+    var at = position();
+    await remote(
+      tester,
+      row < at[0] ? LogicalKeyboardKey.arrowUp : LogicalKeyboardKey.arrowDown,
+      (row - at[0]).abs(),
+    );
+    at = position();
+    await remote(
+      tester,
+      col < at[1]
+          ? LogicalKeyboardKey.arrowLeft
+          : LogicalKeyboardKey.arrowRight,
+      (col - at[1]).abs(),
+    );
+    expect(position(), [row, col]);
+    await remote(tester, activation);
   }
 
   bool focused(Finder label) {
@@ -1552,6 +1593,8 @@ void main() {
         );
         await remote(tester, activation);
         expect(find.byType(TvTextEntryDialog), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isFalse);
+        await useSystemKeyboard(tester);
         expect(tester.testTextInput.isVisible, isTrue);
         tester.testTextInput.hide();
         tester.testTextInput.log.clear();
@@ -1571,6 +1614,7 @@ void main() {
           'Login password',
         );
         await remote(tester, activation);
+        await useSystemKeyboard(tester, password: true);
         expect(tester.testTextInput.isVisible, isTrue);
         final field = tester.widget<TextField>(find.byType(TextField));
         expect(field.obscureText, isTrue);
@@ -1590,7 +1634,7 @@ void main() {
   }
 
   _uiTest(
-    'TV native keyboard connection closure returns to a usable credential control',
+    'TV native keyboard connection closure returns to the built-in keyboard',
     (tester) async {
       await _pumpApp(
         tester,
@@ -1600,12 +1644,17 @@ void main() {
         viewport: const Size(960, 540),
       );
       await remote(tester, LogicalKeyboardKey.select);
+      await useSystemKeyboard(tester);
       tester.testTextInput.enterText('keep-this-name');
       tester.testTextInput.closeConnection();
       await tester.pumpAndSettle();
-      expect(find.byType(TvTextEntryDialog), findsNothing);
-      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
-      expect(find.text('keep-this-name'), findsOneWidget);
+      expect(find.byType(TvTextEntryDialog), findsOneWidget);
+      expect(find.byType(TvSystemTextEntryDialog), findsNothing);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Remote keyboard 5:0',
+      );
+      expect(find.text('keep-this-name').hitTestable(), findsOneWidget);
       await remote(tester, LogicalKeyboardKey.select);
       expect(tester.testTextInput.isVisible, isTrue);
       expect(
@@ -1628,9 +1677,29 @@ void main() {
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
     expect(find.byType(TvTextEntryDialog), findsOneWidget);
-    expect(tester.testTextInput.isVisible, isTrue);
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(
+      tester
+          .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+          .controller
+          .text,
+      isEmpty,
+    );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    expect(
+      tester
+          .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+          .controller
+          .text,
+      '1',
+    );
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(TvTextEntryDialog), findsNothing);
@@ -1674,6 +1743,7 @@ void main() {
         viewport: const Size(960, 540),
       );
       await remote(tester, LogicalKeyboardKey.select);
+      await useSystemKeyboard(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 270);
       addTearDown(tester.view.resetViewInsets);
       await tester.pumpAndSettle();
@@ -1683,6 +1753,9 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTextEntryDialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.text('remember-me'), findsOneWidget);
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
@@ -1829,6 +1902,7 @@ void main() {
       );
       await remote(tester, LogicalKeyboardKey.arrowDown);
       await remote(tester, LogicalKeyboardKey.select);
+      await useSystemKeyboard(tester, password: true);
       tester.testTextInput.enterText('private-example');
       await remote(tester, LogicalKeyboardKey.arrowDown);
       expect(
@@ -1847,6 +1921,8 @@ void main() {
       );
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login password');
       await remote(tester, LogicalKeyboardKey.arrowLeft);
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login diagnosis');
@@ -1855,6 +1931,195 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login diagnosis');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final activation in [
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.enter,
+    LogicalKeyboardKey.numpadEnter,
+    LogicalKeyboardKey.gameButtonA,
+  ]) {
+    _uiTest(
+      'TV built-in keyboard $activation types credentials and signs in without a platform keyboard',
+      (tester) async {
+        final store = _MemoryStore(), api = _TestApi();
+        addTearDown(api.dispose);
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          signedIn: false,
+          api: api,
+          viewport: const Size(960, 540),
+        );
+        tester.testTextInput.log.clear();
+        await remote(tester, activation);
+        expect(find.byType(TextField), findsNothing);
+        await keyboardKey(tester, 1, 0, activation: activation);
+        await keyboardKey(tester, 0, 0, activation: activation);
+        expect(
+          tester
+              .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+              .controller
+              .text,
+          'q1',
+        );
+        await keyboardKey(tester, 4, 5, activation: activation);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Login password',
+        );
+        await remote(tester, activation);
+        await keyboardKey(tester, 4, 0, activation: activation);
+        await keyboardKey(tester, 2, 0, activation: activation);
+        await keyboardKey(tester, 4, 1, activation: activation);
+        await keyboardKey(tester, 0, 0, activation: activation);
+        await keyboardKey(tester, 4, 1, activation: activation);
+        await keyboardKey(tester, 0, 8, activation: activation);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const ValueKey('tv-keyboard-value')))
+              .data,
+          '•••',
+        );
+        await keyboardKey(tester, 4, 5, activation: activation);
+        expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login connect');
+        await remote(tester, activation);
+        expect(api.authenticationCount, 1);
+        expect(store.savedSession?.credentials.username, 'q1');
+        expect(store.savedSession?.credentials.password, 'A!9');
+        expect(
+          tester.testTextInput.log.any(
+            (call) => call.method == 'TextInput.show',
+          ),
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest('TV redesign visual built-in keyboard fits at $size', (
+      tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: size,
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      for (final label in ['Done', 'Clear', 'Use system keyboard', 'Back']) {
+        expect(find.text(label).hitTestable(), findsOneWidget);
+      }
+      expect(find.byType(TextField), findsNothing);
+      expect(tester.testTextInput.isVisible, isFalse);
+      await _screenshot(tester, 'tv-redesign-keyboard-${size.width.toInt()}');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  _uiTest(
+    'TV built-in keyboard supports all printable credential characters and clear',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      final controller = tester
+          .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+          .controller;
+      for (var mode = 0; mode < 3; mode++) {
+        if (mode == 1) await keyboardKey(tester, 4, 0);
+        if (mode == 2) await keyboardKey(tester, 4, 1);
+        for (var row = 0; row < 4; row++) {
+          for (var col = 0; col < 10; col++) {
+            await keyboardKey(tester, row, col);
+          }
+        }
+      }
+      await keyboardKey(tester, 4, 2);
+      expect(
+        controller.text.runes.toSet().containsAll(
+          List.generate(95, (i) => i + 32),
+        ),
+        isTrue,
+      );
+      await keyboardKey(tester, 4, 3);
+      expect(controller.text.endsWith(' '), isFalse);
+      await keyboardKey(tester, 4, 4);
+      expect(controller.text, isEmpty);
+      await keyboardKey(tester, 1, 0);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(
+        tester
+            .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+            .controller
+            .text,
+        '-',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV built-in keyboard masks passwords and accepts physical typing without IME',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      await remote(tester, LogicalKeyboardKey.select);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA, character: 'a');
+      await tester.sendKeyEvent(LogicalKeyboardKey.space, character: ' ');
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB, character: '😀');
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+          .controller;
+      expect(controller.text, 'a 😀');
+      await remote(tester, LogicalKeyboardKey.backspace);
+      expect(controller.text, 'a ');
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('tv-keyboard-value')))
+            .data,
+        '••',
+      );
+      await keyboardKey(tester, 5, 0);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('tv-keyboard-value')))
+            .data,
+        'a ',
+      );
+      await keyboardKey(tester, 5, 0);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('tv-keyboard-value')))
+            .data,
+        '••',
+      );
+      expect(tester.testTextInput.isVisible, isFalse);
       expect(tester.takeException(), isNull);
     },
   );

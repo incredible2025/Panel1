@@ -48,8 +48,9 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
           ModalRoute.of(context)?.isCurrent != true ||
           _fieldFocus.hasFocus ||
           _done.hasFocus ||
-          _visibility.hasFocus)
+          _visibility.hasFocus) {
         return;
+      }
       if (FocusManager.instance.primaryFocus is FocusScopeNode) {
         _closing = true;
         Navigator.pop(context, false);

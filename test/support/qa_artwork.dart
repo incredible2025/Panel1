@@ -22,9 +22,18 @@ Future<void> installQaArtwork() async {
   }
   final bytes = await File(path).readAsBytes();
   if (bytes.isEmpty) throw StateError('The local QA artwork image is empty.');
+  final images = <String, Uint8List>{};
+  final directory = Platform.environment['STREAMLINE_QA_ART_DIR'];
+  if (directory != null) {
+    for (final name in ['football', 'mountains', 'forest']) {
+      images['/glass/$name.jpg'] = await File(
+        '$directory/$name.jpg',
+      ).readAsBytes();
+    }
+  }
 
   _previousProvider = debugNetworkImageHttpClientProvider;
-  debugNetworkImageHttpClientProvider = () => _QaHttpClient(bytes);
+  debugNetworkImageHttpClientProvider = () => _QaHttpClient(bytes, images);
   _installed = true;
   PaintingBinding.instance.imageCache.clear();
   PaintingBinding.instance.imageCache.clearLiveImages();
@@ -40,15 +49,17 @@ void restoreQaArtwork() {
 }
 
 class _QaHttpClient extends Fake implements HttpClient {
-  _QaHttpClient(this.bytes);
+  _QaHttpClient(this.bytes, this.images);
 
   final Uint8List bytes;
+  final Map<String, Uint8List> images;
 
   @override
   bool autoUncompress = false;
 
   @override
-  Future<HttpClientRequest> getUrl(Uri url) async => _QaRequest(bytes);
+  Future<HttpClientRequest> getUrl(Uri url) async =>
+      _QaRequest(images[url.path] ?? bytes);
 
   @override
   void close({bool force = false}) {}

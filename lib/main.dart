@@ -13,6 +13,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks([
+      'Inter typeface',
+    ], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
+    yield LicenseEntryWithLineBreaks([
       'ULTRAVPN PLAYER native compatibility player',
     ], await rootBundle.loadString('assets/licenses/native-player.txt'));
   });

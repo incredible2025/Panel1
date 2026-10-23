@@ -22,6 +22,8 @@ import 'package:streamline_iptv/features/series_detail_screen.dart';
 import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
+import 'package:streamline_iptv/widgets/tv_glass_guide.dart';
+import 'package:streamline_iptv/widgets/tv_glass_theme.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
@@ -245,6 +247,7 @@ Future<void> _pumpApp(
   UpdateController? updater,
   String? moviePlot,
   bool withEpg = true,
+  Map<String, List<EpgEntry>>? schedules,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -279,16 +282,19 @@ Future<void> _pumpApp(
           },
         ),
         epgProvider.overrideWith(
-          (ref, id) async => withEpg
-              ? [
-                  EpgEntry(
-                    title: 'The World Today',
-                    description: 'Headlines and stories from around the world.',
-                    start: now.subtract(const Duration(minutes: 15)),
-                    end: now.add(const Duration(minutes: 15)),
-                  ),
-                ]
-              : <EpgEntry>[],
+          (ref, id) async =>
+              schedules?[id] ??
+              (withEpg
+                  ? [
+                      EpgEntry(
+                        title: 'The World Today',
+                        description:
+                            'Headlines and stories from around the world.',
+                        start: now.subtract(const Duration(minutes: 15)),
+                        end: now.add(const Duration(minutes: 15)),
+                      ),
+                    ]
+                  : <EpgEntry>[]),
         ),
         movieDetailProvider.overrideWith(
           (ref, item) async => MovieDetail(
@@ -367,7 +373,13 @@ Future<void> _screenshot(WidgetTester tester, String name) async {
   final assets = tester
       .widgetList<Image>(find.byType(Image))
       .map((widget) => widget.image)
-      .where((provider) => provider is AssetImage || provider is ResizeImage)
+      .where(
+        (provider) =>
+            provider is AssetImage ||
+            provider is ResizeImage ||
+            const bool.fromEnvironment('CAPTURE_UI_ART') &&
+                provider is NetworkImage,
+      )
       .toList();
   await tester.runAsync(() async {
     for (final provider in assets) {
@@ -455,7 +467,10 @@ Future<void> _remoteSort(
   await tester.pumpAndSettle();
   await tester.sendKeyEvent(LogicalKeyboardKey.select);
   await tester.pumpAndSettle();
-  final newestOption = find.text('Recently added');
+  final newestOption = find.descendant(
+    of: find.byType(SimpleDialog),
+    matching: find.text('Recently added'),
+  );
   expect(newestOption, findsOneWidget);
   Focus.of(tester.element(newestOption)).requestFocus();
   await tester.pumpAndSettle();
@@ -527,6 +542,142 @@ void main() {
       });
       return found;
     });
+  }
+
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest('TV redesign visual approved Glass guide at $size', (tester) async {
+      const names = [
+        'Sports Main',
+        'BBC One',
+        'BBC Two',
+        'ITV 1',
+        'Channel 4',
+        'Sports Football',
+        'Cinema Premiere',
+        'Nature HD',
+      ];
+      const programmes = [
+        ['Friday Night Football', 'The Football Show', 'Match Highlights'],
+        ['The Evening News', 'The One Show', 'A Question of Sport'],
+        ['Coast & Country', 'The Repair Workshop', 'Inside the Museum'],
+        ['Evening Headlines', 'The Chase', 'Friday Night Drama'],
+        ['A Place by the Sea', 'Food Unwrapped', 'The Great Escape'],
+        ['Matchday Live', 'Premier League Preview', 'Football Classics'],
+        ['Beyond the Summit', 'The Last Crossing', 'After Midnight'],
+        ['The Hidden Forest', 'Wild Britain', 'Life on Earth'],
+      ];
+      final now = DateTime.now();
+      final channels = List.generate(
+        80,
+        (i) => MediaItem(
+          id: '$i',
+          name: i < names.length ? names[i] : 'Channel $i',
+          kind: MediaKind.live,
+          imageUrl: const bool.fromEnvironment('CAPTURE_UI_ART')
+              ? 'https://artwork.example/glass/football.jpg'
+              : '',
+        ),
+      );
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        viewport: size,
+        liveChannels: channels,
+        suppliedCategories: {
+          MediaKind.live: const [
+            Category(id: 'ent', name: 'Entertainment'),
+            Category(id: 'sport', name: 'Sports'),
+            Category(id: 'film', name: 'Movies'),
+            Category(id: 'doc', name: 'Documentaries'),
+            Category(id: 'kids', name: 'Kids'),
+          ],
+        },
+        schedules: {
+          for (var i = 0; i < 80; i++)
+            '$i': List.generate(
+              3,
+              (column) => EpgEntry(
+                title: programmes[i % 8][column],
+                description: 'Live coverage, analysis and all the key moments.',
+                start: now.add(Duration(minutes: column * 60 - 15)),
+                end: now.add(Duration(minutes: column * 60 + 45)),
+              ),
+            ),
+        },
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(find.byType(TvGlassGuide), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(TvGlassBackdrop)),
+        Rect.fromLTWH(0, 0, size.width, size.height),
+      );
+      expect(find.text('Nature HD').hitTestable(), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Channel: Sports Main',
+      );
+      expect(tester.takeException(), isNull);
+      await _screenshot(
+        tester,
+        'tv-redesign-glass-guide-${size.width.toInt()}',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Programme 1: Sports Main',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.text('Watch live channel'), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.escape);
+      expect(tester.takeException(), isNull);
+    });
+    for (final section in ['home', 'movie']) {
+      _uiTest('TV redesign visual approved Glass $section at $size', (
+        tester,
+      ) async {
+        const names = [
+          'Beyond the Summit',
+          'The Hidden Forest',
+          'Friday Night Live',
+          'Northern Lights',
+          'Wild Britain',
+          'The Last Match',
+        ];
+        final movies = List.generate(
+          12,
+          (i) => MediaItem(
+            id: 'glass-$i',
+            name: i < 6 ? names[i] : 'Film $i',
+            kind: MediaKind.movie,
+            addedAt: DateTime.now().subtract(Duration(days: i)),
+            imageUrl: const bool.fromEnvironment('CAPTURE_UI_ART')
+                ? 'https://artwork.example/glass/${['mountains', 'forest', 'football'][i % 3]}.jpg'
+                : '',
+          ),
+        );
+        final store = _MemoryStore()
+          ..preferences = AppSettings(lastSection: section);
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: size,
+          movies: movies,
+        );
+        expect(find.text('The Last Match').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _screenshot(
+          tester,
+          'tv-redesign-glass-$section-${size.width.toInt()}',
+        );
+      });
+    }
   }
 
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
@@ -936,11 +1087,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      _cardFocus(tester, find.text('Search')).requestFocus();
       await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
@@ -970,6 +1117,9 @@ void main() {
 
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
+    await (FontLoader(
+      'Glass Sans',
+    )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
     await (FontLoader('Streamline Sans')
           ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
           ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
@@ -1399,7 +1549,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.textContaining('All categories'), findsOneWidget);
+    expect(find.text('Recently added'), findsOneWidget);
     expect(find.text('Zephyr'), findsWidgets);
     expect(tester.takeException(), isNull);
     await _screenshot(tester, 'tv-movies');
@@ -1438,9 +1588,24 @@ void main() {
           FocusManager.instance.primaryFocus?.debugLabel,
           'Navigation: ${kind.name}',
         );
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        if (kind != MediaKind.live) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+          await tester.pumpAndSettle();
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Featured title',
+          );
+          _cardFocus(tester, find.text('Browse all')).requestFocus();
+          await tester.pumpAndSettle();
+          await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        } else {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        }
         await tester.pumpAndSettle();
-        expect(FocusManager.instance.primaryFocus?.debugLabel, 'Category: All');
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          kind == MediaKind.live ? 'Category: All channels' : 'Category: All',
+        );
         final extra = kind == MediaKind.live ? 3 : 1;
         for (var i = 0; i < 12 + extra; i++) {
           await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);

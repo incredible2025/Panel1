@@ -16,6 +16,7 @@ import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
 import '../widgets/tv_poster_browser.dart';
+import '../widgets/tv_page_navigation.dart';
 import 'app_updates_screen.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
@@ -1358,93 +1359,100 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         const SizedBox(width: 24),
         Expanded(
           flex: 4,
-          child: SingleChildScrollView(
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.account_circle_outlined,
-                    size: 44,
-                    color: AppColors.accent,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    ref.watch(sessionProvider)?.credentials.username ?? '',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
+          child: TvPageNavigation(
+            enabled: true,
+            autofocus: false,
+            onLeft: () =>
+                _categories.currentState?.focusSelected(remember: true),
+            onTop: () => _nav('settings').requestFocus(),
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(
+                      Icons.account_circle_outlined,
+                      size: 44,
+                      color: AppColors.accent,
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'SUBSCRIPTION',
-                    style: TextStyle(
-                      fontSize: 14,
-                      letterSpacing: 1.5,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    info?.status ?? 'Not supplied',
-                    style: const TextStyle(fontSize: 22),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'EXPIRY',
-                    style: TextStyle(
-                      fontSize: 14,
-                      letterSpacing: 1.5,
-                      color: AppColors.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    info?.expiryLabel ?? 'Not supplied',
-                    style: const TextStyle(fontSize: 22),
-                  ),
-                  const SizedBox(height: 22),
-                  TvControl(
-                    focusNode: _watch,
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const SpeedTestScreen(),
+                    const SizedBox(height: 16),
+                    Text(
+                      ref.watch(sessionProvider)?.credentials.username ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.speed),
-                        SizedBox(width: 10),
-                        Text('Speed test'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TvControl(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AppUpdatesScreen(),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'SUBSCRIPTION',
+                      style: TextStyle(
+                        fontSize: 14,
+                        letterSpacing: 1.5,
+                        color: AppColors.muted,
                       ),
                     ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.system_update),
-                        SizedBox(width: 10),
-                        Text('App updates'),
-                      ],
+                    const SizedBox(height: 7),
+                    Text(
+                      info?.status ?? 'Not supplied',
+                      style: const TextStyle(fontSize: 22),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    const Text(
+                      'EXPIRY',
+                      style: TextStyle(
+                        fontSize: 14,
+                        letterSpacing: 1.5,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      info?.expiryLabel ?? 'Not supplied',
+                      style: const TextStyle(fontSize: 22),
+                    ),
+                    const SizedBox(height: 22),
+                    TvControl(
+                      focusNode: _watch,
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SpeedTestScreen(),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.speed),
+                          SizedBox(width: 10),
+                          Text('Speed test'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TvControl(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AppUpdatesScreen(),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.system_update),
+                          SizedBox(width: 10),
+                          Text('App updates'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

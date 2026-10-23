@@ -13,6 +13,8 @@ import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
+import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_controls.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, this.embedded = false, this.groupIndex});
@@ -231,7 +233,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: widget.embedded ? null : AppBar(title: const Text('Settings')),
-      body: content,
+      body: TvPageNavigation(enabled: ref.watch(isTvProvider), child: content),
     );
   }
 
@@ -659,21 +661,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     onTap: () async {
       final selected = await showDialog<String>(
         context: context,
-        builder: (context) => SimpleDialog(
-          title: Text(title),
-          children: [
-            for (final option in options.entries)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, option.key),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(option.value)),
-                    if (value == option.key)
-                      const Icon(Icons.check, color: AppColors.accent),
-                  ],
+        builder: (context) => TvPageNavigation(
+          enabled: ref.read(isTvProvider),
+          child: SimpleDialog(
+            title: Text(title),
+            children: [
+              for (final option in options.entries)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, option.key),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(option.value)),
+                      if (value == option.key)
+                        const Icon(Icons.check, color: AppColors.accent),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       );
       if (selected != null) change(selected);
@@ -804,6 +809,16 @@ class CategorySettingsScreen extends ConsumerStatefulWidget {
 class _CategorySettingsScreenState
     extends ConsumerState<CategorySettingsScreen> {
   MediaKind _kind = MediaKind.live;
+  final _tvList = GlobalKey<TvRemoteListState>();
+  final _tabs = {for (final k in MediaKind.values) k: FocusNode()};
+  @override
+  void dispose() {
+    for (final node in _tabs.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings =
@@ -847,14 +862,28 @@ class _CategorySettingsScreenState
               spacing: 12,
               children: [
                 for (final kind in MediaKind.values)
-                  ChoiceChip(
-                    label: Text(switch (kind) {
-                      MediaKind.live => 'Live TV',
-                      MediaKind.movie => 'Movies',
-                      MediaKind.series => 'Series',
-                    }),
-                    selected: _kind == kind,
-                    onSelected: (_) => setState(() => _kind = kind),
+                  Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onKeyEvent: (_, event) {
+                      if (ref.read(isTvProvider) &&
+                          (event is KeyDownEvent || event is KeyRepeatEvent) &&
+                          event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                        _tvList.currentState?.focusSelected(remember: true);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: ChoiceChip(
+                      focusNode: _tabs[kind],
+                      label: Text(switch (kind) {
+                        MediaKind.live => 'Live TV',
+                        MediaKind.movie => 'Movies',
+                        MediaKind.series => 'Series',
+                      }),
+                      selected: _kind == kind,
+                      onSelected: (_) => setState(() => _kind = kind),
+                    ),
                   ),
               ],
             ),
@@ -901,6 +930,37 @@ class _CategorySettingsScreenState
                       );
                 }
 
+                if (ref.watch(isTvProvider)) {
+                  return TvRemoteList(
+                    key: _tvList,
+                    autofocus: true,
+                    extent: 72,
+                    label: 'Manage category',
+                    onTop: () => _tabs[_kind]!.requestFocus(),
+                    onLeft: () => _tabs[_kind]!.requestFocus(),
+                    onRight: () {},
+                    entries: [
+                      for (var i = 0; i < sorted.length; i++)
+                        TvListEntry(
+                          id: sorted[i].id,
+                          title: sorted[i].name,
+                          subtitle:
+                              '${settings.hiddenCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
+                                  ? 'Hidden'
+                                  : settings.lockedCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
+                                  ? 'PIN protected'
+                                  : 'Visible'} · OK to manage',
+                          onPressed: () => _manageCategory(
+                            sorted,
+                            i,
+                            settings,
+                            pin,
+                            reorder,
+                          ),
+                        ),
+                    ],
+                  );
+                }
                 return ReorderableListView.builder(
                   itemCount: sorted.length,
                   onReorder: reorder,
@@ -994,6 +1054,49 @@ class _CategorySettingsScreenState
       ),
     );
   }
+
+  Future<void> _manageCategory(
+    List<Category> categories,
+    int index,
+    AppSettings settings,
+    bool hasPin,
+    Future<void> Function(int, int) reorder,
+  ) async {
+    final category = categories[index],
+        key = AppSettings.categoryKey(_kind, categories[index].id);
+    final action = await showTvMenu(context, category.name, {
+      if (index > 0) 'up': 'Move up',
+      if (index + 1 < categories.length) 'down': 'Move down',
+      'visibility': settings.hiddenCategories.contains(key)
+          ? 'Show category'
+          : 'Hide category',
+      'lock': settings.lockedCategories.contains(key)
+          ? 'Unlock category'
+          : 'Lock category',
+      'close': 'Close',
+    });
+    if (!mounted || action == null || action == 'close') return;
+    if (action == 'up' || action == 'down') {
+      await reorder(index, action == 'up' ? index - 1 : index + 2);
+      return;
+    }
+    if (action == 'lock' && !hasPin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set a parental PIN in Settings first.')),
+      );
+      return;
+    }
+    await ref.read(settingsProvider.notifier).update((s) {
+      final set = action == 'lock'
+          ? {...s.lockedCategories}
+          : {...s.hiddenCategories};
+      if (!set.remove(key)) set.add(key);
+      return s.patch({
+        action == 'lock' ? 'lockedCategories' : 'hiddenCategories': set
+            .toList(),
+      });
+    });
+  }
 }
 
 class FavoriteOrderScreen extends ConsumerWidget {
@@ -1063,6 +1166,34 @@ class FavoriteOrderScreen extends ConsumerWidget {
             });
           }
 
+          if (ref.watch(isTvProvider)) {
+            return TvRemoteList(
+              autofocus: true,
+              extent: 72,
+              label: 'Favourite channel',
+              onLeft: () {},
+              onRight: () {},
+              onTop: () {},
+              entries: [
+                for (var i = 0; i < channels.length; i++)
+                  TvListEntry(
+                    id: channels[i].id,
+                    title: channels[i].name,
+                    subtitle: 'Position ${i + 1} · OK to reorder',
+                    onPressed: () async {
+                      final action =
+                          await showTvMenu(context, channels[i].name, {
+                            if (i > 0) 'up': 'Move up',
+                            if (i + 1 < channels.length) 'down': 'Move down',
+                            'close': 'Close',
+                          });
+                      if (action == 'up') await move(i, i - 1);
+                      if (action == 'down') await move(i, i + 2);
+                    },
+                  ),
+              ],
+            );
+          }
           return ReorderableListView.builder(
             itemCount: channels.length,
             onReorder: move,

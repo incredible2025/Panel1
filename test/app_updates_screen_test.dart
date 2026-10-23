@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,10 +8,140 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/data/app_update.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
+import 'package:streamline_iptv/core/providers.dart';
+import 'package:streamline_iptv/core/design_system.dart';
+import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 
-import 'app_update_test.dart' show FakePlatform, FakeTransport;
+import 'app_update_test.dart' show FakePlatform, FakeTransport, manifest;
 
 void main() {
+  Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
+    await tester.sendKeyEvent(key);
+    await tester.pumpAndSettle();
+  }
+
+  Future<UpdateController> mountTv(
+    WidgetTester tester,
+    FakePlatform platform,
+    FakeTransport transport,
+    Size size,
+    double scale,
+  ) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = scale;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final c = UpdateController(platform, transport);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          updateControllerProvider.overrideWith((ref) => c),
+          isTvProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          theme: StreamlineTheme.dark,
+          home: const AppUpdatesScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return c;
+  }
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    for (final scale in [1.0, 1.3]) {
+      testWidgets(
+        'TV audit updates remain accessible with long notes at $size scale $scale',
+        (tester) async {
+          final platform = FakePlatform();
+          final transport = FakeTransport()
+            ..next = AppUpdate.parse(
+              jsonEncode({
+                ...manifest(),
+                'releaseNotes': List.filled(
+                  100,
+                  'A long release description with improvements and fixes.',
+                ).join('\n\n'),
+              }),
+            );
+          await mountTv(tester, platform, transport, size, scale);
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Update action',
+          );
+          await press(tester, LogicalKeyboardKey.select);
+          expect(find.text('Download update').hitTestable(), findsOneWidget);
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Update action',
+          );
+          await press(tester, LogicalKeyboardKey.arrowLeft);
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Update details',
+          );
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowDown);
+          await tester.pumpAndSettle();
+          for (var i = 0; i < 3; i++) {
+            await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowDown);
+            await tester.pumpAndSettle();
+          }
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowDown);
+          await tester.pumpAndSettle();
+          final scroll = tester.state<ScrollableState>(
+            find.descendant(
+              of: find.byType(TvScrollPane),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          expect(scroll.position.pixels, greaterThan(0));
+          expect(find.text('Download update').hitTestable(), findsOneWidget);
+          await press(tester, LogicalKeyboardKey.arrowRight);
+          await press(tester, LogicalKeyboardKey.select);
+          expect(find.text('Install update').hitTestable(), findsOneWidget);
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Update action',
+          );
+          await press(tester, LogicalKeyboardKey.select);
+          expect(platform.requested, isTrue);
+          expect(find.text('Install update').hitTestable(), findsOneWidget);
+          platform.allowed = true;
+          await press(tester, LogicalKeyboardKey.select);
+          expect(platform.installs, 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+  testWidgets(
+    'TV audit download can be cancelled and retried without losing focus',
+    (tester) async {
+      final transport = FakeTransport()..pending = Completer<String>();
+      final c = await mountTv(
+        tester,
+        FakePlatform(),
+        transport,
+        const Size(960, 540),
+        1,
+      );
+      await press(tester, LogicalKeyboardKey.select);
+      await press(tester, LogicalKeyboardKey.select);
+      expect(c.stage, UpdateStage.downloading);
+      expect(find.text('Cancel download').hitTestable(), findsOneWidget);
+      await press(tester, LogicalKeyboardKey.select);
+      expect(transport.cancelled, isTrue);
+      expect(c.busy, isFalse);
+      expect(find.text('Download update').hitTestable(), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Update action');
+      transport.pending = null;
+      await press(tester, LogicalKeyboardKey.select);
+      expect(c.stage, UpdateStage.ready);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final previous in ['', 'https://old.example/update.json']) {
     testWidgets('updates show actions without source controls: $previous', (
       tester,

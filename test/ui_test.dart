@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -22,6 +23,13 @@ import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
+import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
+import 'package:streamline_iptv/core/update_controller.dart';
+import 'package:streamline_iptv/features/app_updates_screen.dart';
+import 'package:streamline_iptv/features/speed_test_screen.dart';
+import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
+import 'app_update_test.dart' show FakePlatform, FakeTransport, manifest;
+import 'package:streamline_iptv/data/app_update.dart';
 
 import 'support/qa_artwork.dart';
 
@@ -234,6 +242,8 @@ Future<void> _pumpApp(
   List<MediaItem>? liveChannels,
   List<MediaItem>? seriesItems,
   Map<MediaKind, List<Category>>? suppliedCategories,
+  UpdateController? updater,
+  String? moviePlot,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -247,6 +257,8 @@ Future<void> _pumpApp(
         storeProvider.overrideWithValue(store),
         sessionProvider.overrideWith((ref) => signedIn ? _account : null),
         isTvProvider.overrideWithValue(tv),
+        if (updater != null)
+          updateControllerProvider.overrideWith((ref) => updater),
         if (api != null) apiProvider.overrideWithValue(api),
         categoriesProvider.overrideWith(
           (ref, kind) async =>
@@ -285,6 +297,7 @@ Future<void> _pumpApp(
               imageUrl: item.imageUrl,
             ),
             plot:
+                moviePlot ??
                 'A journey across a quiet landscape becomes an unforgettable adventure.',
             cast: 'Alex Morgan, Jamie Lee',
             genre: 'Drama',
@@ -487,6 +500,279 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  Future<void> remote(
+    WidgetTester tester,
+    LogicalKeyboardKey key, [
+    int count = 1,
+  ]) async {
+    for (var i = 0; i < count; i++) {
+      await tester.sendKeyEvent(key);
+      await tester.pumpAndSettle();
+    }
+  }
+
+  bool focused(Finder label) {
+    final target = FocusManager.instance.primaryFocus?.context;
+    return label.evaluate().any((element) {
+      var found = identical(element, target);
+      element.visitAncestorElements((parent) {
+        if (identical(parent, target)) {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return found;
+    });
+  }
+
+  _uiTest(
+    'TV audit long movie descriptions scroll and return to Play using the remote',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        viewport: const Size(960, 540),
+        screen: MovieDetailScreen(item: _film),
+        moviePlot: List.filled(
+          90,
+          'A journey across a quiet landscape becomes an unforgettable adventure.',
+        ).join('\n\n'),
+      );
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Movie play');
+      await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Movie description',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 3);
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(TvScrollPane),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(scroll.position.pixels, greaterThan(0));
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Movie play');
+      expect(find.text('Play movie').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest(
+      'TV redesign visual fixed update actions with long notes at $size',
+      (tester) async {
+        final platform = FakePlatform();
+        final t = FakeTransport()
+          ..next = AppUpdate.parse(
+            jsonEncode({
+              ...manifest(),
+              'releaseNotes': List.filled(
+                80,
+                'Playback, browsing and remote navigation improvements.',
+              ).join('\n\n'),
+            }),
+          );
+        final c = UpdateController(platform, t);
+        await c.check();
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          viewport: size,
+          updater: c,
+          screen: const AppUpdatesScreen(),
+        );
+        expect(focused(find.text('Download update')), isTrue);
+        expect(find.text('Download update').hitTestable(), findsOneWidget);
+        await _screenshot(tester, 'tv-redesign-updates-${size.width.toInt()}');
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Install update').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  _uiTest('TV audit player preference dialog works from initial remote focus', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      viewport: const Size(960, 540),
+      screen: const SettingsScreen(groupIndex: 0),
+    );
+    expect(focused(find.text('Default player')), isTrue);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(focused(find.text('ExoPlayer · Standard')), isTrue);
+    await remote(tester, LogicalKeyboardKey.arrowDown);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(store.preferences.engine, PlayerEngine.compatibility);
+    expect(focused(find.text('Default player')), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+  _uiTest(
+    'TV audit favourite ordering reaches distant channels and restores focus',
+    (tester) async {
+      final channels = List.generate(
+        80,
+        (i) => MediaItem(id: '$i', name: 'Channel $i', kind: MediaKind.live),
+      );
+      final store = _MemoryStore()
+        ..favoriteItems = channels
+        ..preferences = AppSettings(
+          favoriteOrder: channels.map((e) => 'live:${e.id}').toList(),
+        );
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        viewport: const Size(960, 540),
+        screen: const FavoriteOrderScreen(),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 45);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Favourite channel: Channel 45',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(store.preferences.favoriteOrder[44], 'live:45');
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Favourite channel: Channel 45',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest(
+      'TV audit remote-only Settings shortcut and maintenance update journey at $size',
+      (tester) async {
+        final platform = FakePlatform()..checked = DateTime.now();
+        final updater = UpdateController(platform, FakeTransport());
+        final store = _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'settings');
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: size,
+          updater: updater,
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(focused(find.text('Speed test')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('App updates')), isTrue);
+        expect(find.text('App updates').hitTestable(), findsOneWidget);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(AppUpdatesScreen), findsOneWidget);
+        expect(focused(find.text('Check for updates')), isTrue);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(focused(find.text('App updates')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowUp);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(SpeedTestScreen), findsOneWidget);
+        expect(find.text('Start speed test').hitTestable(), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await remote(tester, LogicalKeyboardKey.arrowLeft);
+        await remote(tester, LogicalKeyboardKey.arrowDown, 5);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(SettingsScreen), findsOneWidget);
+        expect(focused(find.text('Speed test')), isTrue);
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('Connection diagnosis')), isTrue);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.byType(ConnectionDiagnosisScreen), findsOneWidget);
+        expect(find.text('Run diagnosis').hitTestable(), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(focused(find.text('App updates')), isTrue);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(focused(find.text('Check for updates')), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (var group = 0; group < 6; group++) {
+    _uiTest(
+      'TV audit all Settings group $group controls remain reachable by remote',
+      (tester) async {
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          screen: SettingsScreen(groupIndex: group),
+          viewport: const Size(960, 540),
+        );
+        final visited = <FocusNode>{};
+        for (var i = 0; i < 32; i++) {
+          final node = FocusManager.instance.primaryFocus;
+          if (node != null) visited.add(node);
+          await remote(tester, LogicalKeyboardKey.arrowDown);
+        }
+        expect(visited.length, greaterThanOrEqualTo([4, 6, 5, 3, 1, 7][group]));
+        expect(
+          focused(
+            find.text(
+              [
+                'Play the next episode',
+                'Subtitle background',
+                'Personal movie recommendations',
+                'Set parental PIN',
+                'Refresh account information',
+                'Sign out',
+              ][group],
+            ),
+          ),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  _uiTest('TV audit distant categories can be managed using only the remote', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      viewport: const Size(960, 540),
+      screen: const CategorySettingsScreen(),
+      suppliedCategories: {
+        MediaKind.live: List.generate(
+          80,
+          (i) => Category(id: '$i', name: 'Group $i'),
+        ),
+      },
+    );
+    await remote(tester, LogicalKeyboardKey.arrowDown, 45);
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Manage category: Group 45',
+    );
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(focused(find.text('Move up')), isTrue);
+    await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(store.preferences.hiddenCategories, contains('live:45'));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Manage category: Group 45',
+    );
+    expect(tester.takeException(), isNull);
+  });
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     for (final section in ['home', 'live', 'movie', 'series', 'settings']) {
       _uiTest('TV redesign visual $section fits ${size.width} x ${size.height}', (

@@ -322,133 +322,140 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF070D18),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final compact = box.maxWidth < 1050;
-              return Padding(
-                padding: EdgeInsets.fromLTRB(
-                  compact ? 20 : 32,
-                  12,
-                  compact ? 20 : 32,
-                  10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: compact ? 100 : 146,
-                          child: const FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: StreamlineMark(size: 28, wordmark: true),
+        backgroundColor: const Color(0xFF080C13),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF111D2B), Color(0xFF080C13), Color(0xFF080C13)],
+              stops: [0, .55, 1],
+            ),
+          ),
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final compact = box.maxWidth < 1050;
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    compact ? 20 : 32,
+                    12,
+                    compact ? 20 : 32,
+                    10,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: compact ? 100 : 146,
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: StreamlineMark(size: 28, wordmark: true),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 18),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              for (final entry in [
-                                ('home', 'Home', Icons.home_rounded),
-                                ('live', 'Live TV', Icons.live_tv),
-                                ('movie', 'Movies', Icons.movie_outlined),
-                                (
-                                  'series',
-                                  'Series',
-                                  Icons.video_library_outlined,
-                                ),
-                                ('list', 'My List', Icons.bookmark_outline),
-                                (
-                                  'settings',
-                                  'Settings',
-                                  Icons.settings_outlined,
-                                ),
-                              ])
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 7),
-                                    child: TvControl(
-                                      focusNode: _nav(entry.$1),
-                                      autofocus: _section == entry.$1,
-                                      selected: _section == entry.$1,
-                                      label: entry.$2,
-                                      onFocused: () => _sectionTo(entry.$1),
-                                      onKeyEvent: _topKey,
-                                      onPressed: () => _sectionTo(entry.$1),
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: compact ? 13 : 16,
-                                        horizontal: 6,
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          if (!compact) ...[
-                                            Icon(entry.$3, size: 20),
-                                            const SizedBox(width: 8),
-                                          ],
-                                          Flexible(
-                                            child: Text(
-                                              entry.$2,
-                                              maxLines: 1,
-                                              style: TextStyle(
-                                                fontSize: compact ? 16 : 18,
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                for (final entry in [
+                                  ('home', 'Home', Icons.home_rounded),
+                                  ('live', 'Live TV', Icons.live_tv),
+                                  ('movie', 'Movies', Icons.movie_outlined),
+                                  (
+                                    'series',
+                                    'Series',
+                                    Icons.video_library_outlined,
+                                  ),
+                                  ('list', 'My List', Icons.bookmark_outline),
+                                  (
+                                    'settings',
+                                    'Settings',
+                                    Icons.settings_outlined,
+                                  ),
+                                ])
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 7),
+                                      child: TvControl(
+                                        style: TvControlStyle.navigation,
+                                        focusNode: _nav(entry.$1),
+                                        autofocus: _section == entry.$1,
+                                        selected: _section == entry.$1,
+                                        label: entry.$2,
+                                        onFocused: () => _sectionTo(entry.$1),
+                                        onKeyEvent: _topKey,
+                                        onPressed: () => _sectionTo(entry.$1),
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: compact ? 13 : 16,
+                                          horizontal: 6,
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                entry.$2,
+                                                maxLines: 1,
+                                                style: TextStyle(
+                                                  fontSize: compact ? 18 : 21,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: switch (_section) {
-                        'home' => _home(),
-                        'settings' => _settingsHome(info),
-                        'list' => _saved(),
-                        _ => _library(compact),
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            info?.expiring == true
-                                ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
-                                : 'D-pad Browse    OK Select    Back Home',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: info?.expiring == true
-                                  ? AppColors.danger
-                                  : AppColors.muted,
-                              fontSize: 14,
+                              ],
                             ),
                           ),
-                        ),
-                        Text(
-                          guideClock(DateTime.now()),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: AppColors.muted,
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: switch (_section) {
+                          'home' => _home(),
+                          'settings' => _settingsHome(info),
+                          'list' => _saved(),
+                          _ => _library(compact),
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              info?.expiring == true
+                                  ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
+                                  : 'D-pad Browse    OK Select    Back Home',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: info?.expiring == true
+                                    ? AppColors.danger
+                                    : AppColors.muted,
+                                fontSize: 14,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                          Text(
+                            guideClock(DateTime.now()),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -470,7 +477,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 30,
+                  fontSize: 34,
                   fontFamily: 'Streamline Display',
                   fontWeight: FontWeight.w700,
                 ),
@@ -478,6 +485,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               if (subtitle.isNotEmpty)
                 Text(
                   subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppColors.muted, fontSize: 16),
                 ),
             ],
@@ -511,12 +520,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     ),
   );
   Widget _panel(String title, Widget child, {String? count}) => Container(
-    decoration: BoxDecoration(
-      color: const Color(0xFF0C1626),
-      border: Border.all(color: AppColors.border),
-      borderRadius: BorderRadius.circular(16),
-    ),
-    padding: const EdgeInsets.all(12),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -529,7 +533,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                   title,
                   style: const TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.muted,
                   ),
                 ),
               ),
@@ -766,17 +771,19 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             TvRemoteList(
               key: _channels,
               label: 'Channel',
-              extent: compact ? 66 : 75,
+              extent: compact ? 62 : 70,
               entries: [
                 for (var i = 0; i < channels.length; i++)
                   TvListEntry(
                     id: channels[i].id,
                     title: channels[i].name,
-                    subtitle:
-                        'Channel ${(i + 1).toString().padLeft(3, '0')}${favorites.contains(AppKey.item(channels[i])) ? ' · ★' : ''}',
+                    subtitle: favorites.contains(AppKey.item(channels[i]))
+                        ? 'Favourite'
+                        : '',
+                    trailing: (i + 1).toString().padLeft(3, '0'),
                     leading: SizedBox(
-                      width: 33,
-                      height: 33,
+                      width: 37,
+                      height: 37,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(5),
                         child: Artwork(
@@ -824,9 +831,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
+              color: const Color(0xFF101A27),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Focus(
               canRequestFocus: false,
@@ -844,7 +850,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     SizedBox(
-                      height: compact ? 110 : 165,
+                      height: compact ? 144 : 210,
                       child: LiveChannelPreview(
                         key: _preview,
                         compact: true,
@@ -856,21 +862,23 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                     const SizedBox(height: 14),
                     Text(
                       selected.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 23,
+                        fontSize: 27,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 9),
                     Text(
-                      current?.title ?? 'Programme information unavailable',
+                      current?.title ?? 'No programme guide available',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        color: AppColors.text,
+                      style: TextStyle(
+                        fontSize: current == null ? 16 : 19,
+                        color: current == null
+                            ? AppColors.muted
+                            : AppColors.text,
                       ),
                     ),
                     if (current != null) ...[
@@ -908,6 +916,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                       ),
                     const SizedBox(height: 16),
                     TvControl(
+                      style: TvControlStyle.primary,
                       focusNode: _watch,
                       onPressed: () => _open(selected, channels: channels),
                       child: const Row(
@@ -1050,7 +1059,6 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
                 ),
                 child: Stack(
                   fit: StackFit.expand,
@@ -1092,7 +1100,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Text(
-                                  'YOUR NEXT MOVIE NIGHT',
+                                  'FEATURED FOR YOU',
                                   style: TextStyle(
                                     color: AppColors.accent,
                                     letterSpacing: 2,
@@ -1128,6 +1136,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                                 Row(
                                   children: [
                                     TvControl(
+                                      style: TvControlStyle.primary,
                                       focusNode: _hero,
                                       onPressed: () => _open(featured),
                                       child: const Row(
@@ -1369,9 +1378,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               child: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  color: const Color(0xFF101A27),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -137,6 +137,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
         final item = widget.items[index],
             progress = widget.progress[_id(widget.items[index])];
         return TvControl(
+          style: TvControlStyle.poster,
           focusNode: _node(item),
           label: item.name,
           reveal: widget.horizontal,

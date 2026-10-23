@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.7.2** refines the TV presentation with quieter navigation, flat channel/category rows, minimal poster framing and calmer artwork fallbacks, retaining the remote fixes from 0.7.1. See [release notes](docs/RELEASE_NOTES_0.7.2.md).
+
 **v0.7.1** fixes TV update scrolling with fixed actions and separately scrollable release notes, and extends remote navigation through Settings and maintenance. See [release notes](docs/RELEASE_NOTES_0.7.1.md) and the [remote regression checks](docs/TV_REMOTE_AUDIT.md).
 
 **v0.7.0** rebuilds the TV interface around a fixed navigation bar, three-panel Live TV, vertical category lists, large poster grids and dedicated TV detail screens. Mobile keeps its touch interface. See [release notes](docs/RELEASE_NOTES_0.7.0.md) and [TV controls](docs/TV_EXPERIENCE.md).

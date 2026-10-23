@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../core/design_system.dart';
-
 /// Utility pages use a predictable vertical order, including offscreen controls.
 /// Their short forms must build all controls (Column, not a lazy ListView).
 class TvPageNavigation extends StatefulWidget {
@@ -167,7 +165,9 @@ class _TvScrollPaneState extends State<TvScrollPane> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: _focused ? AppColors.accent : AppColors.border,
+            color: _focused
+                ? Colors.white.withValues(alpha: .65)
+                : Colors.transparent,
             width: 2,
           ),
         ),

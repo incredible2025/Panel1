@@ -244,6 +244,7 @@ Future<void> _pumpApp(
   Map<MediaKind, List<Category>>? suppliedCategories,
   UpdateController? updater,
   String? moviePlot,
+  bool withEpg = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -278,14 +279,16 @@ Future<void> _pumpApp(
           },
         ),
         epgProvider.overrideWith(
-          (ref, id) async => [
-            EpgEntry(
-              title: 'The World Today',
-              description: 'Headlines and stories from around the world.',
-              start: now.subtract(const Duration(minutes: 15)),
-              end: now.add(const Duration(minutes: 15)),
-            ),
-          ],
+          (ref, id) async => withEpg
+              ? [
+                  EpgEntry(
+                    title: 'The World Today',
+                    description: 'Headlines and stories from around the world.',
+                    start: now.subtract(const Duration(minutes: 15)),
+                    end: now.add(const Duration(minutes: 15)),
+                  ),
+                ]
+              : <EpgEntry>[],
         ),
         movieDetailProvider.overrideWith(
           (ref, item) async => MovieDetail(
@@ -524,6 +527,54 @@ void main() {
       });
       return found;
     });
+  }
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest(
+      'TV redesign visual premium Live TV with missing artwork and guide at $size',
+      (tester) async {
+        final store = _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'live');
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: size,
+          withEpg: false,
+          liveChannels: List.generate(
+            24,
+            (i) => MediaItem(
+              id: 'channel-$i',
+              name: i == 0
+                  ? 'FRIDAYS FOOTBALL'
+                  : 'Ipswich 20:00 Notts Forest ${i + 1}',
+              kind: MediaKind.live,
+              categoryId: 'uk',
+            ),
+          ),
+          suppliedCategories: {
+            MediaKind.live: const [
+              Category(id: 'uk', name: 'UK: ENTERTAINMENT'),
+              Category(id: 'regional', name: 'UK: REGIONAL'),
+              Category(id: 'sport', name: 'UK: SPORTS'),
+              Category(id: 'football', name: 'LIVE FOOTBALL'),
+            ],
+          },
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Channel: FRIDAYS FOOTBALL',
+        );
+        expect(find.text('No programme guide available'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _screenshot(
+          tester,
+          'tv-redesign-live-premium-${size.width.toInt()}',
+        );
+      },
+    );
   }
 
   _uiTest(

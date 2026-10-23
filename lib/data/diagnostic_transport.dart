@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+import 'dns_lookup.dart';
+
 class DeviceNetwork {
   const DeviceNetwork({
     this.connected,
@@ -11,10 +13,13 @@ class DeviceNetwork {
     this.captivePortal = false,
     this.vpn,
     this.privateDns,
+    this.privateDnsStrict,
+    this.dnsServerCount,
     this.metered,
     this.transports = const [],
   });
-  final bool? connected, validated, vpn, privateDns, metered;
+  final bool? connected, validated, vpn, privateDns, privateDnsStrict, metered;
+  final int? dnsServerCount;
   final bool captivePortal;
   final List<String> transports;
 }
@@ -36,7 +41,7 @@ class ProbeFailure implements Exception {
 
 abstract class DiagnosticTransport {
   Future<DeviceNetwork> network();
-  Future<List<InternetAddress>> lookup(String host);
+  Future<DnsLookupResult> lookup(String host);
   Future<void> connect(String host, int port);
   Future<void> tls(String host, int port);
   Future<ProbeResponse> get(Uri uri, {bool stream = false});
@@ -46,8 +51,18 @@ abstract class DiagnosticTransport {
 /// Short-lived, bounded probes. Normal platform certificate checks stay on.
 /// Redirects are reported, never followed with Xtream credentials.
 class IoDiagnosticTransport implements DiagnosticTransport {
-  IoDiagnosticTransport({this.timeout = const Duration(seconds: 8)});
+  IoDiagnosticTransport({
+    this.timeout = const Duration(seconds: 8),
+    bool? useNativeDns,
+    Future<List<InternetAddress>> Function(String)? systemLookup,
+  }) : useNativeDns = useNativeDns ?? Platform.isAndroid,
+       _systemLookup = systemLookup ?? InternetAddress.lookup;
   final Duration timeout;
+  final bool useNativeDns;
+  final Future<List<InternetAddress>> Function(String) _systemLookup;
+  static const _platform = MethodChannel('streamline/platform');
+  static int _nextDnsId = 0;
+  final _dnsIds = <String>{};
   static const apiLimit = 512 * 1024;
   static const streamLimit = 64 * 1024;
   final _clients = <HttpClient>{};
@@ -74,6 +89,13 @@ class IoDiagnosticTransport implements DiagnosticTransport {
         captivePortal: flag('captivePortal') == true,
         vpn: flag('vpn'),
         privateDns: flag('privateDns'),
+        privateDnsStrict: flag('privateDnsStrict'),
+        dnsServerCount:
+            raw['dnsServerCount'] is int &&
+                (raw['dnsServerCount'] as int) >= 0 &&
+                (raw['dnsServerCount'] as int) <= 64
+            ? raw['dnsServerCount'] as int
+            : null,
         metered: flag('metered'),
         transports: names is List
             ? names
@@ -98,20 +120,87 @@ class IoDiagnosticTransport implements DiagnosticTransport {
   }
 
   @override
-  Future<List<InternetAddress>> lookup(String host) async {
+  Future<DnsLookupResult> lookup(String host) async {
     _check();
+    if (useNativeDns) {
+      final id = 'dns-${++_nextDnsId}';
+      _dnsIds.add(id);
+      try {
+        final raw = await _platform
+            .invokeMapMethod<dynamic, dynamic>('dnsDiagnosis', {
+              'host': host,
+              'id': id,
+              'timeoutMs': timeout.inMilliseconds.clamp(100, 8000),
+            })
+            .timeout(timeout + const Duration(seconds: 1));
+        _check();
+        return DnsLookupResult.fromPlatform(raw ?? const {});
+      } on MissingPluginException {
+        // Older app embeddings and non-Android development environments.
+      } on TimeoutException {
+        _check();
+        return const DnsLookupResult(
+          [],
+          observations: [
+            DnsObservation(DnsFamily.system, error: DnsError.timeout),
+          ],
+        );
+      } on ProbeFailure {
+        rethrow;
+      } catch (_) {
+        _check();
+        return const DnsLookupResult(
+          [],
+          observations: [
+            DnsObservation(DnsFamily.system, error: DnsError.system),
+          ],
+        );
+      } finally {
+        _dnsIds.remove(id);
+        _cancelDns(id);
+      }
+    }
+    final watch = Stopwatch()..start();
     try {
-      final addresses = await InternetAddress.lookup(host).timeout(timeout);
+      final addresses = await _systemLookup(host).timeout(timeout);
       _check();
-      if (addresses.isEmpty) throw const ProbeFailure('dns_failed');
-      return addresses;
+      return DnsLookupResult(
+        addresses,
+        observations: [
+          DnsObservation(
+            DnsFamily.system,
+            addressCount: addresses.length,
+            error: addresses.isEmpty ? DnsError.noAddress : null,
+            elapsedMs: watch.elapsedMilliseconds,
+          ),
+        ],
+      );
     } on ProbeFailure {
       rethrow;
-    } on TimeoutException {
-      throw const ProbeFailure('dns_timeout');
-    } catch (_) {
-      throw const ProbeFailure('dns_failed');
+    } catch (error) {
+      _check();
+      return DnsLookupResult(
+        [],
+        observations: [
+          DnsObservation(
+            DnsFamily.system,
+            error: error is TimeoutException
+                ? DnsError.timeout
+                : DnsError.system,
+            osCode: error is SocketException ? error.osError?.errorCode : null,
+            elapsedMs: watch.elapsedMilliseconds,
+          ),
+        ],
+      );
     }
+  }
+
+  void _cancelDns(String id) {
+    unawaited(
+      _platform
+          .invokeMethod<void>('cancelDnsDiagnosis', {'id': id})
+          .then<void>((_) {}, onError: (Object _) {}),
+    );
   }
 
   Future<void> _socket(String host, int port) async {
@@ -240,6 +329,10 @@ class IoDiagnosticTransport implements DiagnosticTransport {
   @override
   void close() {
     _closed = true;
+    for (final id in _dnsIds.toList()) {
+      _cancelDns(id);
+    }
+    _dnsIds.clear();
     for (final client in _clients.toList()) {
       client.close(force: true);
     }

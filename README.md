@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.7** adds a manual speed test in Settings, username/password-only sign-in using the embedded operator portal, hidden provider addresses, and correct no-expiry account labels. See [release notes](docs/RELEASE_NOTES_0.6.7.md), [speed test](docs/SPEED_TEST.md) and [operator configuration](docs/PROVIDER_CONFIGURATION.md).
+
 **v0.6.6** adds detailed DNS evidence on each device’s current network: separate IPv4/IPv6 outcomes, DNS response codes on Android 10+, timings, Private DNS context, and explanations with next steps. See [release notes](docs/RELEASE_NOTES_0.6.6.md) and [diagnosis details](docs/CONNECTION_DIAGNOSIS.md).
 
 **v0.6.5** uses the app name **Ultravpn-player** and the permanent Downloader filename **Ultravpn-player.apk**. Every remote-update.zip includes that latest-download copy, a versioned update APK and matching update.json. Keep the same permanent URL for your AFTVnews code across future releases. See [hosting instructions](docs/UPDATES.md).

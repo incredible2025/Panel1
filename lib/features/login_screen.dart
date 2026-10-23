@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
-import '../data/models.dart';
+import '../core/provider_config.dart';
 import '../data/xtream_api.dart';
 import 'connection_diagnosis_screen.dart';
 import 'app_updates_screen.dart';
@@ -19,7 +19,6 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _form = GlobalKey<FormState>();
-  final _server = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   bool _obscured = true;
@@ -28,7 +27,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
-    _server.dispose();
     _username.dispose();
     _password.dispose();
     super.dispose();
@@ -43,13 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final session = await ref
           .read(apiProvider)
-          .authenticate(
-            Credentials(
-              serverUrl: _server.text.trim(),
-              username: _username.text.trim(),
-              password: _password.text,
-            ),
-          );
+          .authenticate(portalCredentials(_username.text, _password.text));
       await ref.read(storeProvider).saveSession(session);
       if (mounted) ref.read(sessionProvider.notifier).state = session;
     } catch (error) {
@@ -269,7 +261,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Enter the Xtream Codes details from your IPTV provider.',
+                  'Enter your username and password to start watching.',
                   style: theme.bodyMedium?.copyWith(
                     color: AppColors.muted,
                     height: 1.6,
@@ -278,32 +270,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 TextFormField(
-                  controller: _server,
-                  enabled: !_busy,
-                  autofocus: tv,
-                  decoration: const InputDecoration(
-                    labelText: 'Server URL',
-                    hintText: 'https://provider.example:8080',
-                    prefixIcon: Icon(Icons.language_rounded, size: 20),
-                  ),
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.next,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  validator: (value) {
-                    final uri = Uri.tryParse(value?.trim() ?? '');
-                    if (uri == null ||
-                        !['http', 'https'].contains(uri.scheme) ||
-                        uri.host.isEmpty) {
-                      return 'Enter an http:// or https:// server URL';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
                   controller: _username,
                   enabled: !_busy,
+                  autofocus: tv,
                   autofillHints: const [AutofillHints.username],
                   autocorrect: false,
                   enableSuggestions: false,
@@ -406,10 +375,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           context,
                           MaterialPageRoute<void>(
                             builder: (_) => ConnectionDiagnosisScreen(
-                              credentials: Credentials(
-                                serverUrl: _server.text.trim(),
-                                username: _username.text.trim(),
-                                password: _password.text,
+                              credentials: portalCredentials(
+                                _username.text,
+                                _password.text,
                               ),
                             ),
                           ),

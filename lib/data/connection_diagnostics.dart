@@ -7,6 +7,7 @@ import '../core/app_version.dart';
 import 'diagnostic_transport.dart';
 import 'dns_lookup.dart';
 import 'models.dart';
+import 'subscription_expiry.dart';
 import 'xtream_api.dart';
 
 enum DiagnosticStatus { passed, warning, failed, skipped }
@@ -36,7 +37,7 @@ class DiagnosticCheck {
 
 const diagnosticStages = {
   'network': 'Device network',
-  'server': 'Server address',
+  'server': 'Provider configuration',
   'dns': 'Provider DNS lookup',
   'tcp': 'Provider server connection',
   'tls': 'HTTPS security',
@@ -174,7 +175,7 @@ DiagnosticFinding dnsFinding(DnsLookupResult result) {
     causes: causes,
     steps: steps.isEmpty
         ? const [
-            'Check the server spelling with your provider.',
+            'Ask support to verify the provider DNS configuration.',
             'Reconnect this device’s network and retry.',
             'Compare the same device on mobile data or another network if available.',
           ]
@@ -196,7 +197,7 @@ DiagnosticFinding _dnsReason(DnsObservation o) {
         'A negative cached answer or DNS filtering policy.',
       ],
       steps: [
-        'Check the server spelling with your provider.',
+        'Ask support to verify the provider DNS configuration.',
         'Compare the same device on another network; ask the provider to verify its DNS records.',
       ],
     ),
@@ -245,7 +246,7 @@ DiagnosticFinding _dnsReason(DnsObservation o) {
       'Android reported a name/address lookup failure without an exact DNS response code. This alone cannot distinguish NXDOMAIN from every other negative answer.',
       causes: ['An incorrect hostname, missing DNS record or resolver policy.'],
       steps: [
-        'Check the server spelling with your provider.',
+        'Ask support to verify the provider DNS configuration.',
         'Compare the same device on another network.',
       ],
     ),
@@ -305,7 +306,7 @@ DiagnosticFinding _dnsReason(DnsObservation o) {
       'The system resolver could not complete the lookup',
       'The available system error or DNS response did not provide a more specific explanation. Numeric codes are included when available; raw error text is omitted for privacy.',
       steps: [
-        'Check the server spelling with your provider.',
+        'Ask support to verify the provider DNS configuration.',
         'Reconnect this device and compare another network if the error persists.',
       ],
     ),
@@ -325,7 +326,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
           'A login portal or provider gateway is redirecting requests.',
         ],
         steps: [
-          'Ask the provider for its current direct server URL.',
+          'Contact support to verify the service configuration.',
           'Check for a Wi-Fi sign-in page.',
         ],
       );
@@ -366,7 +367,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
           'A removed channel or title.',
         ],
         steps: [
-          'Check the exact server URL supplied by the provider.',
+          'Contact support to verify the service configuration.',
           'Refresh the library or try another title.',
         ],
       ),
@@ -374,7 +375,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
         'HTTP_405',
         'The server does not accept this request',
         'The endpoint rejected the GET method used by the Xtream API and the delivery test.',
-        steps: ['Confirm this is an Xtream Codes-compatible server URL.'],
+        steps: ['Ask support to confirm API compatibility.'],
       ),
       408 || 504 => const DiagnosticFinding(
         'HTTP_TIMEOUT',
@@ -425,7 +426,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
         'Unexpected HTTP response',
         'The endpoint returned HTTP $httpStatus rather than a successful response.',
         steps: const [
-          'Check the provider URL and account.',
+          'Check your account or contact support.',
           'Give the provider this error code if it persists.',
         ],
       ),
@@ -442,7 +443,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
         'DNS-based filtering may be involved.',
       ],
       steps: [
-        'Check the server spelling.',
+        'Ask support to verify the provider DNS configuration.',
         'Try another network.',
         'If the address is correct, check Android Private DNS settings or ask the provider.',
       ],
@@ -521,7 +522,7 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
       status: DiagnosticStatus.warning,
       steps: [
         'Try opening the library section.',
-        'Check the server URL if this should be a small account response.',
+        'Contact support if this should be a small account response.',
       ],
     ),
     'http_protocol' => const DiagnosticFinding(
@@ -699,7 +700,7 @@ class ConnectionDiagnostics {
           'server',
           DiagnosticFinding(
             'SERVER_VALID',
-            'Server address is valid',
+            'Provider configuration is valid',
             'An ${base.scheme.toUpperCase()} address with a valid host was supplied. Its spelling and ownership are not verified by syntax checks.',
             status: DiagnosticStatus.passed,
           ),
@@ -710,9 +711,9 @@ class ConnectionDiagnostics {
           const DiagnosticFinding(
             'SERVER_INVALID',
             'The server address is invalid',
-            'Use the HTTP or HTTPS server URL supplied by your provider, including its port and path when required.',
+            'The embedded provider configuration could not be used. Contact support.',
             steps: [
-              'Check the address for spaces, missing hostname or an unsupported scheme.',
+              'Ask support to verify the embedded service configuration.',
             ],
           ),
         );
@@ -818,7 +819,7 @@ class ConnectionDiagnostics {
             'The response is not an Xtream account',
             'Valid JSON was received, but it does not contain the expected user_info account object.',
             steps: [
-              'Check the server URL.',
+              'Contact support to verify the service configuration.',
               'Confirm Xtream Codes support with the provider.',
             ],
           );
@@ -834,9 +835,10 @@ class ConnectionDiagnostics {
       if (response == null || payload == null || _cancelled) return;
       final user = objectValue(payload!['user_info']);
       final authorized = user['auth'] == true || textValue(user['auth']) == '1';
-      final status = textValue(user['status']).toLowerCase();
+      final status = textValue(user['status']).trim().toLowerCase();
+      final subscription = SubscriptionExpiry(user);
       final expiry = intValue(user['exp_date']);
-      var usable = authorized && (status.isEmpty || status == 'active');
+      var usable = authorized && subscription.activeStatus;
       if (!authorized) {
         add(
           'account',
@@ -864,7 +866,7 @@ class ConnectionDiagnostics {
             ],
           ),
         );
-      } else if (status.isNotEmpty && status != 'active') {
+      } else if (!subscription.activeStatus) {
         add(
           'account',
           const DiagnosticFinding(
@@ -885,7 +887,11 @@ class ConnectionDiagnostics {
             soon
                 ? 'The subscription expires within seven days'
                 : 'Account authorization passed',
-            '${status.isEmpty ? 'The provider did not supply a status label.' : 'The provider reports Active.'} ${expiry <= 0 ? 'No usable expiry date was supplied; this does not confirm a lifetime subscription.' : 'An expiry timestamp was supplied.'}',
+            '${status.isEmpty ? 'The provider did not supply a status label.' : 'The provider reports an active subscription.'} ${subscription.neverExpires
+                ? 'The provider explicitly marks this subscription as unlimited with no expiry date. It doesn’t expire.'
+                : expiry <= 0
+                ? 'No usable expiry date was supplied; this does not confirm a lifetime subscription.'
+                : 'An expiry timestamp was supplied.'}',
             status: soon || status.isEmpty
                 ? DiagnosticStatus.warning
                 : DiagnosticStatus.passed,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
@@ -15,6 +16,7 @@ import '../data/models.dart';
 import '../widgets/media_card.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_focus_card.dart';
+import '../widgets/tv_category_strip.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
@@ -31,6 +33,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   String _clock(DateTime value) => guideClock(value);
   MediaKind _kind = MediaKind.live;
   final _search = TextEditingController();
+  final _searchFocus = FocusNode(debugLabel: 'Library search');
+  final _favoritesFocus = FocusNode(debugLabel: 'Favorites filter');
+  final _categoryStripKey = GlobalKey<TvCategoryStripState>();
+  final _navigationFocus = <String, FocusNode>{};
   final _scroll = ScrollController();
   final _liveHeroKey = GlobalKey();
   final _previewKey = GlobalKey<LiveChannelPreviewState>();
@@ -118,8 +124,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
+    _favoritesFocus.dispose();
+    for (final node in _navigationFocus.values) {
+      node.dispose();
+    }
     _scroll.dispose();
     super.dispose();
+  }
+
+  FocusNode _navFocus(String destination) => _navigationFocus.putIfAbsent(
+    destination,
+    () => FocusNode(debugLabel: 'Navigation: $destination'),
+  );
+
+  void _focusCategories() {
+    if (_categoryStripKey.currentState case final state?) {
+      state.focusSelected();
+    } else {
+      _searchFocus.requestFocus();
+    }
+  }
+
+  KeyEventResult _navigationKey(FocusNode node, KeyEvent event) {
+    if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+        event.logicalKey == LogicalKeyboardKey.arrowRight &&
+        {'live', 'movie', 'series'}.contains(_destination)) {
+      _focusCategories();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _searchKey(FocusNode node, KeyEvent event) {
+    if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+        event.logicalKey == LogicalKeyboardKey.arrowDown &&
+        _categoryStripKey.currentState != null) {
+      _focusCategories();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   String get _title => switch (_kind) {
@@ -380,33 +424,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               query.isEmpty &&
                               selectedCategory == null &&
                               !_browseAll.contains(_kind);
-                          return CustomScrollView(
+                          final library = CustomScrollView(
                             controller: _scroll,
                             key: PageStorageKey('dashboard-${_kind.name}'),
                             cacheExtent: viewport.maxHeight,
                             slivers: [
-                              SliverPadding(
-                                padding: EdgeInsets.fromLTRB(
-                                  margin,
-                                  isTv ? 25 : 20,
-                                  margin,
-                                  20,
+                              if (!isTv) ...[
+                                SliverPadding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    margin,
+                                    isTv ? 25 : 20,
+                                    margin,
+                                    20,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _header(isTv),
+                                  ),
                                 ),
-                                sliver: SliverToBoxAdapter(
-                                  child: _header(isTv),
+                                SliverPadding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    margin,
+                                    0,
+                                    margin,
+                                    24,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _toolbar(categories),
+                                  ),
                                 ),
-                              ),
-                              SliverPadding(
-                                padding: EdgeInsets.fromLTRB(
-                                  margin,
-                                  0,
-                                  margin,
-                                  24,
-                                ),
-                                sliver: SliverToBoxAdapter(
-                                  child: _toolbar(categories),
-                                ),
-                              ),
+                              ],
                               SliverPadding(
                                 padding: EdgeInsets.symmetric(
                                   horizontal: margin,
@@ -560,6 +606,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               ),
                             ],
                           );
+                          if (!isTv) return library;
+                          // TV controls stay mounted while the content scrolls.
+                          // Sidebar expansion must never replace their layout.
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  margin,
+                                  20,
+                                  margin,
+                                  16,
+                                ),
+                                child: _header(true),
+                              ),
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  margin,
+                                  0,
+                                  margin,
+                                  18,
+                                ),
+                                child: _toolbar(categories),
+                              ),
+                              Expanded(child: library),
+                            ],
+                          );
                         },
                       ),
               ),
@@ -618,6 +691,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   );
 
   Widget _sidebar() => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
     onFocusChange: (focused) {
       if (mounted && _navExpanded != focused) {
         setState(() => _navExpanded = focused);
@@ -660,6 +735,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: Tooltip(
                         message: entry.$3,
                         child: TvFocusCard(
+                          key: ValueKey('navigation-${entry.$1}'),
+                          focusNode: _navFocus(entry.$1),
+                          onKeyEvent: _navigationKey,
                           label: entry.$3,
                           selected: _destination == entry.$1,
                           autofocus: _destination == entry.$1,
@@ -732,23 +810,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _toolbar(AsyncValue<List<Category>> categories) => LayoutBuilder(
     builder: (context, constraints) {
-      final search = TextField(
-        controller: _search,
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          hintText: 'Search ${_title.toLowerCase()}',
-          prefixIcon: const Icon(Icons.search_rounded, size: 21),
-          suffixIcon: _search.text.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: 'Clear search',
-                  onPressed: () => setState(_search.clear),
-                  icon: const Icon(Icons.close, size: 19),
-                ),
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
+      final search = Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: ref.read(isTvProvider) ? _searchKey : null,
+        child: TextField(
+          controller: _search,
+          focusNode: _searchFocus,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: 'Search ${_title.toLowerCase()}',
+            prefixIcon: const Icon(Icons.search_rounded, size: 21),
+            suffixIcon: _search.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () => setState(_search.clear),
+                    icon: const Icon(Icons.close, size: 19),
+                  ),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
         ),
       );
@@ -791,6 +875,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 SizedBox(
                   height: 42,
                   child: TvFocusCard(
+                    focusNode: _favoritesFocus,
+                    onKeyEvent: (node, event) {
+                      if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+                          event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+                          ref.read(isTvProvider)) {
+                        _categoryStripKey.currentState?.focusLastFocused();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
                     selected: _favoritesOnly,
                     transparent: true,
                     label: 'Favorites only',
@@ -839,7 +933,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ],
       );
-      if (constraints.maxWidth > 760) {
+      if (!ref.read(isTvProvider) && constraints.maxWidth > 760) {
         return Row(
           children: [
             SizedBox(
@@ -935,6 +1029,39 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _categoryStrip(List<Category> supplied) {
     final categories = _orderedCategories(supplied);
+    if (ref.read(isTvProvider)) {
+      final listOnly = _myListOnly.contains(_kind);
+      return TvCategoryStrip(
+        key: _categoryStripKey,
+        onUp: _searchFocus.requestFocus,
+        onLeftBoundary: () => _navFocus(_destination).requestFocus(),
+        onRightBoundary: _kind == MediaKind.live
+            ? _favoritesFocus.requestFocus
+            : null,
+        choices: [
+          TvCategoryChoice(
+            id: '${_kind.name}:all',
+            label: 'All',
+            selected: !listOnly && _category[_kind] == null,
+            onPressed: () => _showCategory(null),
+          ),
+          if (_kind != MediaKind.live)
+            TvCategoryChoice(
+              id: '${_kind.name}:list',
+              label: 'My List',
+              selected: listOnly,
+              onPressed: _showMyList,
+            ),
+          for (final category in categories)
+            TvCategoryChoice(
+              id: '${_kind.name}:${category.id}',
+              label: category.name,
+              selected: !listOnly && _category[_kind] == category.id,
+              onPressed: () => _showCategory(category.id),
+            ),
+        ],
+      );
+    }
     return SizedBox(
       height: 42,
       child: ListView.separated(
@@ -950,6 +1077,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               : !_myListOnly.contains(_kind) &&
                     _category[_kind] == category?.id;
           return TvFocusCard(
+            key: ValueKey(
+              '${_kind.name}:${list ? 'list' : category?.id ?? 'all'}',
+            ),
             selected: selected,
             transparent: true,
             borderRadius: 30,

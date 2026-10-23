@@ -578,8 +578,13 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
-      _cardFocus(tester, find.text('Search')).requestFocus();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Zephyr');
@@ -934,7 +939,7 @@ void main() {
     await _pumpApp(tester, store: store, tv: true);
     await tester.tap(find.text('Home').first);
     await tester.pumpAndSettle();
-    await _reveal(tester, find.text('Continue series'));
+    await _reveal(tester, find.text('Continue watching series'));
     expect(
       tester
           .widgetList<TvPosterBrowser>(find.byType(TvPosterBrowser))

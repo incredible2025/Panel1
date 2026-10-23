@@ -39,6 +39,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   final _preview = GlobalKey<LiveChannelPreviewState>();
   final _watch = FocusNode(debugLabel: 'Watch now');
   final _hero = FocusNode(debugLabel: 'Featured title');
+  final _searchFocus = FocusNode(debugLabel: 'Search');
   final _top = <String, FocusNode>{};
   final _category = <MediaKind, String?>{};
   String _section = 'home', _query = '', _liveFilter = 'all';
@@ -96,6 +97,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     _channelFocusTimer?.cancel();
     _watch.dispose();
     _hero.dispose();
+    _searchFocus.dispose();
     for (final n in _top.values) {
       n.dispose();
     }
@@ -149,6 +151,19 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   KeyEventResult _topKey(FocusNode node, KeyEvent event) {
     if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
         event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      return _enterPage() ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _toolbarKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent)
+      return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _nav(_section).requestFocus();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       return _enterPage() ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     return KeyEventResult.ignored;
@@ -479,6 +494,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     padding: const EdgeInsets.only(left: 9),
     child: TvControl(
       focusNode: node,
+      onKeyEvent: _toolbarKey,
       label: label,
       onPressed: action,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -547,13 +563,19 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         )
         .toList();
     final order = _settings.categoryOrder[_kind.name] ?? <String>[];
+    final providerOrder = {
+      for (var i = 0; i < supplied.length; i++) supplied[i].id: i,
+    };
     supplied.sort((a, b) {
       int rank(Category c) {
         final i = order.indexOf(c.id);
         return i < 0 ? order.length : i;
       }
 
-      return rank(a).compareTo(rank(b));
+      final byPreference = rank(a).compareTo(rank(b));
+      return byPreference != 0
+          ? byPreference
+          : providerOrder[a.id]!.compareTo(providerOrder[b.id]!);
     });
     final all = (state.asData?.value ?? <MediaItem>[]).where(_visible).toList();
     final matching = all
@@ -632,6 +654,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               _query.isEmpty ? 'Search' : 'Clear search',
               _query.isEmpty ? Icons.search : Icons.close,
               _query.isEmpty ? _search : () => setState(() => _query = ''),
+              node: _searchFocus,
             ),
             if (_kind == MediaKind.live)
               _action(
@@ -703,12 +726,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                     ? _live(matching, compact, ids)
                     : TvPosterBrowser(
                         key: _grid,
+                        largePosters: _settings.largePosters,
                         items: matching,
                         onOpen: _open,
                         onLeft: () => _categories.currentState?.focusSelected(
                           remember: true,
                         ),
-                        onTop: () => _nav(_section).requestFocus(),
+                        onTop: _searchFocus.requestFocus,
                       ),
               ),
             ],
@@ -787,7 +811,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                 }
                 _watch.requestFocus();
               },
-              onTop: () => _nav('live').requestFocus(),
+              onTop: _searchFocus.requestFocus,
             ),
             count: '${channels.length}',
           ),
@@ -957,6 +981,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           SizedBox(
             height: 285,
             child: TvPosterBrowser(
+              largePosters: _settings.largePosters,
               items: items.take(24).toList(),
               horizontal: true,
               progress: progress,
@@ -1161,6 +1186,10 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               continuingSeries
                   .map((e) => available[AppKey.item(e.item)]!)
                   .toList(),
+              progress: {
+                for (final e in continuingSeries)
+                  if (e.canResume) AppKey.item(e.item): e.progress,
+              },
             ),
             for (final recommendation in recommendations.take(2))
               _rail(recommendation.title, recommendation.items),
@@ -1222,6 +1251,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               ? _state('Save movies and series from their detail pages')
               : TvPosterBrowser(
                   key: _grid,
+                  largePosters: _settings.largePosters,
                   items: items,
                   onOpen: _open,
                   onLeft: () => _nav('list').requestFocus(),

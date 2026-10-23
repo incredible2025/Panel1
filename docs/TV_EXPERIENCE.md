@@ -7,7 +7,7 @@ Android TV uses a dedicated dashboard; phones keep the touch dashboard. Native d
 - Left/Right on the top bar changes section; Down enters that section.
 - In a category list, Up/Down moves between categories and OK applies the category. Right enters channels or posters. Up from the first category returns to the top bar.
 - Channel lists and poster grids handle repeated arrow events, including movement to items outside the current viewport. Focus is separate from the selected category.
-- In Live TV, highlighting a channel updates its programme information after 250 milliseconds. OK opens full-screen playback. Right enters the programme/preview actions; Left returns to the channel list.
+- In Live TV, highlighting a channel updates its programme information after 250 milliseconds. OK opens full-screen playback. Right enters the programme/preview actions; Left returns to the channel list. Up from the first channel or poster row reaches Search; Up again returns to navigation.
 - Search opens a dialog deliberately; normal browsing does not focus an editable field. Sorting opens a remote-accessible choice dialog.
 - Back from a dashboard section returns Home. Playback, detail pages and dialogs retain their own Back behaviour.
 

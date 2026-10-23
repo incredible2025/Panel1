@@ -13,12 +13,14 @@ class TvPosterBrowser extends StatefulWidget {
     required this.onLeft,
     required this.onTop,
     this.horizontal = false,
+    this.largePosters = false,
     this.progress = const {},
   });
   final List<MediaItem> items;
   final ValueChanged<MediaItem> onOpen;
   final VoidCallback onLeft, onTop;
   final bool horizontal;
+  final bool largePosters;
   final Map<String, double> progress;
   @override
   State<TvPosterBrowser> createState() => TvPosterBrowserState();
@@ -90,6 +92,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
+      if (widget.horizontal) return KeyEventResult.ignored;
       if (!widget.horizontal && i >= _columns) {
         _focus(i - _columns);
       } else {
@@ -122,9 +125,12 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
     builder: (context, size) {
       _columns = widget.horizontal
           ? 1
-          : (size.maxWidth / 175).floor().clamp(2, 6);
+          : (size.maxWidth / (widget.largePosters ? 220 : 175)).floor().clamp(
+              2,
+              6,
+            );
       final width = widget.horizontal
-          ? 186.0
+          ? (widget.largePosters ? 220.0 : 186.0)
           : (size.maxWidth - (_columns - 1) * 16) / _columns;
       _extent = widget.horizontal ? width + 16 : width * 1.38 + 64;
       Widget tile(int index) {

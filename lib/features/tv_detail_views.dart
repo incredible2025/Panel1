@@ -417,7 +417,7 @@ class _TvSeriesViewState extends State<TvSeriesView> {
                                                     : saved[episode.id]
                                                               ?.canResume ==
                                                           true
-                                                    ? 'Resume · ${formatPlaybackTime(saved[episode.id]!.positionMs)}'
+                                                    ? 'Resume · ${formatPlaybackTime(saved[episode.id]!.positionMs).padLeft(5, '0')}'
                                                     : 'Episode ${episode.episodeNumber}',
                                                 selected:
                                                     episode.id ==

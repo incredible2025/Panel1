@@ -4,15 +4,15 @@ import 'app_brand.dart';
 
 /// Shared visual tokens for the mobile and ten-foot interfaces.
 abstract final class AppColors {
-  static const canvas = Color(0xFF060E1B);
-  static const surface = Color(0xFF101D30);
-  static const surfaceRaised = Color(0xFF172840);
-  static const border = Color(0xFF25384F);
-  static const accent = Color(0xFF64D9F5);
+  static const canvas = Color(0xFF071B38);
+  static const surface = Color(0xFF122F56);
+  static const surfaceRaised = Color(0xFF183A60);
+  static const border = Color(0xFF315176);
+  static const accent = Color(0xFF69D9FF);
   static const accentStrong = Color(0xFF1B99CD);
-  static const text = Color(0xFFF4F8FF);
-  static const muted = Color(0xFFABB0B8);
-  static const subdued = Color(0xFF6B737F);
+  static const text = Color(0xFFF5F8FF);
+  static const muted = Color(0xFFB6C7E1);
+  static const subdued = Color(0xFF8EA6C7);
   static const danger = Color(0xFFF0A09B);
   static const live = Color(0xFFE78277);
 }
@@ -21,14 +21,14 @@ abstract final class StreamlineTheme {
   static ThemeData get dark => _create(false);
   static ThemeData get cinema => _create(true);
   static ThemeData _create(bool cinema) {
-    final accent = cinema ? Color(0xFFF3EEE3) : AppColors.accent;
-    final canvas = cinema ? Color(0xFF090A0C) : AppColors.canvas;
-    final surface = cinema ? Color(0xFF191A1D) : AppColors.surface;
+    final accent = cinema ? Color(0xFFCFEDFF) : AppColors.accent;
+    final canvas = cinema ? Color(0xFF0B1422) : AppColors.canvas;
+    final surface = cinema ? Color(0xFF151E2E) : AppColors.surface;
     final base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: 'Streamline Sans',
-      scaffoldBackgroundColor: canvas,
+      fontFamily: 'Glass Sans',
+      scaffoldBackgroundColor: Colors.transparent,
       colorScheme: ColorScheme.dark(
         primary: accent,
         onPrimary: canvas,
@@ -45,22 +45,22 @@ abstract final class StreamlineTheme {
       displayColor: AppColors.text,
     );
     TextStyle display(double size, {double height = 1.05}) => TextStyle(
-      fontFamily: 'Streamline Display',
+      fontFamily: 'Glass Sans',
       fontSize: size,
       height: height,
       letterSpacing: -.7,
-      fontWeight: FontWeight.w700,
+      fontWeight: FontWeight.w500,
       color: AppColors.text,
     );
     return base.copyWith(
       textTheme: text.copyWith(
-        displayLarge: display(76),
-        displayMedium: display(60),
-        displaySmall: display(48),
-        headlineLarge: display(42),
-        headlineMedium: display(34),
-        headlineSmall: display(28),
-        titleLarge: display(24, height: 1.15),
+        displayLarge: display(56),
+        displayMedium: display(48),
+        displaySmall: display(40),
+        headlineLarge: display(32),
+        headlineMedium: display(28),
+        headlineSmall: display(24),
+        titleLarge: display(22, height: 1.15),
         titleMedium: text.titleMedium?.copyWith(fontWeight: FontWeight.w500),
         bodyLarge: text.bodyLarge?.copyWith(fontSize: 16, height: 1.6),
         bodyMedium: text.bodyMedium?.copyWith(fontSize: 14, height: 1.5),
@@ -125,10 +125,7 @@ abstract final class StreamlineTheme {
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           textStyle: WidgetStatePropertyAll(
-            TextStyle(
-              fontFamily: 'Streamline Sans',
-              fontWeight: FontWeight.w700,
-            ),
+            TextStyle(fontFamily: 'Glass Sans', fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -167,7 +164,7 @@ abstract final class StreamlineTheme {
         ),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
-            fontFamily: 'Streamline Sans',
+            fontFamily: 'Glass Sans',
             fontSize: 11,
             fontWeight: FontWeight.w500,
             letterSpacing: .3,
@@ -181,7 +178,7 @@ abstract final class StreamlineTheme {
         backgroundColor: AppColors.surfaceRaised,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: AppColors.border),
         ),
       ),
@@ -203,6 +200,27 @@ abstract final class StreamlineTheme {
       splashFactory: InkSparkle.splashFactory,
     );
   }
+}
+
+/// Shared branded background for every route, including startup and failures.
+class AppBackdrop extends StatelessWidget {
+  const AppBackdrop({super.key, required this.child, this.cinema = false});
+  final Widget child;
+  final bool cinema;
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: cinema
+            ? const [Color(0xFF151E2E), Color(0xFF0B1422), Color(0xFF050A12)]
+            : const [Color(0xFF253A7B), Color(0xFF123951), AppColors.canvas],
+        stops: const [0, .5, 1],
+      ),
+    ),
+    child: child,
+  );
 }
 
 // Keep the internal widget name stable while the public brand changes.
@@ -236,7 +254,7 @@ class StreamlineMark extends StatelessWidget {
               Text(
                 'ULTRAVPN',
                 style: TextStyle(
-                  fontFamily: 'Streamline Sans',
+                  fontFamily: 'Glass Sans',
                   color: AppColors.text,
                   fontWeight: FontWeight.w700,
                   fontSize: size * .49,
@@ -246,7 +264,7 @@ class StreamlineMark extends StatelessWidget {
               Text(
                 'PLAYER',
                 style: TextStyle(
-                  fontFamily: 'Streamline Sans',
+                  fontFamily: 'Glass Sans',
                   color: const Color(0xFFA6DAEF),
                   fontWeight: FontWeight.w700,
                   fontSize: size * .28,
@@ -270,7 +288,7 @@ class UltraVpnBanner extends StatelessWidget {
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF103345), Color(0xFF060E1B), Color(0xFF071126)],
+        colors: [Color(0xFF253A7B), Color(0xFF071B38), Color(0xFF123951)],
       ),
     ),
     child: Center(child: StreamlineMark(size: 76, wordmark: true)),

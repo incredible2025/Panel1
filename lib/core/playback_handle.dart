@@ -122,8 +122,8 @@ class CompatibilityPlayback extends PlaybackHandle {
         title: appBrandName,
         logLevel: mk.MPVLogLevel.error,
         libass: true,
-        libassAndroidFont: 'assets/fonts/Roboto-Regular.ttf',
-        libassAndroidFontName: 'Roboto',
+        libassAndroidFont: 'assets/fonts/Inter-Variable.ttf',
+        libassAndroidFontName: 'Inter',
       ),
     );
     _created = true;

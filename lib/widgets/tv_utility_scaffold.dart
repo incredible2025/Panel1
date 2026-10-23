@@ -12,11 +12,13 @@ class TvUtilityScaffold extends StatefulWidget {
     required this.child,
     this.subtitle = '',
     this.onEnter,
+    this.showBack = true,
     this.hint = 'D-pad  Move    OK  Select    Back  Return',
   });
   final String title, subtitle, hint;
   final Widget child;
   final VoidCallback? onEnter;
+  final bool showBack;
   @override
   State<TvUtilityScaffold> createState() => _TvUtilityScaffoldState();
 }
@@ -56,28 +58,30 @@ class _TvUtilityScaffoldState extends State<TvUtilityScaffold> {
                               children: [
                                 Row(
                                   children: [
-                                    TvControl(
-                                      label: 'Back',
-                                      reveal: false,
-                                      onPressed: () =>
-                                          Navigator.maybePop(context),
-                                      onKeyEvent: (_, event) {
-                                        if ((event is KeyDownEvent ||
-                                                event is KeyRepeatEvent) &&
-                                            event.logicalKey ==
-                                                LogicalKeyboardKey.arrowDown &&
-                                            widget.onEnter != null) {
-                                          widget.onEnter!();
-                                          return KeyEventResult.handled;
-                                        }
-                                        return KeyEventResult.ignored;
-                                      },
-                                      padding: const EdgeInsets.all(8),
-                                      child: const Icon(
-                                        Icons.arrow_back,
-                                        size: 19,
+                                    if (widget.showBack)
+                                      TvControl(
+                                        label: 'Back',
+                                        reveal: false,
+                                        onPressed: () =>
+                                            Navigator.maybePop(context),
+                                        onKeyEvent: (_, event) {
+                                          if ((event is KeyDownEvent ||
+                                                  event is KeyRepeatEvent) &&
+                                              event.logicalKey ==
+                                                  LogicalKeyboardKey
+                                                      .arrowDown &&
+                                              widget.onEnter != null) {
+                                            widget.onEnter!();
+                                            return KeyEventResult.handled;
+                                          }
+                                          return KeyEventResult.ignored;
+                                        },
+                                        padding: const EdgeInsets.all(8),
+                                        child: const Icon(
+                                          Icons.arrow_back,
+                                          size: 19,
+                                        ),
                                       ),
-                                    ),
                                     const SizedBox(width: 14),
                                     Expanded(
                                       child: Column(

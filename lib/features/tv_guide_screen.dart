@@ -11,6 +11,10 @@ import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_focus_card.dart';
+import '../widgets/tv_controls.dart';
+import '../widgets/tv_utility_scaffold.dart';
+import '../widgets/tv_text_entry_dialog.dart';
+import '../widgets/tv_reading_dialog.dart';
 import 'player_screen.dart';
 
 String guideClock(DateTime value) {
@@ -49,7 +53,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   bool _syncing = false;
   bool _jumpPending = true;
   int _dayOffset = 0;
-  static const _rowHeight = 90.0;
+  double get _rowHeight => ref.read(isTvProvider) ? 64.0 : 90.0;
   double _hourWidth = 170;
 
   DateTime get _day {
@@ -108,18 +112,14 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
         : now.isBefore(entry.end)
         ? 'ON NOW'
         : 'EARLIER';
-    final play = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(entry.title),
-        content: SingleChildScrollView(
-          child: SizedBox(
-            width: 520,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final play = await (ref.read(isTvProvider)
+        ? showTvReadingDialog(
+            context,
+            entry.title,
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Eyebrow(state),
+                Text(state),
                 const SizedBox(height: 12),
                 Text(
                   '${channel.name} · ${guideClock(entry.start)}–${guideClock(entry.end)}',
@@ -130,30 +130,61 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       ? 'No programme description supplied.'
                       : entry.description,
                 ),
-                if (state != 'ON NOW') ...[
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Watch channel opens its live broadcast.',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                ],
+                const SizedBox(height: 18),
+                const Text('Watch channel opens its live broadcast.'),
               ],
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Watch channel'),
-          ),
-        ],
-      ),
-    );
+            actionLabel: 'Watch channel',
+          )
+        : showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(entry.title),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: 520,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Eyebrow(state),
+                      const SizedBox(height: 12),
+                      Text(
+                        '${channel.name} · ${guideClock(entry.start)}–${guideClock(entry.end)}',
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        entry.description.isEmpty
+                            ? 'No programme description supplied.'
+                            : entry.description,
+                      ),
+                      if (state != 'ON NOW') ...[
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Watch channel opens its live broadcast.',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Close'),
+                ),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(context, true),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Watch channel'),
+                ),
+              ],
+            ),
+          ));
     if (play == true && mounted) {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -162,6 +193,19 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
       );
       if (mounted) ref.invalidate(recentChannelsProvider);
     }
+  }
+
+  Future<void> _editSearch() async {
+    final route = DialogRoute<bool>(
+      context: context,
+      builder: (_) =>
+          TvTextEntryDialog(controller: _search, label: 'Filter channels'),
+    );
+    await Navigator.of(context).push(route);
+    await route.completed;
+    if (!mounted) return;
+    setState(() {});
+    if (_names.hasClients) _names.jumpTo(0);
   }
 
   @override
@@ -200,6 +244,245 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
     _hourWidth = tv ? 190 : 150;
     final hours = end.difference(day).inHours;
     final width = hours * _hourWidth;
+    final body = SafeArea(
+      top: false,
+      child: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(tv ? 28 : 16, 8, tv ? 28 : 16, 12),
+            child: tv
+                ? TvControl(
+                    label: 'Filter channels',
+                    onPressed: _editSearch,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.search, size: 17),
+                        const SizedBox(width: 10),
+                        Text(
+                          _search.text.isEmpty
+                              ? 'Filter channels'
+                              : _search.text,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  )
+                : TextField(
+                    controller: _search,
+                    onChanged: (_) {
+                      setState(() {});
+                      if (_names.hasClients) _names.jumpTo(0);
+                    },
+                    decoration: const InputDecoration(
+                      hintText: 'Filter channels',
+                      prefixIcon: Icon(Icons.search),
+                      isDense: true,
+                    ),
+                  ),
+          ),
+          SizedBox(
+            height: 50,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              scrollDirection: Axis.horizontal,
+              itemCount: 8,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final offset = index - 1;
+                final today = DateTime.now();
+                final date = DateTime(
+                  today.year,
+                  today.month,
+                  today.day + offset,
+                );
+                final label = offset == 0
+                    ? 'Today'
+                    : offset == 1
+                    ? 'Tomorrow'
+                    : offset == -1
+                    ? 'Yesterday'
+                    : '${const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1]} ${date.day}/${date.month}';
+                return ChoiceChip(
+                  label: Text(label),
+                  selected: _dayOffset == offset,
+                  onSelected: (_) => _selectDay(offset),
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: channels.when(
+              loading: () =>
+                  const StatusView(title: 'Loading channels', loading: true),
+              error: (_, __) => StatusView(
+                title: 'Channels unavailable',
+                onRetry: () => ref.invalidate(itemsProvider(MediaKind.live)),
+              ),
+              data: (all) {
+                final filtered = all
+                    .where(
+                      (channel) =>
+                          !settings.hidden(channel) &&
+                          (unlocked || !settings.locked(channel)) &&
+                          channel.name.toLowerCase().contains(
+                            _search.text.trim().toLowerCase(),
+                          ),
+                    )
+                    .toList();
+                if (filtered.isEmpty) {
+                  return const StatusView(title: 'No matching channels');
+                }
+                if (_jumpPending) _jumpToTime();
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: tv ? 190 : 118,
+                      child: Column(
+                        children: [
+                          const SizedBox(
+                            height: 44,
+                            child: Center(child: Eyebrow('CHANNEL')),
+                          ),
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _names,
+                              itemExtent: _rowHeight,
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) => Padding(
+                                padding: const EdgeInsets.fromLTRB(8, 5, 5, 5),
+                                child: TvFocusCard(
+                                  autofocus: tv && index == 0,
+                                  label: 'Watch ${filtered[index].name}',
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => PlayerScreen(
+                                        item: filtered[index],
+                                        channels: filtered,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        filtered[index].name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: tv ? 15 : 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Scrollbar(
+                        controller: _timeline,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _timeline,
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: width,
+                            child: Column(
+                              children: [
+                                SizedBox(
+                                  height: 44,
+                                  child: Row(
+                                    children: [
+                                      for (var hour = 0; hour < hours; hour++)
+                                        SizedBox(
+                                          width: _hourWidth,
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 8,
+                                              top: 12,
+                                            ),
+                                            child: Text(
+                                              guideClock(
+                                                day.add(Duration(hours: hour)),
+                                              ),
+                                              style: const TextStyle(
+                                                color: AppColors.muted,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ListView.builder(
+                                    controller: _programmes,
+                                    cacheExtent: _rowHeight,
+                                    itemExtent: _rowHeight,
+                                    itemCount: filtered.length,
+                                    itemBuilder: (context, index) =>
+                                        _scheduleRow(
+                                          filtered[index],
+                                          day,
+                                          end,
+                                          width,
+                                          filtered,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(10),
+            child: Text(
+              'Provider schedule · Times shown in your device’s time zone',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.subdued, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (tv) {
+      return TvUtilityScaffold(
+        title: 'TV guide',
+        child: Column(
+          children: [
+            Row(
+              children: [
+                TvControl(
+                  onPressed: () => _selectDay(0),
+                  child: const Text('Now', style: TextStyle(fontSize: 13)),
+                ),
+                const SizedBox(width: 12),
+                TvControl(
+                  label: 'Refresh TV guide',
+                  onPressed: () =>
+                      ref.read(guideRefreshProvider.notifier).state++,
+                  child: const Icon(Icons.refresh, size: 18),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: body),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('TV guide'),
@@ -212,209 +495,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(tv ? 28 : 16, 8, tv ? 28 : 16, 12),
-              child: TextField(
-                controller: _search,
-                onChanged: (_) {
-                  setState(() {});
-                  if (_names.hasClients) _names.jumpTo(0);
-                },
-                decoration: const InputDecoration(
-                  hintText: 'Filter channels',
-                  prefixIcon: Icon(Icons.search),
-                  isDense: true,
-                ),
-              ),
-            ),
-            SizedBox(
-              height: 50,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: 8,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final offset = index - 1;
-                  final today = DateTime.now();
-                  final date = DateTime(
-                    today.year,
-                    today.month,
-                    today.day + offset,
-                  );
-                  final label = offset == 0
-                      ? 'Today'
-                      : offset == 1
-                      ? 'Tomorrow'
-                      : offset == -1
-                      ? 'Yesterday'
-                      : '${const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1]} ${date.day}/${date.month}';
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: _dayOffset == offset,
-                    onSelected: (_) => _selectDay(offset),
-                  );
-                },
-              ),
-            ),
-            Expanded(
-              child: channels.when(
-                loading: () =>
-                    const StatusView(title: 'Loading channels', loading: true),
-                error: (_, __) => StatusView(
-                  title: 'Channels unavailable',
-                  onRetry: () => ref.invalidate(itemsProvider(MediaKind.live)),
-                ),
-                data: (all) {
-                  final filtered = all
-                      .where(
-                        (channel) =>
-                            !settings.hidden(channel) &&
-                            (unlocked || !settings.locked(channel)) &&
-                            channel.name.toLowerCase().contains(
-                              _search.text.trim().toLowerCase(),
-                            ),
-                      )
-                      .toList();
-                  if (filtered.isEmpty) {
-                    return const StatusView(title: 'No matching channels');
-                  }
-                  if (_jumpPending) _jumpToTime();
-                  return Row(
-                    children: [
-                      SizedBox(
-                        width: tv ? 190 : 118,
-                        child: Column(
-                          children: [
-                            const SizedBox(
-                              height: 44,
-                              child: Center(child: Eyebrow('CHANNEL')),
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                controller: _names,
-                                itemExtent: _rowHeight,
-                                itemCount: filtered.length,
-                                itemBuilder: (context, index) => Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    8,
-                                    5,
-                                    5,
-                                    5,
-                                  ),
-                                  child: TvFocusCard(
-                                    autofocus: tv && index == 0,
-                                    label: 'Watch ${filtered[index].name}',
-                                    onPressed: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => PlayerScreen(
-                                          item: filtered[index],
-                                          channels: filtered,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          filtered[index].name,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: tv ? 15 : 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Scrollbar(
-                          controller: _timeline,
-                          thumbVisibility: true,
-                          child: SingleChildScrollView(
-                            controller: _timeline,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: width,
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    height: 44,
-                                    child: Row(
-                                      children: [
-                                        for (var hour = 0; hour < hours; hour++)
-                                          SizedBox(
-                                            width: _hourWidth,
-                                            child: Padding(
-                                              padding: const EdgeInsets.only(
-                                                left: 8,
-                                                top: 12,
-                                              ),
-                                              child: Text(
-                                                guideClock(
-                                                  day.add(
-                                                    Duration(hours: hour),
-                                                  ),
-                                                ),
-                                                style: const TextStyle(
-                                                  color: AppColors.muted,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: ListView.builder(
-                                      controller: _programmes,
-                                      cacheExtent: _rowHeight,
-                                      itemExtent: _rowHeight,
-                                      itemCount: filtered.length,
-                                      itemBuilder: (context, index) =>
-                                          _scheduleRow(
-                                            filtered[index],
-                                            day,
-                                            end,
-                                            width,
-                                            filtered,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(10),
-              child: Text(
-                'Provider schedule · Times shown in your device’s time zone',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.subdued, fontSize: 11),
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: body,
     );
   }
 
@@ -495,7 +576,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                             _showProgramme(channel, entry, channels),
                         child: ClipRect(
                           child: Padding(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(4),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,

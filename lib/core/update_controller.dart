@@ -77,14 +77,32 @@ class UpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> check({bool quiet = false}) async {
+  Future<void> check({
+    bool quiet = false,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     if (busy) return;
     stage = UpdateStage.checking;
     error = null;
     _changed();
+    var expired = false;
     try {
-      await load();
-      final candidate = await transport.check(url);
+      final candidate =
+          await (() async {
+            await load();
+            if (expired || _disposed) {
+              throw const UpdateFailure('Update check ended.');
+            }
+            return transport.check(url);
+          })().timeout(
+            timeout,
+            onTimeout: () {
+              expired = true;
+              transport.cancel();
+              throw TimeoutException('Update check deadline exceeded.');
+            },
+          );
+      if (_disposed) return;
       if (candidate.code > device!.code && candidate.minSdk > device!.sdk) {
         throw UpdateFailure(
           'Version ${candidate.version} needs Android API ${candidate.minSdk} or newer. This device uses API ${device!.sdk}.',
@@ -92,7 +110,9 @@ class UpdateController extends ChangeNotifier {
       }
       // Throttle failed automatic attempts too, without claiming they succeeded.
       lastCheck = DateTime.now();
-      await platform.preferences(url, true, lastCheck);
+      await platform
+          .preferences(url, true, lastCheck)
+          .timeout(const Duration(seconds: 3));
       update = candidate.code > device!.code ? candidate : null;
       _path = null;
       stage = update == null ? UpdateStage.current : UpdateStage.available;
@@ -102,7 +122,9 @@ class UpdateController extends ChangeNotifier {
       if (quiet) {
         lastCheck = DateTime.now();
         try {
-          await platform.preferences(url, true, lastCheck);
+          await platform
+              .preferences(url, true, lastCheck)
+              .timeout(const Duration(seconds: 3));
         } catch (_) {
           /* Manual retry remains available. */
         }

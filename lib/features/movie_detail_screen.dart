@@ -439,7 +439,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 17),
       minimumSize: const Size(208, 56),
       textStyle: const TextStyle(
-        fontFamily: 'Streamline Sans',
+        fontFamily: 'Glass Sans',
         fontSize: 15,
         fontWeight: FontWeight.w700,
       ),

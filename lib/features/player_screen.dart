@@ -12,6 +12,8 @@ import '../core/playback_handle.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
 import '../widgets/parental_access.dart';
+import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_reading_dialog.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
 import 'connection_diagnosis_screen.dart';
@@ -816,29 +818,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _menuOpen = true;
     _controlsTimer?.cancel();
     _showControls();
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Player options'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'engine'),
-            child: Text(
-              'Player · ${_engine == PlayerEngine.native ? 'ExoPlayer' : 'Compatibility'}',
-            ),
-          ),
-          if (_isLive)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, 'channels'),
-              child: const Text('Switch channel'),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'info'),
-            child: const Text('Playback diagnostics'),
-          ),
-        ],
-      ),
-    );
+    final action = await showTvMenu(context, 'Player options', {
+      'engine':
+          'Player · ${_engine == PlayerEngine.native ? 'ExoPlayer' : 'Compatibility'}',
+      if (_isLive) 'channels': 'Switch channel',
+      'info': 'Playback diagnostics',
+    });
     if (!mounted || _exiting) return;
     if (action == 'engine') {
       await _chooseEngine();
@@ -858,29 +843,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             .current
             .playerOverrides[AppSettings.mediaKey(_item)] ??
         'default';
-    final engine = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(
-          _isLive ? 'Player for this channel' : 'Player for this title',
-        ),
-        children: [
-          for (final entry in {
-            'default': 'Use default player',
-            'native': 'ExoPlayer',
-            'compatibility': 'Compatibility · media_kit',
-          }.entries)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, entry.key),
-              child: Row(
-                children: [
-                  Expanded(child: Text(entry.value)),
-                  if (override == entry.key) const Icon(Icons.check),
-                ],
-              ),
-            ),
-        ],
-      ),
+    final engine = await showTvMenu(
+      context,
+      _isLive ? 'Player for this channel' : 'Player for this title',
+      {
+        for (final entry in {
+          'default': 'Use default player',
+          'native': 'ExoPlayer',
+          'compatibility': 'Compatibility · media_kit',
+        }.entries)
+          entry.key: entry.value,
+      },
+      selected: override,
     );
     if (engine == null || !mounted || _exiting) return;
     final position = _resumePosition;
@@ -914,33 +888,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               !settings.hidden(item) && (unlocked || !settings.locked(item)),
         )
         .toList();
-    final selected = await showDialog<MediaItem>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Switch channel'),
-        content: SizedBox(
-          width: 450,
-          height: MediaQuery.sizeOf(context).height * .55,
-          child: ListView.builder(
-            itemCount: channels.length,
-            itemBuilder: (context, index) => ListTile(
-              title: Text(channels[index].name),
-              selected: channels[index].id == _item.id,
-              trailing: channels[index].id == _item.id
-                  ? const Icon(Icons.check)
-                  : null,
-              onTap: () => Navigator.pop(context, channels[index]),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+    final choice = await showTvMenu(context, 'Switch channel', {
+      for (var index = 0; index < channels.length; index++)
+        '$index':
+            '${channels[index].name}${channels[index].id == _item.id ? ' ✓' : ''}',
+    });
+    final index = int.tryParse(choice ?? '');
+    final selected = index == null ? null : channels[index];
     if (selected == null || !mounted || _exiting) return;
     _retryCount = 0;
     _wantsPlayback = true;
@@ -984,99 +938,102 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _menuOpen = true;
     _controlsTimer?.cancel();
     final controller = _controller;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Playback diagnostics'),
-        content: SizedBox(
-          width: 450,
-          child: ValueListenableBuilder<TrackSnapshot>(
-            valueListenable: _tracks,
-            builder: (context, tracks, _) {
-              Widget details(VideoPlayerValue? value) {
-                final state = _playbackError != null
-                    ? (_retryTimer?.isActive == true
-                          ? 'Reconnecting ($_retryCount/3)'
-                          : 'Stream unavailable')
-                    : _loading
-                    ? 'Opening'
-                    : value?.isBuffering == true
-                    ? 'Buffering'
-                    : value?.isPlaying == true
-                    ? 'Playing'
-                    : 'Paused';
-                final fields = {
-                  'Player': _engine == PlayerEngine.native
-                      ? 'ExoPlayer'
-                      : 'Compatibility · media_kit',
-                  'Connection': state,
-                  'Resolution': value != null && value.size.width > 0
-                      ? '${value.size.width.round()} × ${value.size.height.round()}'
-                      : 'Not reported',
-                  'Video codec': tracks.videoCodec.isEmpty
-                      ? 'Not reported'
-                      : tracks.videoCodec,
-                  'Audio codec': tracks.audioCodec.isEmpty
-                      ? 'Not reported'
-                      : tracks.audioCodec,
-                  'Audio channels': tracks.audioChannels > 0
-                      ? tracks.audioChannels.toString()
-                      : 'Not reported',
-                  if (tracks.decoder.isNotEmpty) 'Decoder': tracks.decoder,
-                };
-                return SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+    final content = ValueListenableBuilder<TrackSnapshot>(
+      valueListenable: _tracks,
+      builder: (context, tracks, _) {
+        Widget details(VideoPlayerValue? value) {
+          final state = _playbackError != null
+              ? (_retryTimer?.isActive == true
+                    ? 'Reconnecting ($_retryCount/3)'
+                    : 'Stream unavailable')
+              : _loading
+              ? 'Opening'
+              : value?.isBuffering == true
+              ? 'Buffering'
+              : value?.isPlaying == true
+              ? 'Playing'
+              : 'Paused';
+          final fields = {
+            'Player': _engine == PlayerEngine.native
+                ? 'ExoPlayer'
+                : 'Compatibility · media_kit',
+            'Connection': state,
+            'Resolution': value != null && value.size.width > 0
+                ? '${value.size.width.round()} × ${value.size.height.round()}'
+                : 'Not reported',
+            'Video codec': tracks.videoCodec.isEmpty
+                ? 'Not reported'
+                : tracks.videoCodec,
+            'Audio codec': tracks.audioCodec.isEmpty
+                ? 'Not reported'
+                : tracks.audioCodec,
+            'Audio channels': tracks.audioChannels > 0
+                ? tracks.audioChannels.toString()
+                : 'Not reported',
+            if (tracks.decoder.isNotEmpty) 'Decoder': tracks.decoder,
+          };
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final entry in fields.entries)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final entry in fields.entries)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    color: AppColors.muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 18),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  entry.value,
-                                  textAlign: TextAlign.end,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
+                      Expanded(
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
                           ),
                         ),
+                      ),
+                      const SizedBox(width: 18),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          entry.value,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
                     ],
                   ),
-                );
-              }
+                ),
+            ],
+          );
+        }
 
-              return controller == null
-                  ? details(null)
-                  : ValueListenableBuilder<VideoPlayerValue>(
-                      valueListenable: controller,
-                      builder: (_, value, __) => details(value),
-                    );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+        return controller == null
+            ? details(null)
+            : ValueListenableBuilder<VideoPlayerValue>(
+                valueListenable: controller,
+                builder: (_, value, __) => details(value),
+              );
+      },
     );
+    if (ref.read(isTvProvider)) {
+      await showTvReadingDialog(context, 'Playback diagnostics', content);
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Playback diagnostics'),
+          content: SizedBox(
+            width: 450,
+            child: SingleChildScrollView(child: content),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
     _menuOpen = false;
     _showControls();
   }
@@ -1131,69 +1088,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final tracks = snapshot.tracks
         .where((track) => track.type == type)
         .toList();
-    final key = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(type == 'audio' ? 'Audio' : 'Subtitles'),
-        content: SizedBox(
-          width: 440,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!snapshot.available)
-                  const Text('Track selection is unavailable for this player.')
-                else ...[
-                  ListTile(
-                    title: Text(type == 'audio' ? 'Automatic' : 'Off'),
-                    trailing:
-                        (type == 'audio'
-                            ? snapshot.audioAuto
-                            : snapshot.textOff)
-                        ? const Icon(Icons.check)
-                        : null,
-                    onTap: () => Navigator.pop(
-                      context,
-                      type == 'audio' ? 'auto' : 'off',
-                    ),
-                  ),
-                  if (type == 'text')
-                    ListTile(
-                      title: const Text('Automatic'),
-                      onTap: () => Navigator.pop(context, 'auto'),
-                    ),
-                  for (final track in tracks)
-                    ListTile(
-                      enabled: track.supported,
-                      title: Text(track.label),
-                      subtitle: !track.supported
-                          ? const Text('Unsupported format')
-                          : null,
-                      trailing: track.selected ? const Icon(Icons.check) : null,
-                      onTap: track.supported
-                          ? () => Navigator.pop(context, track.key)
-                          : null,
-                    ),
-                  if (tracks.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: Text(
-                        'No tracks of this type supplied by the stream.',
-                      ),
-                    ),
-                ],
-              ],
-            ),
+    String? key;
+    final title = type == 'audio' ? 'Audio' : 'Subtitles';
+    if (!snapshot.available) {
+      await showTvReadingDialog(
+        context,
+        title,
+        const Text('Track selection is unavailable for this player.'),
+      );
+    } else {
+      key = await showTvMenu(context, title, {
+        type == 'audio' ? 'auto' : 'off': type == 'audio' ? 'Automatic' : 'Off',
+        if (type == 'text') 'auto': 'Automatic',
+        for (final track in tracks.where((track) => track.supported))
+          track.key: track.label,
+        if (tracks.isEmpty || tracks.any((track) => !track.supported))
+          'track-information': 'Track availability information',
+      });
+      if (key == 'track-information' && mounted) {
+        await showTvReadingDialog(
+          context,
+          title,
+          Text(
+            tracks.isEmpty
+                ? 'No tracks of this type supplied by the stream.'
+                : tracks
+                      .where((track) => !track.supported)
+                      .map((track) => '${track.label}: unsupported format')
+                      .join('\n'),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+        );
+        key = null;
+      }
+    }
     _menuOpen = false;
     _showControls();
     if (key == null || !mounted || _exiting) return;
@@ -1440,10 +1367,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Color(0xE3080A0D),
-                              Color(0x23080A0D),
-                              Color(0x10080A0D),
-                              Color(0xF2080A0D),
+                              Color(0xE3071B38),
+                              Color(0x23071B38),
+                              Color(0x10071B38),
+                              Color(0xF2071B38),
                             ],
                             stops: [0, .28, .52, 1],
                           ),

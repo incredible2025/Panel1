@@ -459,7 +459,6 @@ void main() {
       await press(LogicalKeyboardKey.arrowRight);
       await press(LogicalKeyboardKey.select);
       expect(find.text('Player options'), findsOneWidget);
-      await press(LogicalKeyboardKey.arrowDown);
       await press(LogicalKeyboardKey.select);
       expect(find.text('Player for this title'), findsOneWidget);
       await press(LogicalKeyboardKey.arrowDown);

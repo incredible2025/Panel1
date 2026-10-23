@@ -167,7 +167,7 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
                       colors: [
                         Color(0xA0060E1B),
                         Color(0x35060E1B),
-                        Color(0xFF060E1B),
+                        Color(0xFF071B38),
                       ],
                       stops: [0, .35, 1],
                     ),

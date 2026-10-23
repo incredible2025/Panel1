@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../core/design_system.dart';
 import '../data/models.dart';
 import '../widgets/media_card.dart';
@@ -8,6 +8,8 @@ import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
 import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_utility_scaffold.dart';
+import '../widgets/tv_reading_dialog.dart';
 
 class TvMovieView extends StatefulWidget {
   const TvMovieView({
@@ -40,207 +42,157 @@ class _TvMovieViewState extends State<TvMovieView> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item, detail = widget.detail, saved = widget.saved;
-    final opening = widget.opening,
-        onPlay = widget.onPlay,
-        onReload = widget.onReload;
-    final movie = detail.asData?.value;
-    return TvPageNavigation(
-      enabled: true,
-      onBottom: _reading.requestFocus,
-      child: Scaffold(
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            Artwork(
-              url: movie?.backdropUrl ?? item.imageUrl,
-              title: item.name,
-              darken: .9,
+    final movie = widget.detail.asData?.value, saved = widget.saved;
+    return TvUtilityScaffold(
+      title: 'Movie details',
+      onEnter: _play.requestFocus,
+      hint:
+          'Up / Left  Synopsis    Right  Play / My List    Up / Down  Read    OK  Select    Back  Return',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 205,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Artwork(
+                url: widget.item.imageUrl,
+                title: widget.item.name,
+              ),
             ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    height: 1.1,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  [
+                    movie?.year,
+                    movie?.genre,
+                    if ((movie?.rating ?? widget.item.rating).isNotEmpty)
+                      'Rating ${movie?.rating ?? widget.item.rating}',
+                    movie?.duration,
+                  ].whereType<String>().where((e) => e.isNotEmpty).join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: TvScrollPane(
+                    label: 'Movie details, synopsis and cast',
+                    focusNode: _reading,
+                    onRight: _play.requestFocus,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TvControl(
-                          label: 'Back',
-                          onPressed: () => Navigator.maybePop(context),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.arrow_back),
-                              SizedBox(width: 8),
-                              Text('Back'),
-                            ],
+                        if (widget.detail.isLoading)
+                          const Text('Loading details…')
+                        else if (widget.detail.hasError)
+                          TextButton(
+                            onPressed: widget.onReload,
+                            child: const Text('Details unavailable · Retry'),
+                          )
+                        else
+                          Text(
+                            movie?.plot.isNotEmpty == true
+                                ? movie!.plot
+                                : 'Your provider has not supplied a synopsis.',
+                            style: const TextStyle(fontSize: 15, height: 1.5),
                           ),
-                        ),
-                        const SizedBox(width: 20),
-                        const Expanded(
-                          child: Text(
-                            'MOVIE DETAILS',
-                            style: TextStyle(
-                              fontSize: 15,
-                              letterSpacing: 2,
+                        if (movie?.cast.isNotEmpty == true) ...[
+                          const SizedBox(height: 18),
+                          Text(
+                            'Cast  ${movie!.cast}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.5,
                               color: AppColors.muted,
                             ),
                           ),
-                        ),
-                        TvControl(
-                          label: 'Refresh details',
-                          onPressed: onReload,
-                          child: const Icon(Icons.refresh),
-                        ),
+                        ],
                       ],
                     ),
-                    const SizedBox(height: 24),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, size) => Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SizedBox(
-                              width: (size.maxWidth * .23).clamp(150, 270),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: Artwork(
-                                  url: item.imageUrl,
-                                  title: item.name,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 30),
-                            Expanded(
-                              child: TvScrollPane(
-                                label: 'Movie details, synopsis and cast',
-                                focusNode: _reading,
-                                onRight: _play.requestFocus,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.name,
-                                      style: const TextStyle(
-                                        fontSize: 42,
-                                        height: 1.05,
-                                        fontWeight: FontWeight.w700,
-                                        fontFamily: 'Streamline Display',
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    Text(
-                                      [
-                                            movie?.year,
-                                            movie?.genre,
-                                            if ((movie?.rating ?? item.rating)
-                                                .isNotEmpty)
-                                              'Rating ${movie?.rating ?? item.rating}',
-                                            movie?.duration,
-                                          ]
-                                          .whereType<String>()
-                                          .where((s) => s.isNotEmpty)
-                                          .join('   ·   '),
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        color: AppColors.muted,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 22),
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
-                                      children: [
-                                        TvControl(
-                                          focusNode: _play,
-                                          autofocus: true,
-                                          onPressed: opening ? () {} : onPlay,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                saved == null
-                                                    ? Icons.play_arrow
-                                                    : Icons.history,
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Text(
-                                                opening
-                                                    ? 'Opening…'
-                                                    : saved == null
-                                                    ? 'Play movie'
-                                                    : 'Resume movie',
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        MyListButton(item: item),
-                                      ],
-                                    ),
-                                    if (saved != null) ...[
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'Continue from ${formatPlaybackTime(saved.positionMs)}',
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          color: AppColors.accent,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      LinearProgressIndicator(
-                                        value: saved.progress,
-                                        minHeight: 4,
-                                      ),
-                                    ],
-                                    const SizedBox(height: 24),
-                                    if (detail.isLoading)
-                                      const LinearProgressIndicator()
-                                    else if (detail.hasError)
-                                      TextButton(
-                                        onPressed: onReload,
-                                        child: const Text(
-                                          'Details unavailable · Retry',
-                                        ),
-                                      )
-                                    else
-                                      Text(
-                                        movie?.plot.isNotEmpty == true
-                                            ? movie!.plot
-                                            : 'Your provider has not supplied a synopsis.',
-                                        style: const TextStyle(
-                                          fontSize: 19,
-                                          height: 1.55,
-                                        ),
-                                      ),
-                                    if (movie?.cast.isNotEmpty == true)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 20),
-                                        child: Text(
-                                          'Cast  ${movie!.cast}',
-                                          style: const TextStyle(
-                                            fontSize: 17,
-                                            height: 1.5,
-                                            color: AppColors.muted,
-                                          ),
-                                        ),
-                                      ),
-                                    const SizedBox(height: 20),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                  ),
+                ),
+                if (saved != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Continue from ${formatPlaybackTime(saved.positionMs)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(value: saved.progress, minHeight: 3),
+                ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    TvControl(
+                      focusNode: _play,
+                      autofocus: true,
+                      style: TvControlStyle.primary,
+                      onKeyEvent: (_, event) {
+                        if ((event is KeyDownEvent ||
+                                event is KeyRepeatEvent) &&
+                            [
+                              LogicalKeyboardKey.arrowUp,
+                              LogicalKeyboardKey.arrowDown,
+                              LogicalKeyboardKey.arrowLeft,
+                            ].contains(event.logicalKey)) {
+                          _reading.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      onPressed: widget.opening ? () {} : widget.onPlay,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            saved == null ? Icons.play_arrow : Icons.history,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            widget.opening
+                                ? 'Opening…'
+                                : saved == null
+                                ? 'Play movie'
+                                : 'Resume movie',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ],
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    MyListButton(item: widget.item),
+                    const Spacer(),
+                    TvControl(
+                      label: 'Refresh details',
+                      onPressed: widget.onReload,
+                      child: const Icon(Icons.refresh, size: 18),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -277,215 +229,170 @@ class TvSeriesView extends StatefulWidget {
 class _TvSeriesViewState extends State<TvSeriesView> {
   final _seasons = GlobalKey<TvRemoteListState>(),
       _episodes = GlobalKey<TvRemoteListState>();
-  final _back = FocusNode(debugLabel: 'Series back');
+  final _info = FocusNode(debugLabel: 'Series information');
   @override
   void dispose() {
-    _back.dispose();
+    _info.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final series = widget.detail.asData?.value;
-    final saved = {for (final e in widget.history) e.episode.id: e};
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(26),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    final saved = {for (final entry in widget.history) entry.episode.id: entry};
+    return TvUtilityScaffold(
+      title: widget.item.name,
+      subtitle: [
+        series?.year ?? '',
+        series?.genre ?? '',
+        if (series?.rating.isNotEmpty == true) 'Rating ${series!.rating}',
+        '${widget.seasons.length} seasons',
+      ].where((e) => e.isNotEmpty).join(' · '),
+      onEnter: () => _seasons.currentState?.focusSelected(remember: true),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  TvControl(
-                    focusNode: _back,
-                    onPressed: () => Navigator.maybePop(context),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.arrow_back),
-                        SizedBox(width: 7),
-                        Text('Back'),
-                      ],
-                    ),
+              TvControl(
+                focusNode: _info,
+                onPressed: () => showTvReadingDialog(
+                  context,
+                  'Series information',
+                  Text(
+                    series?.plot.isNotEmpty == true
+                        ? series!.plot
+                        : 'Your provider has not supplied a synopsis.',
                   ),
-                  const SizedBox(width: 22),
-                  Expanded(
-                    child: Text(
-                      widget.item.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 35,
-                        fontWeight: FontWeight.w700,
-                        fontFamily: 'Streamline Display',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  MyListButton(item: widget.item),
-                  if (widget.continuing != null) ...[
-                    const SizedBox(width: 12),
-                    TvControl(
-                      onPressed: () => widget.onEpisode(widget.continuing!),
-                      child: Text(
-                        'Resume · S${widget.continuing!.season} E${widget.continuing!.episodeNumber}',
-                      ),
-                    ),
-                  ],
-                ],
+                ),
+                onKeyEvent: (_, event) {
+                  if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
+                      event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    _seasons.currentState?.focusSelected(remember: true);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: const Text(
+                  'Series information',
+                  style: TextStyle(fontSize: 13),
+                ),
               ),
-              const SizedBox(height: 14),
-              if (series != null)
-                Text(
-                  [
-                    series.year,
-                    series.genre,
-                    '${widget.seasons.length} seasons',
-                  ].where((s) => s.isNotEmpty).join('  ·  '),
-                  style: const TextStyle(fontSize: 17, color: AppColors.muted),
-                ),
-              if (series?.plot.isNotEmpty == true)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
+              const SizedBox(width: 12),
+              MyListButton(item: widget.item),
+              if (widget.continuing != null) ...[
+                const SizedBox(width: 12),
+                TvControl(
+                  onPressed: () => widget.onEpisode(widget.continuing!),
                   child: Text(
-                    series!.plot,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      color: AppColors.muted,
-                    ),
+                    'Resume · S${widget.continuing!.season} E${widget.continuing!.episodeNumber}',
+                    style: const TextStyle(fontSize: 13),
                   ),
                 ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: widget.detail.isLoading
-                    ? const StatusView(title: 'Loading episodes', loading: true)
-                    : widget.detail.hasError
-                    ? StatusView(
-                        title: 'Episodes unavailable',
-                        onRetry: widget.onReload,
-                      )
-                    : Row(
-                        children: [
-                          SizedBox(
-                            width: 205,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Text(
-                                  'Seasons',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Expanded(
-                                  child: TvRemoteList(
-                                    key: _seasons,
-                                    label: 'Season',
-                                    autofocus: true,
-                                    extent: 64,
-                                    entries: [
-                                      for (final season in widget.seasons)
-                                        TvListEntry(
-                                          id: season,
-                                          title: season == '0'
-                                              ? 'Specials'
-                                              : 'Season $season',
-                                          selected: season == widget.season,
-                                          onPressed: () =>
-                                              widget.onSeason(season),
-                                        ),
-                                    ],
-                                    onTop: _back.requestFocus,
-                                    onLeft: _back.requestFocus,
-                                    onRight: () =>
-                                        _episodes.currentState?.focusSelected(),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 26),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  '${widget.episodes.length} episodes',
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Expanded(
-                                  child: widget.episodes.isEmpty
-                                      ? const StatusView(
-                                          title: 'No episodes in this season',
-                                        )
-                                      : TvRemoteList(
-                                          key: _episodes,
-                                          label: 'Episode',
-                                          extent: 92,
-                                          entries: [
-                                            for (final episode
-                                                in widget.episodes)
-                                              TvListEntry(
-                                                id: episode.id,
-                                                title: episode.title,
-                                                subtitle:
-                                                    saved[episode.id]
-                                                            ?.watched ==
-                                                        true
-                                                    ? 'Watched'
-                                                    : saved[episode.id]
-                                                              ?.canResume ==
-                                                          true
-                                                    ? 'Resume · ${formatPlaybackTime(saved[episode.id]!.positionMs).padLeft(5, '0')}'
-                                                    : 'Episode ${episode.episodeNumber}',
-                                                selected:
-                                                    episode.id ==
-                                                    (widget.continuing?.id ??
-                                                        widget
-                                                            .episodes
-                                                            .first
-                                                            .id),
-                                                leading: SizedBox(
-                                                  width: 88,
-                                                  height: 50,
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          6,
-                                                        ),
-                                                    child: Artwork(
-                                                      url: episode.imageUrl,
-                                                      title: episode.title,
-                                                    ),
-                                                  ),
-                                                ),
-                                                onPressed: () =>
-                                                    widget.onEpisode(episode),
-                                              ),
-                                          ],
-                                          onLeft: () => _seasons.currentState
-                                              ?.focusSelected(),
-                                          onRight: () {},
-                                          onTop: _back.requestFocus,
-                                        ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+              ],
+              const Spacer(),
+              TvControl(
+                label: 'Refresh series',
+                onPressed: widget.onReload,
+                child: const Icon(Icons.refresh, size: 18),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: widget.detail.isLoading
+                ? const StatusView(title: 'Loading episodes', loading: true)
+                : widget.detail.hasError
+                ? StatusView(
+                    title: 'Episodes unavailable',
+                    onRetry: widget.onReload,
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        width: 190,
+                        child: TvRemoteList(
+                          key: _seasons,
+                          label: 'Season',
+                          autofocus: true,
+                          fullRows: true,
+                          dense: true,
+                          titleSize: 15,
+                          extent: 52,
+                          onTop: _info.requestFocus,
+                          onLeft: _info.requestFocus,
+                          onRight: () => _episodes.currentState?.focusSelected(
+                            remember: true,
+                          ),
+                          entries: [
+                            for (final season in widget.seasons)
+                              TvListEntry(
+                                id: season,
+                                title: season == '0'
+                                    ? 'Specials'
+                                    : 'Season $season',
+                                selected: season == widget.season,
+                                onPressed: () => widget.onSeason(season),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 22),
+                      Expanded(
+                        child: widget.episodes.isEmpty
+                            ? const StatusView(
+                                title: 'No episodes in this season',
+                              )
+                            : TvRemoteList(
+                                key: _episodes,
+                                label: 'Episode',
+                                fullRows: true,
+                                dense: true,
+                                titleSize: 15,
+                                extent: 64,
+                                onLeft: () => _seasons.currentState
+                                    ?.focusSelected(remember: true),
+                                onRight: () {},
+                                onTop: _info.requestFocus,
+                                entries: [
+                                  for (final episode in widget.episodes)
+                                    TvListEntry(
+                                      id: episode.id,
+                                      title: episode.title,
+                                      subtitle:
+                                          saved[episode.id]?.watched == true
+                                          ? 'Watched'
+                                          : saved[episode.id]?.canResume == true
+                                          ? 'Resume · ${formatPlaybackTime(saved[episode.id]!.positionMs).padLeft(5, '0')}'
+                                          : 'Episode ${episode.episodeNumber}',
+                                      selected:
+                                          episode.id ==
+                                          (widget.continuing?.id ??
+                                              widget.episodes.first.id),
+                                      leading: SizedBox(
+                                        width: 76,
+                                        height: 42,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            5,
+                                          ),
+                                          child: Artwork(
+                                            url: episode.imageUrl,
+                                            title: episode.title,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: () =>
+                                          widget.onEpisode(episode),
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
       ),
     );
   }

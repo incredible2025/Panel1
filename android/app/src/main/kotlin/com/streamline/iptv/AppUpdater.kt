@@ -57,7 +57,7 @@ class AppUpdater(private val activity: Activity, messenger: BinaryMessenger) {
                         }
                         result.success(null)
                     } catch (_: Exception) {
-                        result.error("permission", "Open Android Settings > Apps > Special app access > Install unknown apps and allow ULTRAVPN PLAYER, then return here.", null)
+                        result.error("permission", "Open Android Settings > Apps > Special app access > Install unknown apps and allow Ultravpn-player, then return here.", null)
                     }
                 }
                 "validate", "install" -> executor.execute {
@@ -66,7 +66,7 @@ class AppUpdater(private val activity: Activity, messenger: BinaryMessenger) {
                         activity.runOnUiThread {
                             try {
                                 if (call.method == "install") {
-                                    check(canInstall()) { "Allow installation from ULTRAVPN PLAYER in Android Settings, then try again." }
+                                    check(canInstall()) { "Allow installation from Ultravpn-player in Android Settings, then try again." }
                                     val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.updates", apk)
                                     activity.startActivity(Intent(Intent.ACTION_VIEW)
                                         .setDataAndType(uri, "application/vnd.android.package-archive")

@@ -11,31 +11,42 @@ Downloads and Android installation approval remain manual.
 
 ## First setup and checking
 
-1. Install the permanently signed 0.6.3 APK (see the migration note below). There is no address to enter or save.
-2. Extract remote-update.zip and upload both files to the public HTTPS folder:
+1. For a new installation, install Ultravpn-player.apk. For an update test, keep the permanently signed 0.6.3 or 0.6.4 app installed. There is no address to enter or save.
+2. Extract remote-update.zip and upload its three files to the public HTTPS folder:
    `https://ultra-vpn.store/dl/app/`.
-3. Upload the versioned APK first, then replace update.json from the same package.
+3. Upload the versioned APK first, replace Ultravpn-player.apk with the supplied identical copy, then replace update.json from the same package last.
 4. Open Settings > App updates > Check for updates.
 
 The server must serve both URLs directly, without a login or browser-only
-download page. The manifest's apkUrl must match the actual file name. For 0.6.3:
+download page. The manifest's apkUrl must match the actual file name. For 0.6.5:
 
 ```text
 https://ultra-vpn.store/dl/app/update.json
-https://ultra-vpn.store/dl/app/ultravpn-player-0.6.3.apk
+https://ultra-vpn.store/dl/app/Ultravpn-player.apk
+https://ultra-vpn.store/dl/app/ultravpn-player-0.6.5.apk
 ```
 
-Uploading version 0.6.3 when version 0.6.3 is already installed correctly says
+Uploading version 0.6.5 when version 0.6.5 is already installed correctly says
 up to date. To test an actual update offer from that installation, publish a
-later build with a higher version code, for example 0.6.4+12. Do not edit only
+later build with a higher version code, for example 0.6.6+14. Do not edit only
 the JSON version: the actual APK must have that higher version code too.
+
+## Permanent AFTVnews Downloader link
+
+Use `https://ultra-vpn.store/dl/app/Ultravpn-player.apk` when creating an AFTVnews code. The uppercase U and filename must stay exactly the same; many servers treat paths as case-sensitive. Every future release package includes this file automatically. Replace it with the latest supplied copy when deploying a new release.
+
+The code's destination can then stay unchanged. Its URL points to the latest APK because you replace the file at that address. Clear any server/CDN cache for this permanent APK address and update.json after deployment. Prefer uploading to a temporary filename and atomically renaming it into place so downloads cannot receive a partially uploaded file.
+
+The built-in updater continues to use the versioned APK named by update.json. Keep those versioned files available so a user who already fetched an older manifest can finish downloading the corresponding APK. The permanent copy and versioned copy within each package have identical bytes and signatures.
+
+The displayed app name is Ultravpn-player. Download filenames do not control Android update identity: retain the same application ID and signing key, and increase the real APK version code each release. No short code has been created automatically by this setup.
 
 ## Each subsequent release
 
 1. Build the new app with a higher version name and version code, using the
    **same permanent signing key**. The repository workflow builds and publishes
    a fresh remote-update.zip after changes/version updates are merged to main.
-2. Extract the ZIP. Upload the new, versioned APK first.
+2. Extract the ZIP. Upload the new, versioned APK first, then replace the permanent Ultravpn-player.apk with the supplied copy.
 3. Replace the server's update.json with the one from that same package **last**,
    preferably using an atomic rename. Keep the JSON address unchanged.
 4. Leave the previous versioned APK available for users already downloading it.
@@ -43,15 +54,16 @@ the JSON version: the actual APK must have that higher version code too.
 Example after the next update:
 
 ```text
-updates/
+dl/app/
   update.json                       # replace with each release
-  ultravpn-player-0.6.1.apk          # keep previous APKs
-  ultravpn-player-0.6.3.apk          # upload before replacing JSON
+  Ultravpn-player.apk                # permanent Downloader URL; replace each release
+  ultravpn-player-0.6.4.apk           # keep previous versioned APKs
+  ultravpn-player-0.6.5.apk           # upload before replacing JSON
 ```
 
 There is no need to enter new server details on each device. The ZIP contains
 the correct version, actual APK size and SHA-256. Do not manually change those
-values or replace an APK while keeping an old manifest. Disable long-lived
+values or replace a versioned APK while keeping an old manifest. Disable long-lived
 caching for update.json. This is a periodic update check, not an instantaneous
 push to apps that are closed.
 
@@ -66,10 +78,10 @@ up to five times; relative APK paths use the final manifest location.
 {
   "schemaVersion": 1,
   "applicationId": "com.streamline.iptv",
-  "versionName": "0.6.3",
-  "versionCode": 11,
+  "versionName": "0.6.5",
+  "versionCode": 13,
   "minSdk": 24,
-  "apkUrl": "ultravpn-player-0.6.3.apk",
+  "apkUrl": "ultravpn-player-0.6.5.apk",
   "sizeBytes": 100000000,
   "sha256": "replace-with-the-real-64-character-apk-sha256",
   "releaseNotes": "What changed in this release."

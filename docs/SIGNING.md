@@ -12,9 +12,9 @@ The release key belongs to this app. Keep an encrypted offline backup of the ent
 
 The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `keyPassword`. GitHub encrypts the repository secret. Only the main-branch release job receives it; pull-request validation runs without signing credentials.
 
-The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `ultravpn-player.apk` to a versioned GitHub Release. Key files are removed from the runner after the job. Missing or invalid signing configuration fails the release before publication.
+The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `Ultravpn-player.apk` to a versioned GitHub Release. The older lowercase GitHub APK asset is retained as a compatibility alias. Key files are removed from the runner after the job. Missing or invalid signing configuration fails the release before publication.
 
-Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing a versioned APK and `update.json` for uploading to your own HTTPS host. Older testing packages use a different temporary key and cannot be upgraded in place by the permanently signed APK. See [remote update setup](UPDATES.md).
+Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing `Ultravpn-player.apk`, a versioned copy of the same APK and `update.json` for uploading to your own HTTPS host. Older testing packages use a different temporary key and cannot be upgraded in place by the permanently signed APK. See [remote update setup](UPDATES.md).
 
 ## Local builds
 
@@ -33,6 +33,8 @@ Each release must have a new version in `pubspec.yaml`, including an increasing 
 
 The latest APK is available at:
 
-`https://github.com/incredible2025/Panel1/releases/latest/download/ultravpn-player.apk`
+`https://github.com/incredible2025/Panel1/releases/latest/download/Ultravpn-player.apk`
+
+The installed app name is `Ultravpn-player` from 0.6.5. That label and the download filename do not change the application ID `com.streamline.iptv` or signing certificate. Permanently signed 0.6.3 and 0.6.4 installations can upgrade in place.
 
 The first permanently signed APK cannot replace an installed APK signed by a different disposable test key. Uninstalling the older testing build may be necessary once and removes its local data. Subsequent releases retain the application ID and signing certificate so they can update in place.

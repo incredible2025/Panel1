@@ -364,7 +364,7 @@ class TvRemoteListState extends State<TvRemoteList> {
       final e = widget.entries[index];
       return Padding(
         key: ValueKey(e.id),
-        padding: const EdgeInsets.only(bottom: 7),
+        padding: EdgeInsets.only(bottom: widget.dense ? 3 : 7),
         child: TvControl(
           style: TvControlStyle.row,
           autofocus:
@@ -384,7 +384,11 @@ class TvRemoteListState extends State<TvRemoteList> {
           onPressed: e.onPressed,
           padding: EdgeInsets.symmetric(
             horizontal: widget.dense ? 8 : 14,
-            vertical: widget.extent <= 60 ? 3 : 5,
+            vertical: widget.dense
+                ? 1
+                : widget.extent <= 60
+                ? 3
+                : 5,
           ),
           child: Row(
             children: [
@@ -422,7 +426,7 @@ class TvRemoteListState extends State<TvRemoteList> {
                 ),
               ),
               if (e.trailing.isNotEmpty) ...[
-                const SizedBox(width: 12),
+                SizedBox(width: widget.dense ? 6 : 12),
                 Text(
                   e.trailing,
                   style: TextStyle(

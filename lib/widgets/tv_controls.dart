@@ -104,20 +104,20 @@ class _TvControlState extends State<TvControl> {
                   : const Color(0xFF203148),
             ),
           ),
-          child: DefaultTextStyle.merge(
-            style: TextStyle(
-              color: _focused ? AppColors.canvas : AppColors.text,
-              fontSize: 18,
-              height: 1.2,
-              fontWeight: _focused ? FontWeight.w700 : FontWeight.w500,
-            ),
-            child: IconTheme.merge(
-              data: IconThemeData(
-                color: _focused ? AppColors.canvas : AppColors.accent,
-                size: 23,
+          child: Material(
+            type: MaterialType.transparency,
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                color: _focused ? AppColors.canvas : AppColors.text,
+                fontSize: 18,
+                height: 1.2,
+                fontWeight: _focused ? FontWeight.w700 : FontWeight.w500,
               ),
-              child: Material(
-                type: MaterialType.transparency,
+              child: IconTheme.merge(
+                data: IconThemeData(
+                  color: _focused ? AppColors.canvas : AppColors.accent,
+                  size: 23,
+                ),
                 child: InkWell(
                   canRequestFocus: false,
                   onTap: widget.onPressed,

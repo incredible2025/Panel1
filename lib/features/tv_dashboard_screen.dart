@@ -424,7 +424,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                           child: Text(
                             info?.expiring == true
                                 ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
-                                : '↑ Navigation    ← → Browse    OK Select    Back Home',
+                                : 'D-pad Browse    OK Select    Back Home',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

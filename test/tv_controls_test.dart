@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 
@@ -21,6 +23,33 @@ Future<void> held(
 }
 
 void main() {
+  testWidgets('TV focus retains readable text inside Material', (tester) async {
+    final focus = FocusNode();
+    addTearDown(focus.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: StreamlineTheme.dark,
+        home: Scaffold(
+          body: TvControl(
+            focusNode: focus,
+            onPressed: () {},
+            child: const Text('Home'),
+          ),
+        ),
+      ),
+    );
+    final label = find.text('Home');
+    expect(
+      tester.renderObject<RenderParagraph>(label).text.style?.color,
+      AppColors.text,
+    );
+    focus.requestFocus();
+    await tester.pumpAndSettle();
+    expect(
+      tester.renderObject<RenderParagraph>(label).text.style?.color,
+      AppColors.canvas,
+    );
+  });
   testWidgets(
     'TV list reveals and activates distant entries with held arrows',
     (tester) async {

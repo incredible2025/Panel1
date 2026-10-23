@@ -172,12 +172,23 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
                               color: const Color(0xDF060E1B),
                               borderRadius: BorderRadius.circular(5),
                             ),
-                            child: Text(
-                              '★ ${item.rating}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.star_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  item.rating,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

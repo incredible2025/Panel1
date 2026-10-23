@@ -229,6 +229,9 @@ Future<void> _pumpApp(
   _TestApi? api,
   Size? viewport,
   List<MediaItem>? movies,
+  List<MediaItem>? liveChannels,
+  List<MediaItem>? seriesItems,
+  Map<MediaKind, List<Category>>? suppliedCategories,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -244,18 +247,20 @@ Future<void> _pumpApp(
         isTvProvider.overrideWithValue(tv),
         if (api != null) apiProvider.overrideWithValue(api),
         categoriesProvider.overrideWith(
-          (ref, kind) async => kind == MediaKind.movie
-              ? const [
-                  Category(id: 'drama', name: 'Drama'),
-                  Category(id: 'action', name: 'Action'),
-                ]
-              : const [],
+          (ref, kind) async =>
+              suppliedCategories?[kind] ??
+              (kind == MediaKind.movie
+                  ? const [
+                      Category(id: 'drama', name: 'Drama'),
+                      Category(id: 'action', name: 'Action'),
+                    ]
+                  : const []),
         ),
         itemsProvider.overrideWith(
           (ref, kind) async => switch (kind) {
-            MediaKind.live => const [_channel, _sportsChannel],
+            MediaKind.live => liveChannels ?? const [_channel, _sportsChannel],
             MediaKind.movie => movies ?? [_film, _otherFilm, _undatedFilm],
-            MediaKind.series => const [_series],
+            MediaKind.series => seriesItems ?? const [_series],
           },
         ),
         epgProvider.overrideWith(
@@ -896,6 +901,150 @@ void main() {
     expect(tester.takeException(), isNull);
     await _screenshot(tester, 'tv-movies');
   });
+
+  for (final kind in MediaKind.values) {
+    _uiTest(
+      'TV ${kind.name} categories retain focus across sidebar resize, selection and offscreen navigation',
+      (tester) async {
+        final store = _MemoryStore()
+          ..preferences = AppSettings(lastSection: kind.name);
+        final categories = List.generate(
+          32,
+          (i) => Category(id: 'c$i', name: 'Group $i'),
+        );
+        final items = List.generate(
+          32,
+          (i) => MediaItem(
+            id: '$i',
+            name: 'Item $i',
+            kind: kind,
+            categoryId: 'c$i',
+          ),
+        );
+        await _pumpApp(
+          tester,
+          store: store,
+          tv: true,
+          viewport: const Size(1024, 600),
+          suppliedCategories: {kind: categories},
+          liveChannels: items,
+          movies: items,
+          seriesItems: items,
+        );
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Navigation: ${kind.name}',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(FocusManager.instance.primaryFocus?.debugLabel, 'Category: All');
+        final extra = kind == MediaKind.live ? 1 : 2;
+        for (var i = 0; i < 12 + extra; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pumpAndSettle();
+        }
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Category: Group 12',
+        );
+        final before = FocusManager.instance.primaryFocus;
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(store.preferences.lastCategories[kind.name], 'c12');
+        expect(FocusManager.instance.primaryFocus, same(before));
+        expect(find.text('Item 12'), findsWidgets);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.context
+              ?.findAncestorWidgetOfExactType<CustomScrollView>(),
+          isNotNull,
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          startsWith('Category:'),
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Library search',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Category: Group 12',
+        );
+        for (var i = 0; i < 13 + extra; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+          await tester.pumpAndSettle();
+        }
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Navigation: ${kind.name}',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Category: Group 12',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  _uiTest(
+    'TV restores an offscreen category and remote Right reaches it without touch',
+    (tester) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(
+          lastSection: 'movie',
+          lastCategories: {'movie': 'c27'},
+        );
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        suppliedCategories: {
+          MediaKind.movie: List.generate(
+            40,
+            (i) => Category(id: 'c$i', name: 'Group $i'),
+          ),
+        },
+        movies: [
+          const MediaItem(
+            id: '27',
+            name: 'Restored film',
+            kind: MediaKind.movie,
+            categoryId: 'c27',
+          ),
+        ],
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Category: Group 27',
+      );
+      final label = find.text('Group 27');
+      expect(
+        tester.getRect(label).overlaps(const Rect.fromLTWH(0, 0, 1280, 720)),
+        true,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.gameButtonA);
+      await tester.pumpAndSettle();
+      expect(find.text('Restored film'), findsWidgets);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Category: Group 27',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   _uiTest(
     'recently added movies use actual dates and Browse all shows newest first',

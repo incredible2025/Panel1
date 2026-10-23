@@ -8,6 +8,7 @@ import 'core/platform_mode.dart';
 import 'core/providers.dart';
 import 'core/provider_config.dart';
 import 'data/local_store.dart';
+import 'core/design_system.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,7 +45,14 @@ class _StartupError extends StatelessWidget {
   const _StartupError();
   @override
   Widget build(BuildContext context) => MaterialApp(
-    theme: ThemeData.dark(useMaterial3: true),
+    theme: StreamlineTheme.dark,
+    shortcuts: {
+      ...WidgetsApp.defaultShortcuts,
+      const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent(),
+      const SingleActivator(LogicalKeyboardKey.gameButtonA):
+          const ActivateIntent(),
+    },
+    builder: (_, child) => AppBackdrop(child: child!),
     home: Scaffold(
       body: Center(
         child: Padding(
@@ -52,13 +60,17 @@ class _StartupError extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.storage_rounded, size: 56),
+              const StreamlineMark(size: 64, wordmark: true),
               const SizedBox(height: 24),
               const Text('ULTRAVPN PLAYER could not open its local storage.'),
               const SizedBox(height: 12),
               const Text('Check available device storage, then try again.'),
               const SizedBox(height: 24),
-              FilledButton(onPressed: main, child: const Text('Try again')),
+              FilledButton(
+                autofocus: true,
+                onPressed: main,
+                child: const Text('Try again'),
+              ),
             ],
           ),
         ),

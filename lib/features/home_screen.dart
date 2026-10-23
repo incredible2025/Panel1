@@ -463,9 +463,9 @@ class FeatureBillboard extends ConsumerWidget {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    const Color(0xFF071324),
-                    const Color(0xF0071324),
-                    const Color(0x50071324),
+                    const Color(0xFF071B38),
+                    const Color(0xF0071B38),
+                    const Color(0x50071B38),
                   ],
                   stops: const [0, .38, 1],
                 ),
@@ -476,7 +476,7 @@ class FeatureBillboard extends ConsumerWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Color(0xF0071324)],
+                  colors: [Colors.transparent, Color(0xF0071B38)],
                   stops: [.2, 1],
                 ),
               ),

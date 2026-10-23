@@ -115,14 +115,14 @@ class _TvControlState extends State<TvControl> {
                   : widget.selected && !(glass && _navigation)
                   ? glass
                         ? const Color(0x1FFFFFFF)
-                        : const Color(0xFF1A2735)
+                        : const Color(0xFF183A60)
                   : programme
                   ? const Color(0x0BFFFFFF)
                   : _row || _navigation || _poster
                   ? Colors.transparent
                   : glass
                   ? const Color(0x14FFFFFF)
-                  : const Color(0xFF18212D),
+                  : const Color(0xFF122F56),
               borderRadius: BorderRadius.circular(
                 glass
                     ? 3

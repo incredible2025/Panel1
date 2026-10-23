@@ -165,9 +165,9 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Color(0xA0060E1B),
-                        Color(0x35060E1B),
-                        Color(0xFF060E1B),
+                        Color(0xA0071B38),
+                        Color(0x35071B38),
+                        Color(0xFF071B38),
                       ],
                       stops: [0, .35, 1],
                     ),

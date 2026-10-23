@@ -35,6 +35,7 @@ import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
+import 'package:streamline_iptv/features/startup_update_gate.dart';
 import 'package:streamline_iptv/features/tv_licences_screen.dart';
 import 'package:streamline_iptv/data/speed_test.dart';
 import 'package:streamline_iptv/data/connection_diagnostics.dart';
@@ -273,6 +274,7 @@ Future<void> _pumpApp(
   ConnectionDiagnostics Function()? diagnosis,
   String? moviePlot,
   bool withEpg = true,
+  bool startupUpdates = false,
   Map<String, List<EpgEntry>>? schedules,
 }) async {
   tester.view.devicePixelRatio = 1;
@@ -287,6 +289,7 @@ Future<void> _pumpApp(
         storeProvider.overrideWithValue(store),
         sessionProvider.overrideWith((ref) => signedIn ? _account : null),
         isTvProvider.overrideWithValue(tv),
+        startupUpdatesEnabledProvider.overrideWithValue(startupUpdates),
         if (speed != null) speedTestFactoryProvider.overrideWithValue(speed),
         if (diagnosis != null)
           connectionDiagnosticsFactoryProvider.overrideWithValue(diagnosis),
@@ -1161,8 +1164,12 @@ void main() {
       expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Zephyr');
-      await tester.testTextInput.receiveAction(TextInputAction.search);
+      expect(find.byType(TextField), findsNothing);
+      for (final letter in 'zephyr'.split('')) {
+        await tester.tap(find.text(letter));
+        await tester.pump();
+      }
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
       expect(_gridTitles(tester), ['Zephyr']);
       expect(find.textContaining('provider.example'), findsNothing);
@@ -1189,15 +1196,6 @@ void main() {
     await (FontLoader(
       'Glass Sans',
     )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
-    await (FontLoader('Streamline Sans')
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf')))
-        .load();
-    await (FontLoader('Streamline Display')
-          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Regular.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Bold.ttf')))
-        .load();
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
@@ -2039,6 +2037,114 @@ void main() {
     const Size(1280, 720),
     const Size(1920, 1080),
   ]) {
+    for (final failed in [false, true]) {
+      _uiTest('TV redesign visual startup update gate failed=$failed at $size', (
+        tester,
+      ) async {
+        final transport = FakeTransport();
+        if (failed) {
+          transport.failure = const UpdateFailure(
+            'The update server could not be reached. Retry or continue with your installed app.',
+          );
+        }
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          viewport: size,
+          startupUpdates: true,
+          updater: UpdateController(FakePlatform(), transport),
+        );
+        expect(
+          find.text(failed ? 'Try again' : 'Update now').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.text('Continue to app').hitTestable(), findsOneWidget);
+        expect(find.text('Home'), findsNothing);
+        await _screenshot(
+          tester,
+          'tv-redesign-startup-$failed-${size.width.toInt()}',
+        );
+        if (!failed) {
+          await remote(tester, LogicalKeyboardKey.select);
+          expect(find.text('Check for updates').hitTestable(), findsOneWidget);
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Startup update action',
+          );
+        }
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Home'), findsOneWidget);
+        expect(transport.checks, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+    _uiTest('TV redesign visual movie detail keeps actions fixed at $size', (
+      tester,
+    ) async {
+      final store = _MemoryStore()
+        ..entries = [
+          WatchEntry(
+            item: _film,
+            positionMs: 600000,
+            durationMs: 6000000,
+            lastAccessed: DateTime.now(),
+          ),
+        ];
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        viewport: size,
+        screen: MovieDetailScreen(item: _film),
+        moviePlot: List.filled(
+          60,
+          'A long provider synopsis remains readable with the remote.',
+        ).join(' '),
+      );
+      expect(find.text('Resume movie').hitTestable(), findsOneWidget);
+      final button = tester.getRect(find.text('Resume movie'));
+      await remote(tester, LogicalKeyboardKey.arrowUp);
+      await remote(tester, LogicalKeyboardKey.arrowDown, 8);
+      expect(tester.getRect(find.text('Resume movie')), button);
+      await _screenshot(
+        tester,
+        'tv-redesign-movie-detail-${size.width.toInt()}',
+      );
+      expect(tester.takeException(), isNull);
+    });
+    _uiTest('TV redesign visual series detail and information at $size', (
+      tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        viewport: size,
+        screen: const SeriesDetailScreen(item: _series),
+      );
+      expect(find.text('Season 1').hitTestable(), findsOneWidget);
+      expect(find.text('First Light').hitTestable(), findsOneWidget);
+      await _screenshot(
+        tester,
+        'tv-redesign-series-detail-${size.width.toInt()}',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowUp);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(
+        find.text('Life unfolds in a small coastal town.'),
+        findsOneWidget,
+      );
+      expect(find.text('Close').hitTestable(), findsOneWidget);
+      await _screenshot(
+        tester,
+        'tv-redesign-series-information-${size.width.toInt()}',
+      );
+      expect(tester.takeException(), isNull);
+    });
     _uiTest('TV redesign visual built-in keyboard fits at $size', (
       tester,
     ) async {
@@ -2467,6 +2573,41 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final signedIn in [false, true]) {
+    _uiTest(
+      'current launch opens ${signedIn ? 'Home' : 'login'} and resume keeps the check throttle',
+      (tester) async {
+        final transport = FakeTransport()
+          ..next = AppUpdate.parse(jsonEncode(manifest(code: 8)));
+        final controller = UpdateController(
+          FakePlatform()..checked = DateTime.now(),
+          transport,
+        );
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          signedIn: signedIn,
+          startupUpdates: true,
+          updater: controller,
+        );
+        expect(transport.checks, 1);
+        expect(controller.stage, UpdateStage.current);
+        expect(find.text('Checking for updates'), findsNothing);
+        expect(find.text(signedIn ? 'Home' : 'Username'), findsOneWidget);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+        expect(transport.checks, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   _uiTest('TV parental PIN creation uses the built-in numeric keypad', (
     tester,

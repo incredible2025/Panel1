@@ -11,6 +11,7 @@ import 'data/app_settings.dart';
 import 'features/dashboard_screen.dart';
 import 'features/login_screen.dart';
 import 'features/tv_dashboard_screen.dart';
+import 'features/startup_update_gate.dart';
 
 class StreamlineApp extends ConsumerStatefulWidget {
   const StreamlineApp({super.key});
@@ -21,13 +22,11 @@ class StreamlineApp extends ConsumerStatefulWidget {
 
 class _StreamlineAppState extends ConsumerState<StreamlineApp>
     with WidgetsBindingObserver {
+  bool _startupFinished = false;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    Future.microtask(() {
-      if (mounted) ref.read(updateControllerProvider).autoCheck();
-    });
   }
 
   @override
@@ -38,7 +37,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _startupFinished) {
       ref.read(updateControllerProvider).autoCheck();
     }
     if (state != AppLifecycleState.resumed) {
@@ -49,6 +48,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
+    final tv = ref.watch(isTvProvider);
     final settings =
         ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -69,7 +69,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
                 MediaQuery.disableAnimationsOf(context) ||
                 settings.reducedMotion,
           ),
-          child: child!,
+          child: AppBackdrop(cinema: settings.theme == 'cinema', child: child!),
         ),
         shortcuts: <ShortcutActivator, Intent>{
           ...WidgetsApp.defaultShortcuts,
@@ -78,11 +78,14 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
           const SingleActivator(LogicalKeyboardKey.gameButtonA):
               const ActivateIntent(),
         },
-        home: session == null
-            ? const LoginScreen()
-            : ref.watch(isTvProvider)
-            ? TvDashboardScreen(key: ValueKey(session.accountId))
-            : DashboardScreen(key: ValueKey(session.accountId)),
+        home: StartupUpdateGate(
+          onFinished: () => _startupFinished = true,
+          builder: (_) => session == null
+              ? const LoginScreen()
+              : tv
+              ? TvDashboardScreen(key: ValueKey(session.accountId))
+              : DashboardScreen(key: ValueKey(session.accountId)),
+        ),
       ),
     );
   }

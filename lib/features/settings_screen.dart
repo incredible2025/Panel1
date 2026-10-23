@@ -344,8 +344,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ]),
       _group('Appearance', Icons.palette_outlined, [
         _choice('Theme', s.theme, {
-          'midnight': 'Midnight · Blue & cyan',
-          'cinema': 'Cinema · Black & ivory',
+          'midnight': 'Glass · Blue & cyan',
+          'cinema': 'Glass · Midnight',
         }, (v) => _save({'theme': v})),
         _toggle(
           'Larger posters',

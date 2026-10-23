@@ -97,15 +97,9 @@ void main() {
   );
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
-    await (FontLoader('Streamline Sans')
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Medium.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/Roboto-Bold.ttf')))
-        .load();
-    await (FontLoader('Streamline Display')
-          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Regular.ttf'))
-          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Bold.ttf')))
-        .load();
+    await (FontLoader(
+      'Glass Sans',
+    )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
@@ -244,7 +238,17 @@ void main() {
             image.dispose();
           });
         }
-        await tester.enterText(find.byType(TextField), 'Cinema');
+        if (tv) {
+          await tester.tap(find.text('Filter channels'));
+          await tester.pumpAndSettle();
+          for (final letter in 'cinema'.split('')) {
+            await tester.tap(find.text(letter));
+            await tester.pump();
+          }
+          await tester.tap(find.text('Done'));
+        } else {
+          await tester.enterText(find.byType(TextField), 'Cinema');
+        }
         await tester.pumpAndSettle();
         expect(find.text('World News'), findsNothing);
         expect(find.text('Evening Film'), findsOneWidget);

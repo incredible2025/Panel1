@@ -66,12 +66,12 @@ class _CoverPainter extends CustomPainter {
       (a, b) => (a * 31 + b) & 0x7fffffff,
     );
     const colors = [
-      Color(0xFF53413B),
-      Color(0xFF263E43),
-      Color(0xFF343B56),
-      Color(0xFF454631),
-      Color(0xFF463349),
-      Color(0xFF3B4249),
+      Color(0xFF254C79),
+      Color(0xFF15586A),
+      Color(0xFF344C83),
+      Color(0xFF246478),
+      Color(0xFF3B4779),
+      Color(0xFF28576C),
     ];
     final color = colors[seed % colors.length];
     final rect = Offset.zero & size;
@@ -82,8 +82,8 @@ class _CoverPainter extends CustomPainter {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.lerp(const Color(0xFF101824), color, .3)!,
-            const Color(0xFF080D15),
+            Color.lerp(const Color(0xFF122F56), color, .3)!,
+            const Color(0xFF071B38),
           ],
         ).createShader(rect),
     );
@@ -114,7 +114,7 @@ class _CoverPainter extends CustomPainter {
       text: TextSpan(
         text: initials,
         style: TextStyle(
-          fontFamily: 'Streamline Display',
+          fontFamily: 'Glass Sans',
           fontWeight: FontWeight.w700,
           fontSize: math.min(size.width * .2, size.height * .23),
           color: AppColors.text.withValues(alpha: .2),

@@ -61,11 +61,8 @@ void main() {
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
     await (FontLoader(
-      'Streamline Sans',
-    )..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
-    await (FontLoader('Streamline Display')
-          ..addFont(rootBundle.load('assets/fonts/RobotoCondensed-Bold.ttf')))
-        .load();
+      'Glass Sans',
+    )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
     await (FontLoader(
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();

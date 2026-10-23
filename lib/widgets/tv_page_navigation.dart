@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'tv_controls.dart';
+import 'tv_glass_theme.dart';
 
 /// Utility pages use a predictable vertical order, including offscreen controls.
 /// Their short forms must build all controls (Column, not a lazy ListView).
@@ -195,38 +196,45 @@ class _TvScrollPaneState extends State<TvScrollPane> {
 Future<String?> showTvMenu(
   BuildContext context,
   String title,
-  Map<String, String> choices,
-) => showDialog<String>(
+  Map<String, String> choices, {
+  String? selected,
+}) => showDialog<String>(
   context: context,
-  builder: (context) => SimpleDialog(
-    title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
-    children: [
-      SizedBox(
-        width: 600,
-        height: (choices.length * 46.0).clamp(
-          46,
-          MediaQuery.sizeOf(context).height * .58,
-        ),
-        child: TvRemoteList(
-          autofocus: true,
-          label: 'Menu option',
-          fullRows: true,
-          titleSize: 17,
-          extent: 46,
-          dense: true,
-          onTop: () {},
-          onLeft: () {},
-          onRight: () {},
-          entries: [
-            for (final option in choices.entries)
-              TvListEntry(
-                id: option.key,
-                title: option.value,
-                onPressed: () => Navigator.pop(context, option.key),
-              ),
-          ],
-        ),
+  builder: (context) => TvGlassScope(
+    child: Theme(
+      data: TvGlass.theme(Theme.of(context)),
+      child: SimpleDialog(
+        title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+        children: [
+          SizedBox(
+            width: 600,
+            height: (choices.length * 46.0).clamp(
+              46,
+              MediaQuery.sizeOf(context).height * .58,
+            ),
+            child: TvRemoteList(
+              autofocus: true,
+              label: 'Menu option',
+              fullRows: true,
+              titleSize: 17,
+              extent: 46,
+              dense: true,
+              onTop: () {},
+              onLeft: () {},
+              onRight: () {},
+              entries: [
+                for (final option in choices.entries)
+                  TvListEntry(
+                    id: option.key,
+                    title: option.value,
+                    selected: option.key == selected,
+                    onPressed: () => Navigator.pop(context, option.key),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
-    ],
+    ),
   ),
 );

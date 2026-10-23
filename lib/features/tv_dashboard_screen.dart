@@ -14,6 +14,8 @@ import '../widgets/live_channel_preview.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
+import '../widgets/tv_text_entry_dialog.dart';
+import '../widgets/tv_reading_dialog.dart';
 import '../widgets/tv_poster_browser.dart';
 import '../widgets/tv_page_navigation.dart';
 import '../widgets/tv_glass_theme.dart';
@@ -260,18 +262,23 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   }
 
   Future<void> _search() async {
-    final result = await showDialog<String>(
+    final controller = TextEditingController(text: _query);
+    final route = DialogRoute<bool>(
       context: context,
-      builder: (_) => _TvSearchDialog(
-        title:
+      builder: (_) => TvTextEntryDialog(
+        controller: controller,
+        label:
             'Search ${_section == 'live'
                 ? 'channels'
                 : _section == 'series'
                 ? 'series'
                 : 'movies'}',
-        initial: _query,
       ),
     );
+    final committed = await Navigator.of(context).push(route);
+    await route.completed;
+    final result = committed == true ? controller.text : null;
+    controller.dispose();
     if (result != null && mounted) {
       setState(() {
         if (_section == 'home' || _section == 'settings') _section = 'movie';
@@ -282,26 +289,14 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   }
 
   Future<void> _sortMenu() async {
-    final result = await showDialog<CatalogSort>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Sort titles'),
-        children: [
-          for (final entry in [
-            (CatalogSort.recentlyAdded, 'Recently added'),
-            (CatalogSort.titleAscending, 'Title · A to Z'),
-            (CatalogSort.titleDescending, 'Title · Z to A'),
-          ])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, entry.$1),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(entry.$2, style: const TextStyle(fontSize: 20)),
-              ),
-            ),
-        ],
-      ),
-    );
+    final choice = await showTvMenu(context, 'Sort titles', {
+      CatalogSort.recentlyAdded.name: 'Recently added',
+      CatalogSort.titleAscending.name: 'Title · A to Z',
+      CatalogSort.titleDescending.name: 'Title · Z to A',
+    });
+    final result = CatalogSort.values
+        .where((sort) => sort.name == choice)
+        .firstOrNull;
     if (result != null && mounted) {
       setState(() {
         _sort = result;
@@ -987,28 +982,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   Future<void> _liveOptions(MediaItem item, List<MediaItem> channels) async {
     final favorite =
         ref.read(favoritesProvider).asData?.value.contains(item) ?? false;
-    final result = await showDialog<int>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(item.name),
-        children: [
-          for (final entry in [
-            (0, 'Preview'),
-            (1, favorite ? 'Remove favourite' : 'Save favourite'),
-            (2, 'Full TV guide'),
-            (3, 'Refresh channels'),
-          ])
-            TextButton(
-              autofocus: entry.$1 == 0,
-              onPressed: () => Navigator.pop(context, entry.$1),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(entry.$2),
-              ),
-            ),
-        ],
-      ),
-    );
+    final choice = await showTvMenu(context, item.name, {
+      '0': 'Preview',
+      '1': favorite ? 'Remove favourite' : 'Save favourite',
+      '2': 'Full TV guide',
+      '3': 'Refresh channels',
+    });
+    final result = int.tryParse(choice ?? '');
     if (!mounted || result == null) return;
     _options.requestFocus();
     switch (result) {
@@ -1051,30 +1031,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     EpgEntry entry,
     List<MediaItem> channels,
   ) async {
-    final watch = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(entry.title),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Text(
-              '${guideClock(entry.start)} – ${guideClock(entry.end)}\n\n${entry.description.isEmpty ? 'No description supplied by your provider.' : entry.description}',
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Back'),
-          ),
-          FilledButton(
-            autofocus: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Watch live channel'),
-          ),
-        ],
+    final watch = await showTvReadingDialog(
+      context,
+      entry.title,
+      Text(
+        '${guideClock(entry.start)} – ${guideClock(entry.end)}\n\n${entry.description.isEmpty ? 'No description supplied by your provider.' : entry.description}',
       ),
+      actionLabel: 'Watch live channel',
     );
     if (watch == true && mounted) await _open(item, channels: channels);
   }
@@ -1655,47 +1618,4 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       ],
     );
   }
-}
-
-class _TvSearchDialog extends StatefulWidget {
-  const _TvSearchDialog({required this.title, required this.initial});
-  final String title, initial;
-  @override
-  State<_TvSearchDialog> createState() => _TvSearchDialogState();
-}
-
-class _TvSearchDialogState extends State<_TvSearchDialog> {
-  late final _controller = TextEditingController(text: widget.initial);
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
-    content: SizedBox(
-      width: 480,
-      child: TextField(
-        controller: _controller,
-        autofocus: true,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (v) => Navigator.pop(context, v),
-        decoration: const InputDecoration(
-          hintText: 'Enter a title or channel name',
-        ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, _controller.text),
-        child: const Text('Search'),
-      ),
-    ],
-  );
 }

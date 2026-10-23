@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'subscription_expiry.dart';
 
 /// Safe to display to users: never includes request URLs or provider responses.
 class XtreamApiException implements Exception {
@@ -25,7 +26,9 @@ class XtreamApi {
     try {
       base = normalizeServerUri(credentials.serverUrl);
     } on FormatException {
-      throw const XtreamApiException('Enter a valid HTTP or HTTPS server URL.');
+      throw const XtreamApiException(
+        'The service configuration is unavailable. Contact support.',
+      );
     }
     final normalized = Credentials(
       serverUrl: base.toString(),
@@ -40,11 +43,11 @@ class XtreamApi {
     final authorized = user['auth'] == true || textValue(user['auth']) == '1';
     if (!authorized) {
       throw const XtreamApiException(
-        'Sign-in failed. Check your server and credentials.',
+        'Sign-in failed. Check your username and password.',
       );
     }
-    final status = textValue(user['status']).toLowerCase();
-    if (status.isNotEmpty && status != 'active') {
+    final subscription = SubscriptionExpiry(user);
+    if (!subscription.activeStatus) {
       throw const XtreamApiException(
         'This subscription is inactive. Contact your provider.',
       );
@@ -279,12 +282,12 @@ class XtreamApi {
       );
     } on FormatException {
       throw const XtreamApiException(
-        'The server returned invalid data. Check the server URL.',
+        'The provider returned invalid data. Retry or contact support.',
       );
     } catch (_) {
       // ClientException and SocketException often contain the credential URL.
       throw const XtreamApiException(
-        'Could not connect to the provider. Check your connection and server URL.',
+        'Could not connect to the provider. Check your connection or run Connection diagnosis.',
       );
     }
   }

@@ -6,6 +6,7 @@ import '../core/app_version.dart';
 import '../core/app_brand.dart';
 import 'connection_diagnosis_screen.dart';
 import 'app_updates_screen.dart';
+import 'speed_test_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
@@ -392,17 +393,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ]),
       _group('Your account', Icons.account_circle_outlined, [
         _info('Username', session?.credentials.username ?? 'Not signed in'),
-        _info(
-          'Provider',
-          session == null
-              ? 'Not supplied'
-              : normalizeServerUri(session.credentials.serverUrl).toString(),
-        ),
         _info('Status', account?.status ?? 'Not supplied'),
         _info('Expiry date', account?.expiryLabel ?? 'Not supplied'),
         _info(
           'Time remaining',
-          account?.remainingDays == null
+          account?.neverExpires == true
+              ? 'Doesn’t expire'
+              : account?.remainingDays == null
               ? 'Not supplied'
               : account!.remainingDays! <= 0 &&
                     account.expiry!.isBefore(DateTime.now())
@@ -441,6 +438,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
 
+        _action(
+          'Speed test',
+          'Measure download, upload, latency and jitter on this device’s current connection.',
+          Icons.speed,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const SpeedTestScreen()),
+          ),
+        ),
         _action(
           'Connection diagnosis',
           'Check the network, provider, HTTPS, account and library. See error explanations and practical next steps.',

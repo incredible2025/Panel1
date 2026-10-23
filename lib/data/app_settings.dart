@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'subscription_expiry.dart';
 
 enum PlayerEngine { native, compatibility }
 
@@ -138,9 +139,10 @@ class AccountInfo {
       now = now ?? DateTime.now();
   final Map<String, dynamic> values;
   final DateTime now;
+  bool get neverExpires => SubscriptionExpiry(values).neverExpires;
   DateTime? get expiry {
-    final seconds = int.tryParse(textValue(values['exp_date']));
-    if (seconds == null || seconds <= 0 || seconds > 8640000000000) return null;
+    final seconds = SubscriptionExpiry(values).seconds;
+    if (seconds == null) return null;
     return DateTime.fromMillisecondsSinceEpoch(
       seconds * 1000,
       isUtc: true,
@@ -154,7 +156,9 @@ class AccountInfo {
   String get status => textValue(values['status'], 'Not supplied');
   String count(String key) =>
       int.tryParse(textValue(values[key]))?.toString() ?? 'Not supplied';
-  String get expiryLabel => expiry == null
+  String get expiryLabel => neverExpires
+      ? 'Doesn’t expire'
+      : expiry == null
       ? 'Not supplied'
       : '${expiry!.day.toString().padLeft(2, '0')}/${expiry!.month.toString().padLeft(2, '0')}/${expiry!.year}';
 }

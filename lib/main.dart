@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/platform_mode.dart';
 import 'core/providers.dart';
+import 'core/provider_config.dart';
 import 'data/local_store.dart';
 
 Future<void> main() async {
@@ -17,7 +18,9 @@ Future<void> main() async {
   });
   try {
     final store = await LocalStore.open();
-    final session = await store.readSession();
+    final saved = await store.readSession();
+    final session = saved != null && usesConfiguredPortal(saved) ? saved : null;
+    if (saved != null && session == null) await store.clearSession();
     final television = await detectTelevision();
     runApp(
       ProviderScope(

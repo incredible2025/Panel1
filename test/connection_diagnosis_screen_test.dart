@@ -118,7 +118,10 @@ void main() {
       );
       expect(find.text('Possible causes'), findsOneWidget);
       expect(find.text('What to try'), findsOneWidget);
-      expect(find.text('1. Check the server spelling.'), findsOneWidget);
+      expect(
+        find.text('1. Ask support to verify the provider DNS configuration.'),
+        findsOneWidget,
+      );
       expect(find.textContaining('private-pass'), findsNothing);
       expect(tester.takeException(), isNull);
       await capture(tester, 'v5.1-diagnosis-dns-error');

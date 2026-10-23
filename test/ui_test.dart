@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/app.dart';
 import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/core/providers.dart';
+import 'package:streamline_iptv/core/provider_config.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
@@ -569,6 +570,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Not supplied'), findsWidgets);
         expect(find.text('viewer'), findsOneWidget);
+        expect(find.text('Provider'), findsNothing);
+        expect(find.textContaining('https://provider.example'), findsNothing);
+        expect(find.textContaining('liquidmetal.vip'), findsNothing);
         expect(find.text('test-only'), findsNothing);
         await _screenshot(tester, tv ? 'v5-tv-account' : 'v5-phone-account');
         expect(tester.takeException(), isNull);
@@ -607,6 +611,34 @@ void main() {
       expect(find.text('Account information refreshed.'), findsOneWidget);
     },
   );
+
+  _uiTest('unlimited subscription shows no expiry after account refresh', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    final api = _TestApi()
+      ..refreshedInfo = {
+        'auth': 1,
+        'status': 'Active',
+        'exp_date': 'unlimited',
+      };
+    addTearDown(api.dispose);
+    await _pumpApp(
+      tester,
+      store: store,
+      api: api,
+      screen: const SettingsScreen(),
+    );
+    await tester.ensureVisible(find.text('Refresh account information'));
+    await tester.tap(find.text('Refresh account information'));
+    await tester.pumpAndSettle();
+    expect(find.text('Doesn’t expire'), findsNWidgets(2));
+    await tester.ensureVisible(find.text('Speed test'));
+    await tester.tap(find.text('Speed test'));
+    await tester.pumpAndSettle();
+    expect(find.text('Start speed test'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   _uiTest(
     'category visibility removes hidden films from browsing and recommendations',
@@ -779,33 +811,29 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    expect(
-      find.text('Enter an http:// or https:// server URL'),
-      findsOneWidget,
-    );
+    expect(find.text('Server URL'), findsNothing);
+    expect(find.byType(TextFormField), findsNWidgets(2));
     expect(find.text('Enter your username'), findsOneWidget);
     expect(find.text('Enter your password'), findsOneWidget);
     expect(api.authenticationCount, 0);
-    await tester.enterText(
-      find.byType(TextFormField).at(0),
-      'https://provider.example',
-    );
-    await tester.enterText(find.byType(TextFormField).at(1), 'viewer');
-    await tester.enterText(find.byType(TextFormField).at(2), 'test-only');
+    await tester.enterText(find.byType(TextFormField).at(0), 'viewer');
+    await tester.enterText(find.byType(TextFormField).at(1), 'test-only');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(api.authenticationCount, 1);
     expect(store.savedSession?.credentials.username, 'viewer');
+    expect(store.savedSession?.credentials.serverUrl, providerPortalUrl);
+    expect(find.textContaining('liquidmetal.vip'), findsNothing);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  _uiTest('TV login fits a landscape screen and autofocuses server input', (
+  _uiTest('TV login fits a landscape screen and autofocuses username input', (
     tester,
   ) async {
     await _pumpApp(tester, store: _MemoryStore(), tv: true, signedIn: false);
-    expect(find.byType(TextFormField), findsNWidgets(3));
+    expect(find.byType(TextFormField), findsNWidgets(2));
     expect(FocusManager.instance.primaryFocus?.hasFocus, isTrue);
     expect(find.text('Connect your account'), findsOneWidget);
     expect(tester.takeException(), isNull);

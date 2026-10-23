@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -28,6 +30,32 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
   final _visibility = FocusNode(debugLabel: 'TV password visibility');
   bool _obscured = true;
   bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fieldFocus.addListener(_inputFocusChanged);
+  }
+
+  void _inputFocusChanged() {
+    if (_fieldFocus.hasFocus) return;
+    scheduleMicrotask(() {
+      // Android can close the IME connection and unfocus EditableText. When it
+      // leaves the dialog scope as the focus target, return to the credential
+      // control. Intentional moves to Show password or Done remain in the dialog.
+      if (!mounted ||
+          _closing ||
+          ModalRoute.of(context)?.isCurrent != true ||
+          _fieldFocus.hasFocus ||
+          _done.hasFocus ||
+          _visibility.hasFocus)
+        return;
+      if (FocusManager.instance.primaryFocus is FocusScopeNode) {
+        _closing = true;
+        Navigator.pop(context, false);
+      }
+    });
+  }
 
   void _finish() {
     if (_closing) return;
@@ -75,6 +103,7 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
 
   @override
   void dispose() {
+    _fieldFocus.removeListener(_inputFocusChanged);
     _fieldFocus.dispose();
     _done.dispose();
     _visibility.dispose();

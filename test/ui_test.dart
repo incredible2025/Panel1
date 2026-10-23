@@ -1589,6 +1589,33 @@ void main() {
     );
   }
 
+  _uiTest(
+    'TV native keyboard connection closure returns to a usable credential control',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        signedIn: false,
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      tester.testTextInput.enterText('keep-this-name');
+      tester.testTextInput.closeConnection();
+      await tester.pumpAndSettle();
+      expect(find.byType(TvTextEntryDialog), findsNothing);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Login username');
+      expect(find.text('keep-this-name'), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(tester.testTextInput.isVisible, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'keep-this-name',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   _uiTest('TV held OK opens only one credential entry dialog', (tester) async {
     await _pumpApp(
       tester,

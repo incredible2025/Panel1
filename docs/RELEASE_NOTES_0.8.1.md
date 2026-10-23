@@ -1,6 +1,6 @@
 # Ultravpn-player 0.8.1
 
-Fixes TV login remote activation. Username and password are explicit remote targets; OK opens a focused text-entry dialog and the platform keyboard. OK can reopen the keyboard after dismissal. Select, Enter, numpad Enter and gamepad A are supported. Text remains when returning, completed input advances focus to the next login control, and passwords stay masked unless explicitly revealed. Repeated activation cannot stack entry dialogs.
+Fixes TV login remote activation. Username and password are explicit remote targets; OK opens a focused text-entry dialog and the platform keyboard. OK can reopen the keyboard after dismissal. Select, Enter, numpad Enter and gamepad A are supported. Native keyboard connection closure returns cleanly to login with the draft intact. Completed input advances focus to the next login control, and passwords stay masked unless explicitly revealed. Repeated activation cannot stack entry dialogs.
 
 TV login uses a fixed Glass layout with a permanently visible App updates action in the header. Connection diagnosis, validation errors and sign-in stay reachable without scrolling. Mobile keeps its existing text-field sign-in flow.
 

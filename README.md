@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.6.4** is an update-path verification release with a higher Android build number and the same permanent signing identity as 0.6.3. Use the matching APK and update.json from its remote-update.zip to test your HTTPS update hosting. See [release notes](docs/RELEASE_NOTES_0.6.4.md).
+
 **v0.6.3** starts permanent release signing. Published builds require the configured release key and its expected certificate, so future updates retain the same Android signing identity. See [release signing](docs/SIGNING.md) for the one-time migration from older testing builds.
 
 **v0.6.2** embeds the administrator's update endpoint and simplifies App updates to status, check, download and install controls. No address entry is needed. See [remote update hosting](docs/UPDATES.md).

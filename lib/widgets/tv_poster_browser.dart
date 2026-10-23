@@ -16,6 +16,9 @@ class TvPosterBrowser extends StatefulWidget {
     this.horizontal = false,
     this.largePosters = false,
     this.progress = const {},
+    this.onDown,
+    this.explicitVertical = false,
+    this.compact = false,
   });
   final List<MediaItem> items;
   final ValueChanged<MediaItem> onOpen;
@@ -23,6 +26,8 @@ class TvPosterBrowser extends StatefulWidget {
   final bool horizontal;
   final bool largePosters;
   final Map<String, double> progress;
+  final VoidCallback? onDown;
+  final bool explicitVertical, compact;
   @override
   State<TvPosterBrowser> createState() => TvPosterBrowserState();
 }
@@ -39,6 +44,23 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
     () => FocusNode(debugLabel: 'Title: ${item.name}'),
   );
   void focusFirst() => _focus(0);
+  int get focusedIndex => widget.items.isEmpty
+      ? 0
+      : widget.items
+            .indexWhere((e) => _id(e) == _focused)
+            .clamp(0, widget.items.length - 1);
+  void focusAt(int index) {
+    if (widget.items.isNotEmpty) {
+      _focus(index.clamp(0, widget.items.length - 1));
+    }
+  }
+
+  void resetPosition() {
+    _generation++;
+    _focused = null;
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
   void _reveal(int index) {
     if (!_scroll.hasClients || !_scroll.position.hasContentDimensions) return;
     final p = _scroll.position,
@@ -93,13 +115,23 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      if (widget.horizontal) return KeyEventResult.ignored;
+      if (widget.horizontal) {
+        if (!widget.explicitVertical) return KeyEventResult.ignored;
+        widget.onTop();
+        return KeyEventResult.handled;
+      }
       if (!widget.horizontal && i >= _columns) {
         _focus(i - _columns);
       } else {
         _generation++;
         widget.onTop();
       }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown &&
+        widget.horizontal &&
+        widget.explicitVertical) {
+      widget.onDown?.call();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown && !widget.horizontal) {
@@ -242,7 +274,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
                   style: TextStyle(fontSize: glass ? 11 : 16, height: 1.2),
                 ),
               ),
-              if (glass)
+              if (glass && !widget.compact)
                 Padding(
                   padding: const EdgeInsets.only(left: 1, bottom: 5),
                   child: Text(

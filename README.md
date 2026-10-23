@@ -2,6 +2,8 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
+**v0.8.1** fixes TV login OK/keyboard activation, keeps App updates visible on the fixed login screen and makes TV Home a fixed canvas with two horizontal content rows. See [release notes](docs/RELEASE_NOTES_0.8.1.md) and [remote checks](docs/TV_LOGIN_AND_HOME_CHECKS.md).
+
 **v0.8.0** implements the approved Glass guide television design with a compact programme grid, Inter typography, blue-to-teal styling and six-card cinema shelves. See [release notes](docs/RELEASE_NOTES_0.8.0.md) and [design/QA details](docs/TV_GLASS_DESIGN.md).
 
 **v0.7.2** refines the TV presentation with quieter navigation, flat channel/category rows, minimal poster framing and calmer artwork fallbacks, retaining the remote fixes from 0.7.1. See [release notes](docs/RELEASE_NOTES_0.7.2.md).

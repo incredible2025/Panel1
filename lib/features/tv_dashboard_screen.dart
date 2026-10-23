@@ -19,6 +19,7 @@ import '../widgets/tv_page_navigation.dart';
 import '../widgets/tv_glass_theme.dart';
 import '../widgets/tv_glass_hero.dart';
 import '../widgets/tv_glass_guide.dart';
+import '../widgets/tv_home_shelves.dart';
 import 'app_updates_screen.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
@@ -1154,78 +1155,79 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final recommendations = _settings.recommendations
         ? recommendMovies(movies, history)
         : <RecommendationShelf>[];
-    return SingleChildScrollView(
-      key: const PageStorageKey('tv-home'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _featuredHero(featured, detail, 'Selected for you'),
-          if (continuing.isNotEmpty)
-            _rail(
-              'Continue watching',
-              continuing.map((e) => available[AppKey.item(e.item)]!).toList(),
-              primary: true,
-              progress: {
-                for (final e in continuing) AppKey.item(e.item): e.progress,
-              },
-            )
-          else
-            _rail(
-              movies.any((e) => e.addedAt != null)
-                  ? 'Recently added movies'
-                  : 'Movies from your provider',
-              movies,
-              primary: true,
-            ),
-          if (continuingSeries.isNotEmpty)
-            _rail(
-              'Continue watching series',
-              continuingSeries
-                  .map((e) => available[AppKey.item(e.item)]!)
-                  .toList(),
-              progress: {
-                for (final e in continuingSeries)
-                  if (e.canResume) AppKey.item(e.item): e.progress,
-              },
-            ),
-          for (final recommendation in recommendations.take(2))
-            _rail(recommendation.title, recommendation.items),
-          if (continuing.isNotEmpty)
-            _rail(
-              movies.any((e) => e.addedAt != null)
-                  ? 'Recently added movies'
-                  : 'Movies from your provider',
-              movies,
-            ),
-          _rail(
-            'Recently watched',
-            history.map((e) => available[AppKey.item(e.item)]!).toList(),
-          ),
-          _rail('Series to discover', series),
-          if (moviesState.hasError)
-            TextButton(
-              onPressed: () => ref.invalidate(itemsProvider(MediaKind.movie)),
-              child: const Text('Reload movies'),
-            ),
-          const SizedBox(height: 16),
-        ],
+    final shelves = <TvHomeShelf>[
+      if (continuing.isNotEmpty)
+        TvHomeShelf(
+          'Continue watching',
+          continuing.map((e) => available[AppKey.item(e.item)]!).toList(),
+          progress: {
+            for (final e in continuing) AppKey.item(e.item): e.progress,
+          },
+        ),
+      if (continuingSeries.isNotEmpty)
+        TvHomeShelf(
+          'Continue watching series',
+          continuingSeries.map((e) => available[AppKey.item(e.item)]!).toList(),
+          progress: {
+            for (final e in continuingSeries)
+              if (e.canResume) AppKey.item(e.item): e.progress,
+          },
+        ),
+      for (final recommendation in recommendations.take(2))
+        TvHomeShelf(recommendation.title, recommendation.items),
+      TvHomeShelf(
+        movies.any((e) => e.addedAt != null)
+            ? 'Recently added movies'
+            : 'Movies from your provider',
+        movies,
       ),
+      TvHomeShelf(
+        'Recently watched',
+        history.map((e) => available[AppKey.item(e.item)]!).toList(),
+      ),
+      TvHomeShelf('Series to discover', series),
+    ];
+    return TvHomeShelves(
+      shelves: shelves,
+      hero: (height) =>
+          _featuredHero(featured, detail, 'Selected for you', height: height),
+      heroFocus: _hero,
+      largePosters: _settings.largePosters,
+      onTop: () => _nav('home').requestFocus(),
+      onOpen: _open,
+      emptyMessage: moviesState.hasError
+          ? 'Movies are unavailable. Open Movies to retry, or browse Live TV.'
+          : moviesState.isLoading
+          ? 'Loading your library…'
+          : 'No films or series are available. Browse Live TV from the navigation above.',
     );
   }
 
-  Widget _featuredHero(MediaItem? item, MovieDetail? detail, String eyebrow) {
+  Widget _featuredHero(
+    MediaItem? item,
+    MovieDetail? detail,
+    String eyebrow, {
+    double height = 220,
+  }) {
     if (item == null) {
       return SizedBox(
-        height: 220,
+        height: height,
         child: Padding(
-          padding: const EdgeInsets.all(26),
+          padding: EdgeInsets.symmetric(
+            horizontal: 26,
+            vertical: height <= 160 ? 16 : 26,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text(
+              Text(
                 'Welcome home',
-                style: TextStyle(fontSize: 36, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontSize: height <= 160 ? 28 : 36,
+                  height: 1.1,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 12),
               TvControl(
@@ -1259,7 +1261,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               ? detail!.backdropUrl
               : item.imageUrl,
           cinema: true,
-          height: 220,
+          height: height,
           metadata: [
             if (detail?.year.isNotEmpty == true) detail!.year,
             if (detail?.genre.isNotEmpty == true) detail!.genre,

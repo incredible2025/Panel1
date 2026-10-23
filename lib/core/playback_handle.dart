@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkv;
 import '../data/app_settings.dart';
+import 'app_brand.dart';
 import 'player_tracks.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
@@ -118,7 +119,7 @@ class CompatibilityPlayback extends PlaybackHandle {
     if (_dead) return;
     _player = mk.Player(
       configuration: const mk.PlayerConfiguration(
-        title: 'ULTRAVPN PLAYER',
+        title: appBrandName,
         logLevel: mk.MPVLogLevel.error,
         libass: true,
         libassAndroidFont: 'assets/fonts/Roboto-Regular.ttf',

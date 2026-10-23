@@ -1,6 +1,8 @@
-# ULTRAVPN PLAYER IPTV
+# Ultravpn-player IPTV
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
+
+**v0.6.5** uses the app name **Ultravpn-player** and the permanent Downloader filename **Ultravpn-player.apk**. Every remote-update.zip includes that latest-download copy, a versioned update APK and matching update.json. Keep the same permanent URL for your AFTVnews code across future releases. See [hosting instructions](docs/UPDATES.md).
 
 **v0.6.4** is an update-path verification release with a higher Android build number and the same permanent signing identity as 0.6.3. Use the matching APK and update.json from its remote-update.zip to test your HTTPS update hosting. See [release notes](docs/RELEASE_NOTES_0.6.4.md).
 
@@ -20,9 +22,9 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 ## Download the APK
 
-**[Download the latest ultravpn-player.apk](https://github.com/incredible2025/Panel1/releases/latest/download/ultravpn-player.apk)** and install it on your phone or TV. The direct release download requires no ZIP extraction. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
+**[Download the latest Ultravpn-player.apk](https://github.com/incredible2025/Panel1/releases/latest/download/Ultravpn-player.apk)** and install it on your phone or TV. The filename stays the same for future releases. The older lowercase GitHub APK link remains available as a compatibility alias. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
 
-As a fallback, open **[Actions → ULTRAVPN PLAYER Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
+As a fallback, open **[Actions → Ultravpn-player Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 
 From v0.6.3, published APKs use the permanent release key. Moving from an older testing APK may require a one-time uninstall, which clears saved login, preferences and local history. Later builds signed with the same key can update in place. See [release signing](docs/SIGNING.md).
 

@@ -472,7 +472,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               : CrossAxisAlignment.start,
           children: [
             Text(
-              'ULTRAVPN PLAYER does not supply channels or content.',
+              'Ultravpn-player does not supply channels or content.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.subdued,
                 fontSize: 11,

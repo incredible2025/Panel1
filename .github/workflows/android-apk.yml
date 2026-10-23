@@ -1,4 +1,4 @@
-name: ULTRAVPN PLAYER Android release
+name: Ultravpn-player Android release
 
 on:
   push:
@@ -96,6 +96,8 @@ jobs:
           "$apksigner" verify --verbose --print-certs build/ultravpn-player.apk | tee build/signature.txt
           python3 scripts/verify_signing_certificate.py build/signature.txt android/release-certificate.sha256
           (cd build && sha256sum ultravpn-player.apk > ultravpn-player.apk.sha256)
+          cp build/ultravpn-player.apk build/Ultravpn-player.apk
+          (cd build && sha256sum Ultravpn-player.apk > Ultravpn-player.apk.sha256)
       - name: Generate portable remote update package
         shell: bash
         run: |
@@ -105,21 +107,22 @@ jobs:
           notes="docs/RELEASE_NOTES_$version.md"
           if [ ! -f "$notes" ]; then
             notes="build/update-notes.md"
-            printf 'Improvements and fixes for ULTRAVPN PLAYER.\n' > "$notes"
+            printf 'Improvements and fixes for Ultravpn-player.\n' > "$notes"
           fi
           mkdir -p build/remote-update
           apk="ultravpn-player-$version.apk"
-          cp build/ultravpn-player.apk "build/remote-update/$apk"
+          cp build/Ultravpn-player.apk "build/remote-update/$apk"
+          cp build/Ultravpn-player.apk build/remote-update/Ultravpn-player.apk
           python3 scripts/create_update_manifest.py --apk "build/remote-update/$apk" --aapt "$aapt" \
             --apk-url "$apk" --notes "$notes" --output build/remote-update/update.json
-          (cd build/remote-update && zip -q ../remote-update.zip update.json "$apk")
+          (cd build/remote-update && zip -q ../remote-update.zip update.json "$apk" Ultravpn-player.apk)
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
           name: ultravpn-player-apk
           path: |
-            build/ultravpn-player.apk
-            build/ultravpn-player.apk.sha256
+            build/Ultravpn-player.apk
+            build/Ultravpn-player.apk.sha256
             build/remote-update.zip
           if-no-files-found: error
           retention-days: 30
@@ -132,7 +135,7 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
-          assets=(build/ultravpn-player.apk build/ultravpn-player.apk.sha256 build/remote-update.zip)
+          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/ultravpn-player.apk build/ultravpn-player.apk.sha256 build/remote-update.zip)
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then
@@ -144,10 +147,10 @@ jobs:
             notes="docs/RELEASE_NOTES_$version.md"
             if [ ! -f "$notes" ]; then
               notes="build/release-notes.md"
-              printf 'ULTRAVPN PLAYER %s for Android phones and Android TV.\n\nDownload ultravpn-player.apk to install.\n' "$version" > "$notes"
+              printf 'Ultravpn-player %s for Android phones and Android TV.\n\nDownload Ultravpn-player.apk to install.\n' "$version" > "$notes"
             fi
             gh release create "$tag" "${assets[@]}" \
-              --target "$GITHUB_SHA" --title "ULTRAVPN PLAYER $version" --notes-file "$notes" --latest
+              --target "$GITHUB_SHA" --title "Ultravpn-player $version" --notes-file "$notes" --latest
           fi
       - name: Remove signing material
         if: always()

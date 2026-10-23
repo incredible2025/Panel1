@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../core/app_brand.dart';
 import '../core/app_version.dart';
 import 'diagnostic_transport.dart';
 import 'models.dart';
@@ -67,7 +68,7 @@ class DiagnosticReport {
   // Only curated descriptions enter the report. Never include provider response
   // text, URLs, IPs, credentials, media titles, headers or native exception text.
   String toText() {
-    final out = StringBuffer('ULTRAVPN PLAYER connection diagnosis\n')
+    final out = StringBuffer('$appBrandName connection diagnosis\n')
       ..writeln('Version: $appVersion')
       ..writeln('UTC: ${started.toUtc().toIso8601String()}')
       ..writeln(summary)

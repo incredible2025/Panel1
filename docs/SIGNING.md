@@ -12,7 +12,7 @@ The release key belongs to this app. Keep an encrypted offline backup of the ent
 
 The JSON contains `keystore` (Base64 PKCS#12), `storePassword`, `keyAlias` and `keyPassword`. GitHub encrypts the repository secret. Only the main-branch release job receives it; pull-request validation runs without signing credentials.
 
-The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `Ultravpn-player.apk` to a versioned GitHub Release. The older lowercase GitHub APK asset is retained as a compatibility alias. Key files are removed from the runner after the job. Missing or invalid signing configuration fails the release before publication.
+The release workflow decodes the key into a private runner directory, builds the APK, verifies its certificate against the committed public fingerprint and publishes `Ultravpn-player.apk` to a versioned GitHub Release. GitHub also resolves the older lowercase download link to this asset; do not upload a second asset differing only in case. Key files are removed from the runner after the job. Missing or invalid signing configuration fails the release before publication.
 
 Reliable in-place online updates require this permanent key. The release workflow creates a portable `remote-update.zip` containing `Ultravpn-player.apk`, a versioned copy of the same APK and `update.json` for uploading to your own HTTPS host. Older testing packages use a different temporary key and cannot be upgraded in place by the permanently signed APK. See [remote update setup](UPDATES.md).
 

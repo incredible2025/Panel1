@@ -22,7 +22,7 @@ A Flutter app for Android phones and Android TV using your own Xtream Codes acco
 
 ## Download the APK
 
-**[Download the latest Ultravpn-player.apk](https://github.com/incredible2025/Panel1/releases/latest/download/Ultravpn-player.apk)** and install it on your phone or TV. The filename stays the same for future releases. The older lowercase GitHub APK link remains available as a compatibility alias. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
+**[Download the latest Ultravpn-player.apk](https://github.com/incredible2025/Panel1/releases/latest/download/Ultravpn-player.apk)** and install it on your phone or TV. The filename stays the same for future releases. GitHub also resolves the older lowercase download link to this asset. Versioned downloads are available on the repository's [Releases page](https://github.com/incredible2025/Panel1/releases).
 
 As a fallback, open **[Actions → Ultravpn-player Android release](https://github.com/incredible2025/Panel1/actions/workflows/android-apk.yml)**, select a successful main-branch run and download **ultravpn-player-apk** from Artifacts. Artifact downloads require GitHub sign-in and ZIP extraction; they expire after 30 days.
 

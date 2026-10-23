@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import '../core/design_system.dart';
+import 'tv_glass_theme.dart';
 
 /// A single focus target that works with touch, a mouse and an Android remote.
 class TvFocusCard extends StatefulWidget {
@@ -54,6 +55,7 @@ class _TvFocusCardState extends State<TvFocusCard> {
 
   @override
   Widget build(BuildContext context) {
+    final glass = TvGlassScope.of(context);
     final duration = MediaQuery.disableAnimationsOf(context)
         ? Duration.zero
         : const Duration(milliseconds: 180);
@@ -100,18 +102,24 @@ class _TvFocusCardState extends State<TvFocusCard> {
           label: widget.label,
           selected: widget.selected,
           child: AnimatedScale(
-            scale: _focused ? 1.025 : 1,
+            scale: _focused && !glass ? 1.025 : 1,
             duration: duration,
             curve: Curves.easeOutCubic,
             child: AnimatedContainer(
               duration: duration,
               decoration: BoxDecoration(
-                color: _focused || widget.selected
+                color: glass
+                    ? _focused || widget.selected
+                          ? const Color(0x1FFFFFFF)
+                          : Colors.transparent
+                    : _focused || widget.selected
                     ? AppColors.accent.withValues(alpha: .075)
                     : widget.transparent
                     ? Colors.transparent
                     : AppColors.surface,
-                borderRadius: BorderRadius.circular(widget.borderRadius),
+                borderRadius: BorderRadius.circular(
+                  glass ? 3 : widget.borderRadius,
+                ),
                 border: Border.all(
                   color: _focused
                       ? AppColors.text
@@ -120,9 +128,9 @@ class _TvFocusCardState extends State<TvFocusCard> {
                       : widget.transparent
                       ? Colors.transparent
                       : AppColors.border,
-                  width: 1.5,
+                  width: glass ? 1 : 1.5,
                 ),
-                boxShadow: _focused
+                boxShadow: _focused && !glass
                     ? [
                         BoxShadow(
                           color: AppColors.accent.withValues(alpha: .15),

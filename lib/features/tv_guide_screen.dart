@@ -53,7 +53,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   bool _syncing = false;
   bool _jumpPending = true;
   int _dayOffset = 0;
-  double get _rowHeight => ref.read(isTvProvider) ? 64.0 : 90.0;
+  double get _rowHeight => ref.read(isTvProvider) ? 56.0 : 90.0;
   double _hourWidth = 170;
 
   DateTime get _day {
@@ -249,23 +249,50 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(tv ? 28 : 16, 8, tv ? 28 : 16, 12),
+            padding: tv
+                ? const EdgeInsets.only(bottom: 8)
+                : const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: tv
-                ? TvControl(
-                    label: 'Filter channels',
-                    onPressed: _editSearch,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search, size: 17),
-                        const SizedBox(width: 10),
-                        Text(
-                          _search.text.isEmpty
-                              ? 'Filter channels'
-                              : _search.text,
-                          style: const TextStyle(fontSize: 14),
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: TvControl(
+                          label: 'Filter channels',
+                          onPressed: _editSearch,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.search, size: 17),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _search.text.isEmpty
+                                      ? 'Filter channels'
+                                      : _search.text,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 10),
+                      TvControl(
+                        onPressed: () => _selectDay(0),
+                        child: const Text(
+                          'Now',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      TvControl(
+                        label: 'Refresh TV guide',
+                        onPressed: () =>
+                            ref.read(guideRefreshProvider.notifier).state++,
+                        child: const Icon(Icons.refresh, size: 18),
+                      ),
+                    ],
                   )
                 : TextField(
                     controller: _search,
@@ -281,7 +308,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                   ),
           ),
           SizedBox(
-            height: 50,
+            height: tv ? 36 : 50,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               scrollDirection: Axis.horizontal,
@@ -302,6 +329,17 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                     : offset == -1
                     ? 'Yesterday'
                     : '${const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1]} ${date.day}/${date.month}';
+                if (tv) {
+                  return TvControl(
+                    selected: _dayOffset == offset,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    onPressed: () => _selectDay(offset),
+                    child: Text(label, style: const TextStyle(fontSize: 13)),
+                  );
+                }
                 return ChoiceChip(
                   label: Text(label),
                   selected: _dayOffset == offset,
@@ -339,9 +377,9 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       width: tv ? 190 : 118,
                       child: Column(
                         children: [
-                          const SizedBox(
-                            height: 44,
-                            child: Center(child: Eyebrow('CHANNEL')),
+                          SizedBox(
+                            height: tv ? 28 : 44,
+                            child: const Center(child: Eyebrow('CHANNEL')),
                           ),
                           Expanded(
                             child: ListView.builder(
@@ -394,7 +432,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                             child: Column(
                               children: [
                                 SizedBox(
-                                  height: 44,
+                                  height: tv ? 28 : 44,
                                   child: Row(
                                     children: [
                                       for (var hour = 0; hour < hours; hour++)
@@ -458,30 +496,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
       ),
     );
     if (tv) {
-      return TvUtilityScaffold(
-        title: 'TV guide',
-        child: Column(
-          children: [
-            Row(
-              children: [
-                TvControl(
-                  onPressed: () => _selectDay(0),
-                  child: const Text('Now', style: TextStyle(fontSize: 13)),
-                ),
-                const SizedBox(width: 12),
-                TvControl(
-                  label: 'Refresh TV guide',
-                  onPressed: () =>
-                      ref.read(guideRefreshProvider.notifier).state++,
-                  child: const Icon(Icons.refresh, size: 18),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Expanded(child: body),
-          ],
-        ),
-      );
+      return TvUtilityScaffold(title: 'TV guide', child: body);
     }
     return Scaffold(
       appBar: AppBar(
@@ -587,12 +602,13 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 13,
+                                    height: 1.1,
                                     fontWeight: onNow
                                         ? FontWeight.w700
                                         : FontWeight.w500,
                                   ),
                                 ),
-                                const SizedBox(height: 7),
+                                const SizedBox(height: 4),
                                 Text(
                                   '${guideClock(entry.start)}–${guideClock(entry.end)}${value.cached ? ' · cached' : ''}',
                                   maxLines: 1,
@@ -600,6 +616,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                                   style: const TextStyle(
                                     color: AppColors.muted,
                                     fontSize: 10,
+                                    height: 1.1,
                                   ),
                                 ),
                               ],

@@ -15,6 +15,10 @@ import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_page_navigation.dart';
 import '../widgets/tv_controls.dart';
+import '../widgets/tv_settings_view.dart';
+import '../widgets/tv_utility_scaffold.dart';
+import 'tv_licences_screen.dart';
+import '../widgets/tv_pin_entry.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, this.embedded = false, this.groupIndex});
@@ -66,10 +70,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _setPin() async {
-    final pin = await showDialog<String>(
-      context: context,
-      builder: (_) => const _NewPinDialog(),
-    );
+    String? pin;
+    if (ref.read(isTvProvider)) {
+      final first = await showTvPinEntry(context, 'New PIN');
+      if (first == null || !mounted) return;
+      final second = await showTvPinEntry(context, 'Confirm PIN');
+      if (second == null || !mounted) return;
+      if (first != second) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('The PINs do not match. Please try again.'),
+          ),
+        );
+        return;
+      }
+      pin = first;
+    } else {
+      pin = await showDialog<String>(
+        context: context,
+        builder: (_) => const _NewPinDialog(),
+      );
+    }
     final account = ref.read(sessionProvider)?.accountId;
     if (pin == null || account == null || !mounted) return;
     setState(() => _refreshing = true);
@@ -230,6 +251,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return _settings(value, pin.asData?.value == true);
       },
     );
+    if (ref.watch(isTvProvider) && content is TvSettingsView) return content;
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: widget.embedded ? null : AppBar(title: const Text('Settings')),
@@ -462,24 +484,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
         const UpdateNotice(),
-        ListTile(
-          leading: const Icon(Icons.system_update),
-          title: const Text('App updates'),
-          subtitle: const Text('Check for new versions and install updates'),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const AppUpdatesScreen()),
+        if (ref.read(isTvProvider))
+          _action(
+            'App updates',
+            'Check for new versions and install updates',
+            Icons.system_update,
+            () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AppUpdatesScreen()),
+            ),
+          )
+        else
+          ListTile(
+            leading: const Icon(Icons.system_update),
+            title: const Text('App updates'),
+            subtitle: const Text('Check for new versions and install updates'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AppUpdatesScreen()),
+            ),
           ),
-        ),
         _info(appBrandName, appVersion),
         _action(
           'Open source licences',
           'Licences for Flutter, the playback engines and bundled libraries.',
           Icons.description_outlined,
-          () => showLicensePage(
-            context: context,
-            applicationName: appBrandName,
-            applicationVersion: appVersion,
-          ),
+          () => ref.read(isTvProvider)
+              ? Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TvLicencesScreen(),
+                  ),
+                )
+              : showLicensePage(
+                  context: context,
+                  applicationName: appBrandName,
+                  applicationVersion: appVersion,
+                ),
         ),
         _action(
           'Refresh library & guide',
@@ -507,6 +545,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
     ];
+    if (ref.read(isTvProvider)) {
+      return TvSettingsView(
+        groups: groups.cast<TvSettingsGroup>(),
+        initialGroup: widget.groupIndex ?? 0,
+        notice: _notice,
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
         final wide = box.maxWidth >= 1000;
@@ -590,147 +635,173 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'nl': 'Dutch',
   };
   Widget _group(String title, IconData icon, List<Widget> children) =>
-      Container(
-        margin: const EdgeInsets.only(bottom: 24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Icon(icon, color: AppColors.accent, size: 22),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleLarge,
+      ref.read(isTvProvider)
+      ? TvSettingsGroup(
+          title: title,
+          entries: children.whereType<TvSetting>().toList(),
+        )
+      : Container(
+          margin: const EdgeInsets.only(bottom: 24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    Icon(icon, color: AppColors.accent, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            ...children,
-          ],
-        ),
-      );
+              const Divider(height: 1),
+              ...children,
+            ],
+          ),
+        );
   Widget _toggle(
     String title,
     String description,
     bool value,
     ValueChanged<bool> change,
-  ) => SwitchListTile(
-    title: Text(
-      title,
-      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
-    ),
-    subtitle: Text(
-      description,
-      style: TextStyle(
-        fontSize: ref.read(isTvProvider) ? 16 : 12,
-        color: AppColors.muted,
-      ),
-    ),
-    value: value,
-    onChanged: change,
-  );
+  ) => ref.read(isTvProvider)
+      ? TvSetting(
+          title: title,
+          value: value ? 'On' : 'Off',
+          description: description,
+          onPressed: () => change(!value),
+        )
+      : SwitchListTile(
+          title: Text(
+            title,
+            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+          ),
+          subtitle: Text(
+            description,
+            style: TextStyle(
+              fontSize: ref.read(isTvProvider) ? 16 : 12,
+              color: AppColors.muted,
+            ),
+          ),
+          value: value,
+          onChanged: change,
+        );
   Widget _choice(
     String title,
     String value,
     Map<String, String> options,
     ValueChanged<String> change,
-  ) => ListTile(
-    title: Text(
-      title,
-      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
-    ),
-    subtitle: Text(
-      options[value] ?? value,
-      style: TextStyle(
-        color: AppColors.muted,
-        fontSize: ref.read(isTvProvider) ? 16 : 12,
-      ),
-    ),
-    trailing: const Icon(Icons.chevron_right, size: 20),
-    onTap: () async {
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (context) => TvPageNavigation(
-          enabled: ref.read(isTvProvider),
-          child: SimpleDialog(
-            title: Text(title),
-            children: [
-              for (final option in options.entries)
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, option.key),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(option.value)),
-                      if (value == option.key)
-                        const Icon(Icons.check, color: AppColors.accent),
-                    ],
-                  ),
-                ),
-            ],
+  ) => ref.read(isTvProvider)
+      ? TvSetting(
+          title: title,
+          value: options[value] ?? value,
+          description: 'Choose your preferred ${title.toLowerCase()}.',
+          onPressed: () async {
+            final selected = await showTvMenu(context, title, options);
+            if (selected != null) change(selected);
+          },
+        )
+      : ListTile(
+          title: Text(
+            title,
+            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
           ),
-        ),
-      );
-      if (selected != null) change(selected);
-    },
-  );
-  Widget _action(
-    String title,
-    String description,
-    IconData icon,
-    VoidCallback? action,
-  ) => ListTile(
-    enabled: action != null,
-    leading: Icon(icon, size: 20),
-    title: Text(
-      title,
-      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
-    ),
-    subtitle: Text(
-      description,
-      style: TextStyle(
-        color: AppColors.muted,
-        fontSize: ref.read(isTvProvider) ? 16 : 12,
-      ),
-    ),
-    onTap: action,
-  );
-  Widget _info(String name, String value) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Text(
-            name,
+          subtitle: Text(
+            options[value] ?? value,
             style: TextStyle(
               color: AppColors.muted,
               fontSize: ref.read(isTvProvider) ? 16 : 12,
             ),
           ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          flex: 2,
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 13),
+          trailing: const Icon(Icons.chevron_right, size: 20),
+          onTap: () async {
+            final selected = await showDialog<String>(
+              context: context,
+              builder: (context) => TvPageNavigation(
+                enabled: ref.read(isTvProvider),
+                child: SimpleDialog(
+                  title: Text(title),
+                  children: [
+                    for (final option in options.entries)
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, option.key),
+                        child: Row(
+                          children: [
+                            Expanded(child: Text(option.value)),
+                            if (value == option.key)
+                              const Icon(Icons.check, color: AppColors.accent),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+            if (selected != null) change(selected);
+          },
+        );
+  Widget _action(
+    String title,
+    String description,
+    IconData icon,
+    VoidCallback? action,
+  ) => ref.read(isTvProvider)
+      ? TvSetting(title: title, description: description, onPressed: action)
+      : ListTile(
+          enabled: action != null,
+          leading: Icon(icon, size: 20),
+          title: Text(
+            title,
+            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
           ),
-        ),
-      ],
-    ),
-  );
+          subtitle: Text(
+            description,
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: ref.read(isTvProvider) ? 16 : 12,
+            ),
+          ),
+          onTap: action,
+        );
+  Widget _info(String name, String value) => ref.read(isTvProvider)
+      ? TvSetting(title: name, value: value)
+      : Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: ref.read(isTvProvider) ? 16 : 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  value,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 13),
+                ),
+              ),
+            ],
+          ),
+        );
 }
 
 class _NewPinDialog extends StatefulWidget {
@@ -852,207 +923,205 @@ class _CategorySettingsScreenState
       );
     }
     final categories = ref.watch(categoriesProvider(_kind));
-    return Scaffold(
-      appBar: AppBar(title: const Text('Manage categories')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 12,
-              children: [
-                for (final kind in MediaKind.values)
-                  Focus(
-                    canRequestFocus: false,
-                    skipTraversal: true,
-                    onKeyEvent: (_, event) {
-                      if (ref.read(isTvProvider) &&
-                          (event is KeyDownEvent || event is KeyRepeatEvent) &&
-                          event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                        _tvList.currentState?.focusSelected(remember: true);
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: ChoiceChip(
-                      focusNode: _tabs[kind],
-                      label: Text(switch (kind) {
-                        MediaKind.live => 'Live TV',
-                        MediaKind.movie => 'Movies',
-                        MediaKind.series => 'Series',
-                      }),
-                      selected: _kind == kind,
-                      onSelected: (_) => setState(() => _kind = kind),
-                    ),
+    final content = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Wrap(
+            spacing: 12,
+            children: [
+              for (final kind in MediaKind.values)
+                Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onKeyEvent: (_, event) {
+                    if (ref.read(isTvProvider) &&
+                        (event is KeyDownEvent || event is KeyRepeatEvent) &&
+                        event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      _tvList.currentState?.focusSelected(remember: true);
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: ChoiceChip(
+                    focusNode: _tabs[kind],
+                    label: Text(switch (kind) {
+                      MediaKind.live => 'Live TV',
+                      MediaKind.movie => 'Movies',
+                      MediaKind.series => 'Series',
+                    }),
+                    selected: _kind == kind,
+                    onSelected: (_) => setState(() => _kind = kind),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Text(
-              'Use the eye to hide a category and the lock to require a PIN. Drag or use the arrows to reorder.',
-              style: TextStyle(color: AppColors.muted, fontSize: 12),
-            ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Text(
+            'Use the eye to hide a category and the lock to require a PIN. Drag or use the arrows to reorder.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
-          Expanded(
-            child: categories.when(
-              loading: () =>
-                  const StatusView(title: 'Loading categories', loading: true),
-              error: (_, __) => StatusView(
-                title: 'Categories unavailable',
-                onRetry: () => ref.invalidate(categoriesProvider(_kind)),
-              ),
-              data: (all) {
-                final order = settings.categoryOrder[_kind.name] ?? [];
-                final sorted = List<Category>.of(all)
-                  ..sort((a, b) {
-                    final x = order.indexOf(a.id), y = order.indexOf(b.id);
-                    return (x < 0 ? order.length + all.indexOf(a) : x)
-                        .compareTo(y < 0 ? order.length + all.indexOf(b) : y);
-                  });
-                if (sorted.isEmpty) {
-                  return const StatusView(title: 'No categories supplied');
-                }
-                Future<void> reorder(int old, int next) async {
-                  final ids = sorted.map((category) => category.id).toList();
-                  if (next > old) next--;
-                  ids.insert(next, ids.removeAt(old));
-                  await ref
-                      .read(settingsProvider.notifier)
-                      .update(
-                        (value) => value.patch({
-                          'categoryOrder': {
-                            ...value.categoryOrder,
-                            _kind.name: ids,
-                          },
-                        }),
-                      );
-                }
+        ),
+        Expanded(
+          child: categories.when(
+            loading: () =>
+                const StatusView(title: 'Loading categories', loading: true),
+            error: (_, __) => StatusView(
+              title: 'Categories unavailable',
+              onRetry: () => ref.invalidate(categoriesProvider(_kind)),
+            ),
+            data: (all) {
+              final order = settings.categoryOrder[_kind.name] ?? [];
+              final sorted = List<Category>.of(all)
+                ..sort((a, b) {
+                  final x = order.indexOf(a.id), y = order.indexOf(b.id);
+                  return (x < 0 ? order.length + all.indexOf(a) : x).compareTo(
+                    y < 0 ? order.length + all.indexOf(b) : y,
+                  );
+                });
+              if (sorted.isEmpty) {
+                return const StatusView(title: 'No categories supplied');
+              }
+              Future<void> reorder(int old, int next) async {
+                final ids = sorted.map((category) => category.id).toList();
+                if (next > old) next--;
+                ids.insert(next, ids.removeAt(old));
+                await ref
+                    .read(settingsProvider.notifier)
+                    .update(
+                      (value) => value.patch({
+                        'categoryOrder': {
+                          ...value.categoryOrder,
+                          _kind.name: ids,
+                        },
+                      }),
+                    );
+              }
 
-                if (ref.watch(isTvProvider)) {
-                  return TvRemoteList(
-                    key: _tvList,
-                    autofocus: true,
-                    extent: 72,
-                    label: 'Manage category',
-                    onTop: () => _tabs[_kind]!.requestFocus(),
-                    onLeft: () => _tabs[_kind]!.requestFocus(),
-                    onRight: () {},
-                    entries: [
-                      for (var i = 0; i < sorted.length; i++)
-                        TvListEntry(
-                          id: sorted[i].id,
-                          title: sorted[i].name,
-                          subtitle:
-                              '${settings.hiddenCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
-                                  ? 'Hidden'
-                                  : settings.lockedCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
-                                  ? 'PIN protected'
-                                  : 'Visible'} · OK to manage',
-                          onPressed: () => _manageCategory(
-                            sorted,
-                            i,
-                            settings,
-                            pin,
-                            reorder,
+              if (ref.watch(isTvProvider)) {
+                return TvRemoteList(
+                  key: _tvList,
+                  autofocus: true,
+                  extent: 54,
+                  label: 'Manage category',
+                  fullRows: true,
+                  onTop: () => _tabs[_kind]!.requestFocus(),
+                  onLeft: () => _tabs[_kind]!.requestFocus(),
+                  onRight: () {},
+                  entries: [
+                    for (var i = 0; i < sorted.length; i++)
+                      TvListEntry(
+                        id: sorted[i].id,
+                        title: sorted[i].name,
+                        subtitle:
+                            '${settings.hiddenCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
+                                ? 'Hidden'
+                                : settings.lockedCategories.contains(AppSettings.categoryKey(_kind, sorted[i].id))
+                                ? 'PIN protected'
+                                : 'Visible'} · OK to manage',
+                        onPressed: () =>
+                            _manageCategory(sorted, i, settings, pin, reorder),
+                      ),
+                  ],
+                );
+              }
+              return ReorderableListView.builder(
+                itemCount: sorted.length,
+                onReorder: reorder,
+                buildDefaultDragHandles: false,
+                itemBuilder: (context, index) {
+                  final category = sorted[index],
+                      key = AppSettings.categoryKey(_kind, sorted[index].id);
+                  return ListTile(
+                    key: ValueKey(key),
+                    leading: ReorderableDragStartListener(
+                      index: index,
+                      child: const Icon(Icons.drag_handle),
+                    ),
+                    title: Text(category.name),
+                    subtitle: Text(
+                      settings.hiddenCategories.contains(key)
+                          ? 'Hidden'
+                          : settings.lockedCategories.contains(key)
+                          ? 'PIN protected'
+                          : 'Visible',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Move category up',
+                          onPressed: index == 0
+                              ? null
+                              : () => reorder(index, index - 1),
+                          icon: const Icon(Icons.arrow_upward, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: settings.hiddenCategories.contains(key)
+                              ? 'Show category'
+                              : 'Hide category',
+                          onPressed: () => ref
+                              .read(settingsProvider.notifier)
+                              .update((value) {
+                                final hidden = {...value.hiddenCategories};
+                                if (!hidden.remove(key)) hidden.add(key);
+                                return value.patch({
+                                  'hiddenCategories': hidden.toList(),
+                                });
+                              }),
+                          icon: Icon(
+                            settings.hiddenCategories.contains(key)
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
                           ),
                         ),
-                    ],
-                  );
-                }
-                return ReorderableListView.builder(
-                  itemCount: sorted.length,
-                  onReorder: reorder,
-                  buildDefaultDragHandles: false,
-                  itemBuilder: (context, index) {
-                    final category = sorted[index],
-                        key = AppSettings.categoryKey(_kind, sorted[index].id);
-                    return ListTile(
-                      key: ValueKey(key),
-                      leading: ReorderableDragStartListener(
-                        index: index,
-                        child: const Icon(Icons.drag_handle),
-                      ),
-                      title: Text(category.name),
-                      subtitle: Text(
-                        settings.hiddenCategories.contains(key)
-                            ? 'Hidden'
-                            : settings.lockedCategories.contains(key)
-                            ? 'PIN protected'
-                            : 'Visible',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Move category up',
-                            onPressed: index == 0
-                                ? null
-                                : () => reorder(index, index - 1),
-                            icon: const Icon(Icons.arrow_upward, size: 18),
-                          ),
-                          IconButton(
-                            tooltip: settings.hiddenCategories.contains(key)
-                                ? 'Show category'
-                                : 'Hide category',
-                            onPressed: () => ref
-                                .read(settingsProvider.notifier)
-                                .update((value) {
-                                  final hidden = {...value.hiddenCategories};
-                                  if (!hidden.remove(key)) hidden.add(key);
-                                  return value.patch({
-                                    'hiddenCategories': hidden.toList(),
-                                  });
-                                }),
-                            icon: Icon(
-                              settings.hiddenCategories.contains(key)
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: settings.lockedCategories.contains(key)
-                                ? 'Unlock category'
-                                : 'Lock category',
-                            onPressed: () {
-                              if (!pin) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Set a parental PIN in Settings first.',
-                                    ),
+                        IconButton(
+                          tooltip: settings.lockedCategories.contains(key)
+                              ? 'Unlock category'
+                              : 'Lock category',
+                          onPressed: () {
+                            if (!pin) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Set a parental PIN in Settings first.',
                                   ),
-                                );
-                                return;
-                              }
-                              ref.read(settingsProvider.notifier).update((
-                                value,
-                              ) {
-                                final locks = {...value.lockedCategories};
-                                if (!locks.remove(key)) locks.add(key);
-                                return value.patch({
-                                  'lockedCategories': locks.toList(),
-                                });
+                                ),
+                              );
+                              return;
+                            }
+                            ref.read(settingsProvider.notifier).update((value) {
+                              final locks = {...value.lockedCategories};
+                              if (!locks.remove(key)) locks.add(key);
+                              return value.patch({
+                                'lockedCategories': locks.toList(),
                               });
-                            },
-                            icon: Icon(
-                              settings.lockedCategories.contains(key)
-                                  ? Icons.lock
-                                  : Icons.lock_open_outlined,
-                            ),
+                            });
+                          },
+                          icon: Icon(
+                            settings.lockedCategories.contains(key)
+                                ? Icons.lock
+                                : Icons.lock_open_outlined,
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
+    return ref.watch(isTvProvider)
+        ? TvUtilityScaffold(title: 'Manage categories', child: content)
+        : Scaffold(
+            appBar: AppBar(title: const Text('Manage categories')),
+            body: content,
+          );
   }
 
   Future<void> _manageCategory(
@@ -1133,88 +1202,90 @@ class FavoriteOrderScreen extends ConsumerWidget {
       );
     }
     final favorites = ref.watch(favoritesProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Favourite channel order')),
-      body: favorites.when(
-        loading: () =>
-            const StatusView(title: 'Loading favourites', loading: true),
-        error: (_, __) => StatusView(
-          title: 'Favourites unavailable',
-          onRetry: () => ref.invalidate(favoritesProvider),
-        ),
-        data: (all) {
-          final channels =
-              all.where((item) => item.kind == MediaKind.live).toList()..sort(
-                (a, b) => _rank(
-                  s.favoriteOrder,
-                  a,
-                ).compareTo(_rank(s.favoriteOrder, b)),
-              );
-          if (channels.isEmpty) {
-            return const StatusView(
-              title: 'No favourite channels yet',
-              message:
-                  'Save channels using their star, then reorder them here.',
-            );
-          }
-          Future<void> move(int old, int next) async {
-            if (next > old) next--;
-            final ids = channels.map(AppSettings.mediaKey).toList();
-            ids.insert(next, ids.removeAt(old));
-            await ref.read(settingsProvider.notifier).patch({
-              'favoriteOrder': ids,
-            });
-          }
-
-          if (ref.watch(isTvProvider)) {
-            return TvRemoteList(
-              autofocus: true,
-              extent: 72,
-              label: 'Favourite channel',
-              onLeft: () {},
-              onRight: () {},
-              onTop: () {},
-              entries: [
-                for (var i = 0; i < channels.length; i++)
-                  TvListEntry(
-                    id: channels[i].id,
-                    title: channels[i].name,
-                    subtitle: 'Position ${i + 1} · OK to reorder',
-                    onPressed: () async {
-                      final action =
-                          await showTvMenu(context, channels[i].name, {
-                            if (i > 0) 'up': 'Move up',
-                            if (i + 1 < channels.length) 'down': 'Move down',
-                            'close': 'Close',
-                          });
-                      if (action == 'up') await move(i, i - 1);
-                      if (action == 'down') await move(i, i + 2);
-                    },
-                  ),
-              ],
-            );
-          }
-          return ReorderableListView.builder(
-            itemCount: channels.length,
-            onReorder: move,
-            buildDefaultDragHandles: false,
-            itemBuilder: (context, index) => ListTile(
-              key: ValueKey(channels[index].id),
-              leading: ReorderableDragStartListener(
-                index: index,
-                child: const Icon(Icons.drag_handle),
-              ),
-              title: Text(channels[index].name),
-              trailing: IconButton(
-                tooltip: 'Move favourite up',
-                onPressed: index == 0 ? null : () => move(index, index - 1),
-                icon: const Icon(Icons.arrow_upward),
-              ),
-            ),
-          );
-        },
+    final content = favorites.when(
+      loading: () =>
+          const StatusView(title: 'Loading favourites', loading: true),
+      error: (_, __) => StatusView(
+        title: 'Favourites unavailable',
+        onRetry: () => ref.invalidate(favoritesProvider),
       ),
+      data: (all) {
+        final channels =
+            all.where((item) => item.kind == MediaKind.live).toList()..sort(
+              (a, b) => _rank(
+                s.favoriteOrder,
+                a,
+              ).compareTo(_rank(s.favoriteOrder, b)),
+            );
+        if (channels.isEmpty) {
+          return const StatusView(
+            title: 'No favourite channels yet',
+            message: 'Save channels using their star, then reorder them here.',
+          );
+        }
+        Future<void> move(int old, int next) async {
+          if (next > old) next--;
+          final ids = channels.map(AppSettings.mediaKey).toList();
+          ids.insert(next, ids.removeAt(old));
+          await ref.read(settingsProvider.notifier).patch({
+            'favoriteOrder': ids,
+          });
+        }
+
+        if (ref.watch(isTvProvider)) {
+          return TvRemoteList(
+            autofocus: true,
+            extent: 54,
+            label: 'Favourite channel',
+            fullRows: true,
+            onLeft: () {},
+            onRight: () {},
+            onTop: () {},
+            entries: [
+              for (var i = 0; i < channels.length; i++)
+                TvListEntry(
+                  id: channels[i].id,
+                  title: channels[i].name,
+                  subtitle: 'Position ${i + 1} · OK to reorder',
+                  onPressed: () async {
+                    final action = await showTvMenu(context, channels[i].name, {
+                      if (i > 0) 'up': 'Move up',
+                      if (i + 1 < channels.length) 'down': 'Move down',
+                      'close': 'Close',
+                    });
+                    if (action == 'up') await move(i, i - 1);
+                    if (action == 'down') await move(i, i + 2);
+                  },
+                ),
+            ],
+          );
+        }
+        return ReorderableListView.builder(
+          itemCount: channels.length,
+          onReorder: move,
+          buildDefaultDragHandles: false,
+          itemBuilder: (context, index) => ListTile(
+            key: ValueKey(channels[index].id),
+            leading: ReorderableDragStartListener(
+              index: index,
+              child: const Icon(Icons.drag_handle),
+            ),
+            title: Text(channels[index].name),
+            trailing: IconButton(
+              tooltip: 'Move favourite up',
+              onPressed: index == 0 ? null : () => move(index, index - 1),
+              icon: const Icon(Icons.arrow_upward),
+            ),
+          ),
+        );
+      },
     );
+    return ref.watch(isTvProvider)
+        ? TvUtilityScaffold(title: 'Favourite channel order', child: content)
+        : Scaffold(
+            appBar: AppBar(title: const Text('Favourite channel order')),
+            body: content,
+          );
   }
 
   int _rank(List<String> order, MediaItem item) {

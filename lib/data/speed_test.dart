@@ -43,16 +43,29 @@ class SpeedResult {
 }
 
 class SpeedTestFailure implements Exception {
-  const SpeedTestFailure(this.code);
+  const SpeedTestFailure(this.code, {this.httpStatus});
   final String code;
+  final int? httpStatus;
   String get explanation => switch (code) {
     'timeout' => 'The test service did not finish responding in time.',
     'certificate' =>
       'The test service’s HTTPS certificate could not be verified. Check automatic date and time.',
     'network' =>
       'This device could not connect to the test service. Check Wi-Fi, mobile data or VPN and retry.',
-    'http' =>
-      'The test service rejected the request or redirected it. Retry later or use Connection diagnosis for the provider.',
+    'http' => switch (httpStatus) {
+      403 =>
+        'HTTP 403: the speed-test service refused this request. A service security rule or network filtering may be involved. This does not establish a problem with your TV provider. Retry later or compare another connection.',
+      429 =>
+        'HTTP 429: the speed-test service is rate-limiting requests. Wait a few minutes before running the test again.',
+      404 =>
+        'HTTP 404: the speed-test measurement endpoint was not found. Retry later; the app’s test endpoint may need updating.',
+      final int status when status >= 300 && status < 400 =>
+        'HTTP $status: the speed-test service redirected this measurement. Redirects are not followed, to avoid measuring an unexpected destination. Retry later.',
+      final int status when status >= 500 =>
+        'HTTP $status: the speed-test service returned a server error. Retry later. This result does not measure provider-stream performance.',
+      _ =>
+        'HTTP ${httpStatus ?? 'error'}: the speed-test service rejected this measurement. Retry later or compare another connection.',
+    },
     'response' =>
       'The test service returned an incomplete or unexpected response.',
     _ =>
@@ -130,7 +143,7 @@ class IoSpeedTestTransport implements SpeedTestTransport {
         final response = await request!.close();
         if (_closed) throw const SpeedTestFailure('cancelled');
         if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw const SpeedTestFailure('http');
+          throw SpeedTestFailure('http', httpStatus: response.statusCode);
         }
         var received = 0;
         final cap = upload ? 65536 : bytes;

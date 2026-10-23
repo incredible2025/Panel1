@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'
+    show LicenseRegistry, LicenseEntryWithLineBreaks;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +35,12 @@ import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
+import 'package:streamline_iptv/features/tv_licences_screen.dart';
+import 'package:streamline_iptv/data/speed_test.dart';
+import 'package:streamline_iptv/data/connection_diagnostics.dart';
+import 'package:streamline_iptv/widgets/tv_utility_scaffold.dart';
+import 'speed_test_test.dart' show FakeSpeedTransport;
+import 'connection_diagnostics_test.dart' show FakeDiagnosticTransport;
 import 'app_update_test.dart' show FakePlatform, FakeTransport, manifest;
 import 'package:streamline_iptv/data/app_update.dart';
 
@@ -235,6 +243,19 @@ class _TestApi extends XtreamApi {
   }
 }
 
+class _RejectedDownloadTransport extends FakeSpeedTransport {
+  @override
+  Future<SpeedMeasurement> measure({
+    required int bytes,
+    bool upload = false,
+  }) async {
+    if (bytes > 0 && !upload) {
+      throw const SpeedTestFailure('http', httpStatus: 403);
+    }
+    return super.measure(bytes: bytes, upload: upload);
+  }
+}
+
 Future<void> _pumpApp(
   WidgetTester tester, {
   required _MemoryStore store,
@@ -248,6 +269,8 @@ Future<void> _pumpApp(
   List<MediaItem>? seriesItems,
   Map<MediaKind, List<Category>>? suppliedCategories,
   UpdateController? updater,
+  SpeedTestRunner Function()? speed,
+  ConnectionDiagnostics Function()? diagnosis,
   String? moviePlot,
   bool withEpg = true,
   Map<String, List<EpgEntry>>? schedules,
@@ -264,6 +287,9 @@ Future<void> _pumpApp(
         storeProvider.overrideWithValue(store),
         sessionProvider.overrideWith((ref) => signedIn ? _account : null),
         isTvProvider.overrideWithValue(tv),
+        if (speed != null) speedTestFactoryProvider.overrideWithValue(speed),
+        if (diagnosis != null)
+          connectionDiagnosticsFactoryProvider.overrideWithValue(diagnosis),
         if (updater != null)
           updateControllerProvider.overrideWith((ref) => updater),
         if (api != null) apiProvider.overrideWithValue(api),
@@ -1263,7 +1289,14 @@ void main() {
           screen: const SettingsScreen(),
         );
         await _screenshot(tester, tv ? 'v5-tv-settings' : 'v5-phone-settings');
-        await tester.ensureVisible(find.text('Expiry date'));
+        if (tv) {
+          await remote(tester, LogicalKeyboardKey.arrowLeft);
+          await remote(tester, LogicalKeyboardKey.arrowDown, 4);
+          await remote(tester, LogicalKeyboardKey.arrowRight);
+          await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+        } else {
+          await tester.ensureVisible(find.text('Expiry date'));
+        }
         await tester.pumpAndSettle();
         expect(find.text('Not supplied'), findsWidgets);
         expect(find.text('viewer'), findsOneWidget);
@@ -2119,6 +2152,376 @@ void main() {
             .data,
         '••',
       );
+      expect(tester.testTextInput.isVisible, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    for (var group = 0; group < 6; group++) {
+      _uiTest('TV redesign visual fixed Settings group $group at $size', (
+        tester,
+      ) async {
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          screen: SettingsScreen(groupIndex: group),
+          viewport: size,
+        );
+        final canvas = find.byKey(const ValueKey('tv-utility-canvas'));
+        final before = tester.getRect(canvas);
+        await _screenshot(
+          tester,
+          'tv-redesign-settings-$group-${size.width.toInt()}',
+        );
+        final visited = <String>{};
+        for (var i = 0; i < 15; i++) {
+          final label = FocusManager.instance.primaryFocus!.debugLabel!;
+          expect(label, startsWith('Setting: '));
+          visited.add(label);
+          final text = find.text(label.substring('Setting: '.length)).first;
+          expect(text.hitTestable(), findsOneWidget);
+          final rect = tester.getRect(text);
+          expect(rect.top, greaterThan(before.top + 30));
+          expect(rect.bottom, lessThan(before.bottom - 15));
+          await remote(tester, LogicalKeyboardKey.arrowDown);
+          expect(tester.getRect(canvas), before);
+        }
+        expect(visited.length, [5, 6, 5, 3, 7, 9][group]);
+        await _screenshot(
+          tester,
+          'tv-redesign-settings-$group-bottom-${size.width.toInt()}',
+        );
+        final selected = FocusManager.instance.primaryFocus!.debugLabel;
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Setting explanation',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown, 5);
+        expect(tester.getRect(canvas), before);
+        await remote(tester, LogicalKeyboardKey.arrowLeft);
+        expect(FocusManager.instance.primaryFocus?.debugLabel, selected);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final partial in [false, true]) {
+      _uiTest('TV redesign visual fixed speed test partial=$partial at $size', (
+        tester,
+      ) async {
+        final transport = partial
+            ? _RejectedDownloadTransport()
+            : FakeSpeedTransport();
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          viewport: size,
+          screen: const SpeedTestScreen(),
+          speed: () => SpeedTestRunner(transport),
+        );
+        final bounds = {
+          for (final metric in ['Download', 'Upload', 'HTTP latency', 'Jitter'])
+            metric: tester.getRect(find.byKey(ValueKey('tv-speed-$metric'))),
+        };
+        final actionRect = tester.getRect(
+          find.ancestor(
+            of: find.text('Start speed test'),
+            matching: find.byType(TvControl),
+          ),
+        );
+        for (final metric in bounds.keys) {
+          expect(find.text(metric).hitTestable(), findsOneWidget);
+        }
+        expect(transport.calls, isEmpty);
+        await _screenshot(
+          tester,
+          'tv-redesign-speed-idle-${size.width.toInt()}',
+        );
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Run again').hitTestable(), findsOneWidget);
+        if (partial) {
+          expect(find.textContaining('HTTP 403').hitTestable(), findsOneWidget);
+          expect(find.text('Test finished with notices'), findsOneWidget);
+        } else {
+          expect(find.text('16.8').hitTestable(), findsOneWidget);
+          expect(find.text('4.2').hitTestable(), findsOneWidget);
+        }
+        expect(
+          tester.getRect(
+            find.ancestor(
+              of: find.text('Run again'),
+              matching: find.byType(TvControl),
+            ),
+          ),
+          actionRect,
+        );
+        await _screenshot(
+          tester,
+          'tv-redesign-speed-${partial ? 'error' : 'results'}-${size.width.toInt()}',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Copy speed results',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowLeft);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Speed test explanation',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown, 12);
+        for (final metric in bounds.keys) {
+          expect(
+            tester.getRect(find.byKey(ValueKey('tv-speed-$metric'))),
+            bounds[metric],
+          );
+          expect(find.text(metric).hitTestable(), findsOneWidget);
+        }
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Speed test action',
+        );
+        await _screenshot(
+          tester,
+          'tv-redesign-speed-reading-${partial ? 'error' : 'results'}-${size.width.toInt()}',
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    _uiTest(
+      'TV redesign visual fixed diagnosis explains DNS failures at $size',
+      (tester) async {
+        final transport = FakeDiagnosticTransport()
+          ..failures['dns'] = 'dns_failed';
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          viewport: size,
+          screen: const ConnectionDiagnosisScreen(),
+          diagnosis: () => ConnectionDiagnostics(transport),
+        );
+        final before = tester.getRect(
+          find.byKey(const ValueKey('tv-utility-canvas')),
+        );
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Run again').hitTestable(), findsOneWidget);
+        await remote(tester, LogicalKeyboardKey.arrowUp);
+        await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Diagnosis check: Provider DNS lookup',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Diagnosis explanation',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+        final scroll = tester.state<ScrollableState>(
+          find.descendant(
+            of: find.byType(TvScrollPane),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        expect(scroll.position.pixels, greaterThan(0));
+        expect(
+          tester.getRect(find.byKey(const ValueKey('tv-utility-canvas'))),
+          before,
+        );
+        expect(find.text('Run again').hitTestable(), findsOneWidget);
+        await _screenshot(
+          tester,
+          'tv-redesign-diagnosis-${size.width.toInt()}',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowLeft);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Diagnosis check: Provider DNS lookup',
+        );
+        await remote(tester, LogicalKeyboardKey.arrowDown, 20);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Diagnosis action',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    _uiTest('TV redesign visual fixed licences scroll their text at $size', (
+      tester,
+    ) async {
+      LicenseRegistry.addLicense(() async* {
+        yield LicenseEntryWithLineBreaks(
+          ['Sample library'],
+          List.filled(
+            40,
+            'Sample licence paragraph for remote reading and scrolling.',
+          ).join('\n\n'),
+        );
+      });
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        viewport: size,
+        screen: const TvLicencesScreen(),
+      );
+      expect(find.text('Open source licences').hitTestable(), findsOneWidget);
+      final before = tester.getRect(
+        find.byKey(const ValueKey('tv-utility-canvas')),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Licence text');
+      await remote(tester, LogicalKeyboardKey.arrowDown, 5);
+      expect(
+        tester.getRect(find.byKey(const ValueKey('tv-utility-canvas'))),
+        before,
+      );
+      await remote(tester, LogicalKeyboardKey.arrowLeft);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        startsWith('Licence: '),
+      );
+      await _screenshot(tester, 'tv-redesign-licences-${size.width.toInt()}');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  _uiTest(
+    'TV Settings sections switch without stealing focus and long language menus work',
+    (tester) async {
+      final store = _MemoryStore();
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        screen: const SettingsScreen(groupIndex: 5),
+        viewport: const Size(960, 540),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 8);
+      await remote(tester, LogicalKeyboardKey.arrowLeft);
+      await remote(tester, LogicalKeyboardKey.arrowUp, 4);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Settings section: Audio & subtitles',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Setting: Preferred audio language',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      await remote(tester, LogicalKeyboardKey.arrowDown, 11);
+      expect(find.text('Dutch').hitTestable(), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(store.preferences.audioLanguage, 'nl');
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Setting: Preferred audio language',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest(
+    'TV speed test keeps Stop visible while running and cancellation retains metric bounds',
+    (tester) async {
+      final transport = FakeSpeedTransport()
+        ..gate = Completer<SpeedMeasurement>();
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        screen: const SpeedTestScreen(),
+        viewport: const Size(960, 540),
+        speed: () => SpeedTestRunner(transport),
+      );
+      final before = tester.getRect(
+        find.byKey(const ValueKey('tv-speed-Download')),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(find.text('Stop test').hitTestable(), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Speed test action',
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('tv-speed-Download'))),
+        before,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.text('Test stopped').hitTestable(), findsOneWidget);
+      expect(transport.closed, true);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  _uiTest('TV parental PIN creation uses the built-in numeric keypad', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      screen: const SettingsScreen(groupIndex: 3),
+      viewport: const Size(960, 540),
+    );
+    await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+    await remote(tester, LogicalKeyboardKey.select);
+    for (var entry = 0; entry < 2; entry++) {
+      expect(
+        tester
+            .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+            .numericOnly,
+        isTrue,
+      );
+      for (final position in [(0, 0), (0, 1), (0, 2), (1, 0)]) {
+        await keyboardKey(tester, position.$1, position.$2);
+      }
+      await keyboardKey(tester, 4, 2);
+    }
+    expect(store.parentalPin, '1234');
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(find.text('Change parental PIN').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  _uiTest(
+    'TV protected Settings unlock through the numeric keypad without an IME',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final store = _MemoryStore()..parentalPin = '1234';
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        screen: const SettingsScreen(groupIndex: 4),
+        viewport: const Size(960, 540),
+      );
+      expect(find.text('Settings are protected'), findsOneWidget);
+      expect(find.text('viewer'), findsNothing);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.text('Press OK to enter PIN'), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.select);
+      for (final position in [(0, 0), (0, 1), (0, 2), (1, 0)]) {
+        await keyboardKey(tester, position.$1, position.$2);
+      }
+      await keyboardKey(tester, 4, 2);
+      expect(find.byType(TvUtilityScaffold), findsOneWidget);
+      expect(find.text('viewer'), findsWidgets);
       expect(tester.testTextInput.isVisible, isFalse);
       expect(tester.takeException(), isNull);
     },

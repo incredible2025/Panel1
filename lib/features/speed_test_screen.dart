@@ -6,6 +6,8 @@ import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../data/speed_test.dart';
 import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_glass_theme.dart';
+import '../widgets/tv_utility_scaffold.dart';
 
 final speedTestFactoryProvider = Provider<SpeedTestRunner Function()>(
   (ref) =>
@@ -24,6 +26,9 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
   SpeedResult? _result;
   bool _busy = false;
   int _generation = 0;
+  final _primary = FocusNode(debugLabel: 'Speed test action');
+  final _copyFocus = FocusNode(debugLabel: 'Copy speed results');
+  final _reading = FocusNode(debugLabel: 'Speed test explanation');
 
   @override
   void initState() {
@@ -36,6 +41,9 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
     _generation++;
     _runner?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    _primary.dispose();
+    _copyFocus.dispose();
+    _reading.dispose();
     super.dispose();
   }
 
@@ -136,6 +144,7 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
         : result.notices.isNotEmpty
         ? 'Test finished with notices'
         : 'Your results';
+    if (ref.watch(isTvProvider)) return _television(heading, result);
     return Scaffold(
       appBar: AppBar(title: const Text('Speed test')),
       body: TvPageNavigation(
@@ -311,4 +320,204 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
       ),
     );
   }
+
+  Widget _television(String heading, SpeedResult? result) => TvUtilityScaffold(
+    title: 'Speed test',
+    subtitle: heading,
+    onEnter: _primary.requestFocus,
+    hint:
+        'Left  Test details    Right  Actions    Up / Down  Browse / read    OK  Select    Back  Return',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            for (final metric in [
+              ('Download', result?.download, 'Mbps'),
+              ('Upload', result?.upload, 'Mbps'),
+              ('HTTP latency', result?.latency, 'ms'),
+              ('Jitter', result?.jitter, 'ms'),
+            ])
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Container(
+                    key: ValueKey('tv-speed-${metric.$1}'),
+                    height: 112,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: TvGlass.panel,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          metric.$1,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.1,
+                            color: TvGlass.muted,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          metric.$2?.toStringAsFixed(
+                                metric.$3 == 'Mbps' ? 1 : 0,
+                              ) ??
+                              '—',
+                          style: const TextStyle(
+                            fontSize: 30,
+                            height: 1.1,
+                            color: TvGlass.accent,
+                          ),
+                        ),
+                        Text(
+                          metric.$2 == null
+                              ? 'Not measured · ${metric.$3}'
+                              : metric.$3,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.1,
+                            color: TvGlass.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: TvScrollPane(
+                  label: 'Speed test details and notices',
+                  focusNode: _reading,
+                  onRight: _primary.requestFocus,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (result != null)
+                        for (final notice in result.notices)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Text(
+                              notice,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                height: 1.4,
+                                color: Color(0xFFFFC9B4),
+                              ),
+                            ),
+                          ),
+                      const Text(
+                        'YOUR CURRENT CONNECTION',
+                        style: TextStyle(fontSize: 12, color: TvGlass.accent),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Measures this device’s connection to Cloudflare over its current Wi-Fi, Ethernet or VPN. The route to your TV provider may perform differently.',
+                        style: TextStyle(fontSize: 14, height: 1.5),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Starts only when you choose. Up to 28 MB of test data plus network overhead; stops after 60 seconds. Stop or leave this screen to end the test. Pause other downloads for a clearer estimate.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: TvGlass.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Cloudflare receives your public IP when you run the test. Your TV login and viewing history are never sent. Results stay on this screen unless you copy them.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: TvGlass.muted,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'HTTP latency is not ICMP ping. Jitter is variation between consecutive latency samples. Speeds are single-connection estimates including request overhead; they do not guarantee playback quality.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: TvGlass.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 20),
+              SizedBox(
+                width: 244,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TvUtilityAction(
+                      label: _busy
+                          ? 'Stop test'
+                          : result == null
+                          ? 'Start speed test'
+                          : 'Run again',
+                      onPressed: _busy ? _stop : _run,
+                      focusNode: _primary,
+                      autofocus: true,
+                      onLeft: _reading.requestFocus,
+                      onDown: result?.hasMeasurements == true && !_busy
+                          ? _copyFocus.requestFocus
+                          : _reading.requestFocus,
+                    ),
+                    if (!_busy && result?.hasMeasurements == true) ...[
+                      const SizedBox(height: 12),
+                      TvUtilityAction(
+                        label: 'Copy results',
+                        onPressed: _copy,
+                        focusNode: _copyFocus,
+                        onUp: _primary.requestFocus,
+                        onLeft: _reading.requestFocus,
+                        onDown: _reading.requestFocus,
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    if (_busy) ...[
+                      LinearProgressIndicator(
+                        value: MediaQuery.disableAnimationsOf(context)
+                            ? .5
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        heading,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: TvGlass.muted,
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    const Text(
+                      'Data limit: 28 MB\nTime limit: 60 seconds\n\nStop test ends network traffic.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: TvGlass.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }

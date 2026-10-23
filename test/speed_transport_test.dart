@@ -145,7 +145,7 @@ void main() {
       }, createHttpClient: (_) => client);
     },
   );
-  for (final status in [302, 403, 503]) {
+  for (final status in [302, 403, 404, 429, 503]) {
     test(
       'HTTP $status fails without following redirects or treating it as speed data',
       () async {
@@ -155,7 +155,14 @@ void main() {
           await expectLater(
             transport.measure(bytes: 1024),
             throwsA(
-              isA<SpeedTestFailure>().having((e) => e.code, 'code', 'http'),
+              isA<SpeedTestFailure>()
+                  .having((e) => e.code, 'code', 'http')
+                  .having((e) => e.httpStatus, 'HTTP status', status)
+                  .having(
+                    (e) => e.explanation,
+                    'explanation',
+                    contains('HTTP $status'),
+                  ),
             ),
           );
           expect(client.calls.length, 1);

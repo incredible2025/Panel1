@@ -5,6 +5,8 @@ import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/models.dart';
 import 'status_view.dart';
+import 'tv_controls.dart';
+import 'tv_pin_entry.dart';
 
 Widget? protectedLibraryView(
   BuildContext context,
@@ -161,41 +163,87 @@ class _PinDialogState extends ConsumerState<_PinDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.reason),
-    content: SizedBox(
-      width: 350,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Enter your parental PIN. Access stays unlocked for five minutes, or until the app goes into the background.',
+  Widget build(BuildContext context) => ref.watch(isTvProvider)
+      ? AlertDialog(
+          title: Text(widget.reason),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Enter your four to eight digit parental PIN. Access relocks after five minutes or when the app enters the background.',
+                ),
+                const SizedBox(height: 18),
+                TvControl(
+                  autofocus: true,
+                  onPressed: () async {
+                    if (_busy) return;
+                    final value = await showTvPinEntry(
+                      context,
+                      'PIN',
+                      initial: _pin.text,
+                    );
+                    if (value == null || !mounted) return;
+                    _pin.text = value;
+                    await _unlock();
+                  },
+                  child: Text(_busy ? 'Checking…' : 'Press OK to enter PIN'),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Text(_error!),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _pin,
-            autofocus: true,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(8),
-            ],
-            onSubmitted: (_) => _unlock(),
-            decoration: InputDecoration(labelText: 'PIN', errorText: _error),
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+          ],
+        )
+      : AlertDialog(
+          title: Text(widget.reason),
+          content: SizedBox(
+            width: 350,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter your parental PIN. Access stays unlocked for five minutes, or until the app goes into the background.',
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _pin,
+                  autofocus: true,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(8),
+                  ],
+                  onSubmitted: (_) => _unlock(),
+                  decoration: InputDecoration(
+                    labelText: 'PIN',
+                    errorText: _error,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: _busy ? null : () => Navigator.pop(context, false),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: _busy ? null : _unlock,
-        child: Text(_busy ? 'Checking…' : 'Unlock'),
-      ),
-    ],
-  );
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: _busy ? null : _unlock,
+              child: Text(_busy ? 'Checking…' : 'Unlock'),
+            ),
+          ],
+        );
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -26,7 +27,8 @@ import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
-import 'app_update_test.dart' show FakePlatform, FakeTransport;
+import 'app_update_test.dart' show FakePlatform, FakeTransport, manifest;
+import 'package:streamline_iptv/data/app_update.dart';
 
 import 'support/qa_artwork.dart';
 
@@ -520,6 +522,95 @@ void main() {
       return found;
     });
   }
+
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest(
+      'TV redesign visual fixed update actions with long notes at $size',
+      (tester) async {
+        final platform = FakePlatform();
+        final t = FakeTransport()
+          ..next = AppUpdate.parse(
+            jsonEncode({
+              ...manifest(),
+              'releaseNotes': List.filled(
+                80,
+                'Playback, browsing and remote navigation improvements.',
+              ).join('\n\n'),
+            }),
+          );
+        final c = UpdateController(platform, t);
+        await c.check();
+        await _pumpApp(
+          tester,
+          store: _MemoryStore(),
+          tv: true,
+          viewport: size,
+          updater: c,
+          screen: const AppUpdatesScreen(),
+        );
+        expect(focused(find.text('Download update')), isTrue);
+        expect(find.text('Download update').hitTestable(), findsOneWidget);
+        await _screenshot(tester, 'tv-redesign-updates-${size.width.toInt()}');
+        await remote(tester, LogicalKeyboardKey.select);
+        expect(find.text('Install update').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  _uiTest('TV audit player preference dialog works from initial remote focus', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await _pumpApp(
+      tester,
+      store: store,
+      tv: true,
+      viewport: const Size(960, 540),
+      screen: const SettingsScreen(groupIndex: 0),
+    );
+    expect(focused(find.text('Default player')), isTrue);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(focused(find.text('ExoPlayer · Standard')), isTrue);
+    await remote(tester, LogicalKeyboardKey.arrowDown);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(store.preferences.engine, PlayerEngine.compatibility);
+    expect(focused(find.text('Default player')), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+  _uiTest(
+    'TV audit favourite ordering reaches distant channels and restores focus',
+    (tester) async {
+      final channels = List.generate(
+        80,
+        (i) => MediaItem(id: '$i', name: 'Channel $i', kind: MediaKind.live),
+      );
+      final store = _MemoryStore()
+        ..favoriteItems = channels
+        ..preferences = AppSettings(
+          favoriteOrder: channels.map((e) => 'live:${e.id}').toList(),
+        );
+      await _pumpApp(
+        tester,
+        store: store,
+        tv: true,
+        viewport: const Size(960, 540),
+        screen: const FavoriteOrderScreen(),
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 45);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Favourite channel: Channel 45',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(store.preferences.favoriteOrder[44], 'live:45');
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Favourite channel: Channel 45',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     _uiTest(

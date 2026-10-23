@@ -58,6 +58,7 @@ class _TvPageNavigationState extends State<TvPageNavigation> {
     if (widget.autofocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
+        FocusManager.instance.applyFocusChangesIfNeeded();
         if (_scope.focusedChild == null) _scope.nextFocus();
       });
     }

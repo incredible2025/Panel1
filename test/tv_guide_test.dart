@@ -22,6 +22,79 @@ class _GuidePreferencesStore implements LocalStore {
 }
 
 void main() {
+  testWidgets(
+    'TV audit guide scrolls to distant channels without assigning focus',
+    (tester) async {
+      tester.view.physicalSize = const Size(960, 540);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final now = DateTime.now();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            storeProvider.overrideWithValue(_GuidePreferencesStore()),
+            isTvProvider.overrideWithValue(true),
+            itemsProvider.overrideWith(
+              (ref, kind) async => List.generate(
+                80,
+                (i) => MediaItem(
+                  id: '$i',
+                  name: 'Channel $i',
+                  kind: MediaKind.live,
+                ),
+              ),
+            ),
+            guideScheduleProvider.overrideWith(
+              (ref, id) async => GuideSchedule([
+                EpgEntry(
+                  title: 'Programme $id',
+                  description: 'Provider programme description.',
+                  start: now.subtract(const Duration(minutes: 10)),
+                  end: now.add(const Duration(hours: 1)),
+                ),
+              ]),
+            ),
+          ],
+          child: MaterialApp(
+            theme: StreamlineTheme.dark,
+            shortcuts: {
+              ...WidgetsApp.defaultShortcuts,
+              const SingleActivator(LogicalKeyboardKey.select):
+                  const ActivateIntent(),
+            },
+            home: const TvGuideScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Watch Channel 0');
+      for (var i = 0; i < 45; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Watch Channel 45',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        contains('Channel 45, Programme 45'),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(find.text('Provider programme description.'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        contains('Channel 45, Programme 45'),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   setUpAll(() async {
     if (!const bool.fromEnvironment('CAPTURE_UI')) return;
     await (FontLoader('Streamline Sans')

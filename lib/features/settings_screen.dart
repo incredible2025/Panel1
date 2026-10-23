@@ -862,15 +862,28 @@ class _CategorySettingsScreenState
               spacing: 12,
               children: [
                 for (final kind in MediaKind.values)
-                  ChoiceChip(
-                    focusNode: _tabs[kind],
-                    label: Text(switch (kind) {
-                      MediaKind.live => 'Live TV',
-                      MediaKind.movie => 'Movies',
-                      MediaKind.series => 'Series',
-                    }),
-                    selected: _kind == kind,
-                    onSelected: (_) => setState(() => _kind = kind),
+                  Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onKeyEvent: (_, event) {
+                      if (ref.read(isTvProvider) &&
+                          (event is KeyDownEvent || event is KeyRepeatEvent) &&
+                          event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                        _tvList.currentState?.focusSelected(remember: true);
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: ChoiceChip(
+                      focusNode: _tabs[kind],
+                      label: Text(switch (kind) {
+                        MediaKind.live => 'Live TV',
+                        MediaKind.movie => 'Movies',
+                        MediaKind.series => 'Series',
+                      }),
+                      selected: _kind == kind,
+                      onSelected: (_) => setState(() => _kind = kind),
+                    ),
                   ),
               ],
             ),

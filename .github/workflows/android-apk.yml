@@ -34,8 +34,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib test
       - name: Analyze
         run: flutter analyze
-      - name: Update manifest tooling tests
-        run: python3 -m unittest discover -s scripts -p 'test_create_update_manifest.py'
+      - name: Release tooling tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Unit and widget tests
         run: flutter test
 
@@ -94,9 +94,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/ultravpn-player.apk
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           "$apksigner" verify --verbose --print-certs build/ultravpn-player.apk | tee build/signature.txt
-          expected="$(tr -d '[:space:]:' < android/release-certificate.sha256 | tr '[:upper:]' '[:lower:]')"
-          actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' build/signature.txt | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
-          test -n "$expected" && test "$expected" = "$actual"
+          python3 scripts/verify_signing_certificate.py build/signature.txt android/release-certificate.sha256
           (cd build && sha256sum ultravpn-player.apk > ultravpn-player.apk.sha256)
       - name: Generate portable remote update package
         shell: bash

@@ -42,7 +42,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   final _top = <String, FocusNode>{};
   final _category = <MediaKind, String?>{};
   String _section = 'home', _query = '', _liveFilter = 'all';
-  MediaItem? _channel;
+  MediaItem? _channel, _pendingChannel;
   CatalogSort _sort = CatalogSort.recentlyAdded;
   bool _ready = false, _opening = false;
   Timer? _clock;
@@ -324,7 +324,11 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                       children: [
                         SizedBox(
                           width: compact ? 100 : 146,
-                          child: const StreamlineMark(size: 28, wordmark: true),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: StreamlineMark(size: 28, wordmark: true),
+                          ),
                         ),
                         const SizedBox(width: 18),
                         Expanded(
@@ -758,6 +762,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                     ),
                     selected: selected.id == channels[i].id,
                     onFocused: () {
+                      _pendingChannel = channels[i];
                       _channelFocusTimer?.cancel();
                       _channelFocusTimer = Timer(
                         const Duration(milliseconds: 250),
@@ -775,7 +780,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               ],
               onLeft: () =>
                   _categories.currentState?.focusSelected(remember: true),
-              onRight: _watch.requestFocus,
+              onRight: () {
+                _channelFocusTimer?.cancel();
+                if (_pendingChannel != null) {
+                  setState(() => _channel = _pendingChannel);
+                }
+                _watch.requestFocus();
+              },
               onTop: () => _nav('live').requestFocus(),
             ),
             count: '${channels.length}',

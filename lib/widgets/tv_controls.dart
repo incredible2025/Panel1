@@ -108,6 +108,7 @@ class _TvControlState extends State<TvControl> {
             style: TextStyle(
               color: _focused ? AppColors.canvas : AppColors.text,
               fontSize: 18,
+              height: 1.2,
               fontWeight: _focused ? FontWeight.w700 : FontWeight.w500,
             ),
             child: IconTheme.merge(
@@ -290,7 +291,7 @@ class TvRemoteListState extends State<TvRemoteList> {
             e.onFocused?.call();
           },
           onPressed: e.onPressed,
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
           child: Row(
             children: [
               if (e.leading != null) ...[e.leading!, const SizedBox(width: 10)],
@@ -307,6 +308,7 @@ class TvRemoteListState extends State<TvRemoteList> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 14,
+                          height: 1.2,
                           fontWeight: FontWeight.w400,
                         ),
                       ),

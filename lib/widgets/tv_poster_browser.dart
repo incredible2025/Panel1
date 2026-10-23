@@ -99,7 +99,10 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown && !widget.horizontal) {
-      if (i + _columns < widget.items.length) _focus(i + _columns);
+      final lastRow = (widget.items.length - 1) ~/ _columns;
+      if (i ~/ _columns < lastRow) {
+        _focus((i + _columns).clamp(0, widget.items.length - 1));
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

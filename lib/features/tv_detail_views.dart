@@ -296,6 +296,15 @@ class _TvSeriesViewState extends State<TvSeriesView> {
                   ),
                   const SizedBox(width: 16),
                   MyListButton(item: widget.item),
+                  if (widget.continuing != null) ...[
+                    const SizedBox(width: 12),
+                    TvControl(
+                      onPressed: () => widget.onEpisode(widget.continuing!),
+                      child: Text(
+                        'Resume · S${widget.continuing!.season} E${widget.continuing!.episodeNumber}',
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 14),
@@ -401,11 +410,15 @@ class _TvSeriesViewState extends State<TvSeriesView> {
                                                 id: episode.id,
                                                 title: episode.title,
                                                 subtitle:
-                                                    'Episode ${episode.episodeNumber}${saved[episode.id]?.watched == true
-                                                        ? ' · Watched'
-                                                        : saved[episode.id]?.canResume == true
-                                                        ? ' · Resume available'
-                                                        : ''}',
+                                                    saved[episode.id]
+                                                            ?.watched ==
+                                                        true
+                                                    ? 'Watched'
+                                                    : saved[episode.id]
+                                                              ?.canResume ==
+                                                          true
+                                                    ? 'Resume · ${formatPlaybackTime(saved[episode.id]!.positionMs)}'
+                                                    : 'Episode ${episode.episodeNumber}',
                                                 selected:
                                                     episode.id ==
                                                     (widget.continuing?.id ??

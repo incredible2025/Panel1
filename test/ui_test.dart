@@ -428,7 +428,14 @@ Future<void> _remoteSort(
 ) async {
   final trigger = find.text(currentLabel);
   await tester.ensureVisible(trigger);
-  Focus.of(tester.element(trigger)).requestFocus();
+  if (find
+      .ancestor(of: trigger, matching: find.byType(TvControl))
+      .evaluate()
+      .isNotEmpty) {
+    _cardFocus(tester, trigger).requestFocus();
+  } else {
+    Focus.of(tester.element(trigger)).requestFocus();
+  }
   await tester.pumpAndSettle();
   await tester.sendKeyEvent(LogicalKeyboardKey.select);
   await tester.pumpAndSettle();
@@ -567,10 +574,12 @@ void main() {
     (tester) async {
       await _pumpApp(tester, store: _MemoryStore(), tv: true);
       _cardFocus(tester, find.text('Movies')).requestFocus();
+      await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
       _cardFocus(tester, find.text('Search')).requestFocus();
+      await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Zephyr');
@@ -886,7 +895,7 @@ void main() {
         tv: true,
         screen: const SeriesDetailScreen(item: _series),
       );
-      await _reveal(tester, find.text('Resume · S2 E1'));
+      await tester.ensureVisible(find.text('Resume · S2 E1'));
       expect(find.text('New Horizons'), findsOneWidget);
       expect(find.text('Resume · 00:45'), findsOneWidget);
       await _screenshot(tester, 'tv-series-progress');
@@ -923,10 +932,15 @@ void main() {
         ),
       ];
     await _pumpApp(tester, store: store, tv: true);
-    await tester.tap(find.text('Series').first);
+    await tester.tap(find.text('Home').first);
     await tester.pumpAndSettle();
-    await _reveal(tester, find.text('Continue watching'));
-    expect(find.text('Resume · S1 · E1'), findsOneWidget);
+    await _reveal(tester, find.text('Continue series'));
+    expect(
+      tester
+          .widgetList<TvPosterBrowser>(find.byType(TvPosterBrowser))
+          .any((w) => w.progress['series:20'] == .45),
+      isTrue,
+    );
     await _screenshot(tester, 'tv-series-continue');
     expect(tester.takeException(), isNull);
   });

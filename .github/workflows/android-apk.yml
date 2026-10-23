@@ -39,7 +39,7 @@ jobs:
       - name: Unit and widget tests
         run: flutter test
       - name: Render television previews
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         run: flutter test --dart-define=CAPTURE_UI=true --dart-define=CAPTURE_UI_ART=true test/ui_test.dart --plain-name "TV redesign visual"
       - name: Upload television previews
         if: always() && github.event_name == 'pull_request'

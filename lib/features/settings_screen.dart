@@ -15,8 +15,9 @@ import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key, this.embedded = false});
+  const SettingsScreen({super.key, this.embedded = false, this.groupIndex});
   final bool embedded;
+  final int? groupIndex;
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -514,7 +515,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               const Eyebrow('MAKE IT YOURS'),
               const SizedBox(height: 10),
-              Text('Settings', style: Theme.of(context).textTheme.displaySmall),
+              Text(
+                widget.groupIndex == null
+                    ? 'Settings'
+                    : const [
+                        'Playback',
+                        'Audio & subtitles',
+                        'Appearance',
+                        'Library & parental controls',
+                        'Your account',
+                        'App & maintenance',
+                      ][widget.groupIndex!],
+                style: widget.groupIndex == null
+                    ? Theme.of(context).textTheme.displaySmall
+                    : Theme.of(context).textTheme.headlineMedium,
+              ),
               const SizedBox(height: 10),
               const Text(
                 'Your picture. Your sound. Your space.',
@@ -529,7 +544,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
               const SizedBox(height: 28),
-              if (wide)
+              if (widget.groupIndex != null)
+                groups[widget.groupIndex!.clamp(0, groups.length - 1)]
+              else if (wide)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -607,10 +624,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     bool value,
     ValueChanged<bool> change,
   ) => SwitchListTile(
-    title: Text(title, style: const TextStyle(fontSize: 14)),
+    title: Text(
+      title,
+      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+    ),
     subtitle: Text(
       description,
-      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+      style: TextStyle(
+        fontSize: ref.read(isTvProvider) ? 16 : 12,
+        color: AppColors.muted,
+      ),
     ),
     value: value,
     onChanged: change,
@@ -621,10 +644,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     Map<String, String> options,
     ValueChanged<String> change,
   ) => ListTile(
-    title: Text(title, style: const TextStyle(fontSize: 14)),
+    title: Text(
+      title,
+      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+    ),
     subtitle: Text(
       options[value] ?? value,
-      style: const TextStyle(color: AppColors.muted, fontSize: 12),
+      style: TextStyle(
+        color: AppColors.muted,
+        fontSize: ref.read(isTvProvider) ? 16 : 12,
+      ),
     ),
     trailing: const Icon(Icons.chevron_right, size: 20),
     onTap: () async {
@@ -658,10 +687,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   ) => ListTile(
     enabled: action != null,
     leading: Icon(icon, size: 20),
-    title: Text(title, style: const TextStyle(fontSize: 14)),
+    title: Text(
+      title,
+      style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+    ),
     subtitle: Text(
       description,
-      style: const TextStyle(color: AppColors.muted, fontSize: 12),
+      style: TextStyle(
+        color: AppColors.muted,
+        fontSize: ref.read(isTvProvider) ? 16 : 12,
+      ),
     ),
     onTap: action,
   );
@@ -673,7 +708,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         Expanded(
           child: Text(
             name,
-            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: ref.read(isTvProvider) ? 16 : 12,
+            ),
           ),
         ),
         const SizedBox(width: 16),
@@ -682,7 +720,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: const TextStyle(fontSize: 13),
+            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 13),
           ),
         ),
       ],

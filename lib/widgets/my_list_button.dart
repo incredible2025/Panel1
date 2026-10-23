@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers.dart';
 import '../data/models.dart';
+import 'tv_controls.dart';
 
 class MyListButton extends ConsumerStatefulWidget {
   const MyListButton({super.key, required this.item});
@@ -40,6 +41,35 @@ class _MyListButtonState extends ConsumerState<MyListButton> {
     final collection = ref.watch(favoritesProvider);
     final saved =
         collection.asData?.value.any((item) => item == widget.item) ?? false;
+    if (ref.watch(isTvProvider)) {
+      return TvControl(
+        onPressed: _saving || collection.isLoading
+            ? () {}
+            : collection.hasError
+            ? () => ref.invalidate(favoritesProvider)
+            : () => _toggle(saved),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _saving
+                  ? Icons.hourglass_empty
+                  : saved
+                  ? Icons.check
+                  : Icons.add,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              collection.hasError
+                  ? 'Reload My List'
+                  : saved
+                  ? 'In My List'
+                  : 'My List',
+            ),
+          ],
+        ),
+      );
+    }
     return Tooltip(
       message:
           '${saved ? 'Remove' : 'Add'} ${widget.item.name} ${saved ? 'from' : 'to'} My List',

@@ -10,6 +10,7 @@ import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
 import 'features/dashboard_screen.dart';
 import 'features/login_screen.dart';
+import 'features/tv_dashboard_screen.dart';
 
 class StreamlineApp extends ConsumerStatefulWidget {
   const StreamlineApp({super.key});
@@ -79,6 +80,8 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
         },
         home: session == null
             ? const LoginScreen()
+            : ref.watch(isTvProvider)
+            ? TvDashboardScreen(key: ValueKey(session.accountId))
             : DashboardScreen(key: ValueKey(session.accountId)),
       ),
     );

@@ -10,6 +10,7 @@ import '../widgets/my_list_button.dart';
 import '../widgets/status_view.dart' hide formatPlaybackTime;
 import '../widgets/tv_focus_card.dart';
 import 'player_screen.dart';
+import 'tv_detail_views.dart';
 
 class SeriesDetailScreen extends ConsumerStatefulWidget {
   const SeriesDetailScreen({super.key, required this.item});
@@ -53,6 +54,22 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
         ? preferredSeason
         : seasons.firstOrNull;
     final episodes = series?.seasons[season] ?? <Episode>[];
+    if (tv) {
+      return TvSeriesView(
+        item: widget.item,
+        detail: detail,
+        seasons: seasons,
+        season: season,
+        episodes: episodes,
+        history: history,
+        continuing: continuing,
+        onSeason: (value) => setState(() => _selectedSeason = value),
+        onEpisode: (episode) {
+          if (series != null) _playEpisode(episode, series);
+        },
+        onReload: () => ref.invalidate(seriesDetailProvider(widget.item)),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.canvas,
       body: LayoutBuilder(

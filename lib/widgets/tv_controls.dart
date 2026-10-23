@@ -257,9 +257,15 @@ class TvRemoteList extends StatefulWidget {
     this.autofocus = false,
     this.label = 'List',
     this.dense = false,
+    this.onBottom,
+    this.titleSize,
+    this.fullRows = false,
   });
   final List<TvListEntry> entries;
   final VoidCallback onLeft, onRight, onTop;
+  final VoidCallback? onBottom;
+  final double? titleSize;
+  final bool fullRows;
   final double extent;
   final bool autofocus;
   final bool dense;
@@ -283,6 +289,12 @@ class TvRemoteListState extends State<TvRemoteList> {
         : -1;
     if (index < 0) index = widget.entries.indexWhere((e) => e.selected);
     focusIndex(index < 0 ? 0 : index);
+  }
+
+  void resetPosition() {
+    _generation++;
+    _focused = null;
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   void _reveal(int index) {
@@ -324,7 +336,12 @@ class TvRemoteListState extends State<TvRemoteList> {
     }
     final index = widget.entries.indexWhere((e) => e.id == _focused);
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      if (index + 1 < widget.entries.length) focusIndex(index + 1);
+      if (index + 1 < widget.entries.length) {
+        focusIndex(index + 1);
+      } else if (widget.onBottom != null) {
+        _generation++;
+        widget.onBottom!();
+      }
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -359,7 +376,27 @@ class TvRemoteListState extends State<TvRemoteList> {
   }
 
   @override
-  Widget build(BuildContext context) => ListView.builder(
+  Widget build(BuildContext context) => !widget.fullRows
+      ? _list()
+      : LayoutBuilder(
+          builder: (_, box) {
+            final height =
+                (box.maxHeight / widget.extent).floor() * widget.extent;
+            return Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                height: height > 0 ? height : box.maxHeight,
+                child: Scrollbar(
+                  controller: _scroll,
+                  thumbVisibility: true,
+                  child: _list(),
+                ),
+              ),
+            );
+          },
+        );
+
+  Widget _list() => ListView.builder(
     controller: _scroll,
     itemExtent: widget.extent,
     cacheExtent: widget.extent * 6,
@@ -411,11 +448,13 @@ class TvRemoteListState extends State<TvRemoteList> {
                       maxLines: e.subtitle.isEmpty ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: widget.dense
-                            ? 12
-                            : widget.extent <= 60
-                            ? 17
-                            : 18,
+                        fontSize:
+                            widget.titleSize ??
+                            (widget.dense
+                                ? 12
+                                : widget.extent <= 60
+                                ? 17
+                                : 18),
                         height: widget.dense ? 1 : 1.1,
                       ),
                     ),
@@ -425,7 +464,9 @@ class TvRemoteListState extends State<TvRemoteList> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: widget.dense ? 10 : 14,
+                          fontSize: widget.titleSize == null
+                              ? (widget.dense ? 10 : 14)
+                              : widget.titleSize! * .8,
                           height: 1.2,
                           fontWeight: FontWeight.w400,
                         ),

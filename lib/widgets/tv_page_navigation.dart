@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'tv_controls.dart';
 
 /// Utility pages use a predictable vertical order, including offscreen controls.
 /// Their short forms must build all controls (Column, not a lazy ListView).
@@ -109,11 +110,12 @@ class TvScrollPane extends StatefulWidget {
     required this.label,
     required this.child,
     this.onRight,
+    this.onLeft,
     this.focusNode,
   });
   final String label;
   final Widget child;
-  final VoidCallback? onRight;
+  final VoidCallback? onRight, onLeft;
   final FocusNode? focusNode;
   @override
   State<TvScrollPane> createState() => _TvScrollPaneState();
@@ -141,6 +143,11 @@ class _TvScrollPaneState extends State<TvScrollPane> {
       widget.onRight!();
       return KeyEventResult.handled;
     }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+        widget.onLeft != null) {
+      widget.onLeft!();
+      return KeyEventResult.handled;
+    }
     final down = event.logicalKey == LogicalKeyboardKey.arrowDown;
     final up = event.logicalKey == LogicalKeyboardKey.arrowUp;
     if ((!up && !down) || !_scroll.hasClients) return KeyEventResult.ignored;
@@ -149,7 +156,7 @@ class _TvScrollPaneState extends State<TvScrollPane> {
       p.minScrollExtent,
       p.maxScrollExtent,
     );
-    if ((next - p.pixels).abs() < .5) return KeyEventResult.ignored;
+    if ((next - p.pixels).abs() < .5) return KeyEventResult.handled;
     _scroll.jumpTo(next);
     return KeyEventResult.handled;
   }
@@ -191,20 +198,35 @@ Future<String?> showTvMenu(
   Map<String, String> choices,
 ) => showDialog<String>(
   context: context,
-  builder: (context) => TvPageNavigation(
-    enabled: true,
-    child: SimpleDialog(
-      title: Text(title),
-      children: [
-        for (final option in choices.entries)
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, option.key),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(option.value, style: const TextStyle(fontSize: 18)),
-            ),
-          ),
-      ],
-    ),
+  builder: (context) => SimpleDialog(
+    title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
+    children: [
+      SizedBox(
+        width: 600,
+        height: (choices.length * 46.0).clamp(
+          46,
+          MediaQuery.sizeOf(context).height * .58,
+        ),
+        child: TvRemoteList(
+          autofocus: true,
+          label: 'Menu option',
+          fullRows: true,
+          titleSize: 17,
+          extent: 46,
+          dense: true,
+          onTop: () {},
+          onLeft: () {},
+          onRight: () {},
+          entries: [
+            for (final option in choices.entries)
+              TvListEntry(
+                id: option.key,
+                title: option.value,
+                onPressed: () => Navigator.pop(context, option.key),
+              ),
+          ],
+        ),
+      ),
+    ],
   ),
 );

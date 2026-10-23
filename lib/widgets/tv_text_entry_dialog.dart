@@ -12,10 +12,12 @@ class TvTextEntryDialog extends StatefulWidget {
     required this.controller,
     required this.label,
     this.password = false,
+    this.numericOnly = false,
   });
   final TextEditingController controller;
   final String label;
   final bool password;
+  final bool numericOnly;
   @override
   State<TvTextEntryDialog> createState() => _TvTextEntryDialogState();
 }
@@ -57,7 +59,9 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
     '$row:$col',
     () => FocusNode(debugLabel: 'Remote keyboard $row:$col'),
   );
-  List<String> get _letters => _symbols
+  List<String> get _letters => widget.numericOnly
+      ? ['123', '456', '789', '0']
+      : _symbols
       ? ['!@#\$%^&*()', '-_+=[]{}\\|', ';:\'",.<>/?', '`~01234567']
       : [
           '1234567890',
@@ -66,11 +70,21 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
           _upper ? 'ZXCVBNM._-' : 'zxcvbnm._-',
         ];
   void _insert(String text) {
+    if (widget.numericOnly) {
+      text = text.replaceAll(RegExp('[^0-9]'), '');
+      if (text.isEmpty) return;
+    }
     final c = widget.controller, s = cSelection;
-    c.value = TextEditingValue(
+    var next = TextEditingValue(
       text: c.text.replaceRange(s.start, s.end, text),
       selection: TextSelection.collapsed(offset: s.start + text.length),
     );
+    if (widget.numericOnly) {
+      next = LengthLimitingTextInputFormatter(
+        8,
+      ).formatEditUpdate(c.value, next);
+    }
+    c.value = next;
   }
 
   TextSelection get cSelection => widget.controller.selection.isValid
@@ -166,23 +180,32 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
           _obscured ? 'Show password' : 'Hide password',
           () => setState(() => _obscured = !_obscured),
         ),
-      ('Use system keyboard', _systemKeyboard),
+      if (!widget.numericOnly) ('Use system keyboard', _systemKeyboard),
       ('Back', () => Navigator.pop(context, false)),
     ];
-    final actions = <(String, VoidCallback)>[
-      (
-        'Shift',
-        () => setState(() {
-          _symbols = false;
-          _upper = !_upper;
-        }),
-      ),
-      (_symbols ? 'ABC' : '#+=', () => setState(() => _symbols = !_symbols)),
-      ('Space', () => _insert(' ')),
-      ('Delete', _delete),
-      ('Clear', widget.controller.clear),
-      ('Done', _finish),
-    ];
+    final actions = widget.numericOnly
+        ? <(String, VoidCallback)>[
+            ('Delete', _delete),
+            ('Clear', widget.controller.clear),
+            ('Done', _finish),
+          ]
+        : <(String, VoidCallback)>[
+            (
+              'Shift',
+              () => setState(() {
+                _symbols = false;
+                _upper = !_upper;
+              }),
+            ),
+            (
+              _symbols ? 'ABC' : '#+=',
+              () => setState(() => _symbols = !_symbols),
+            ),
+            ('Space', () => _insert(' ')),
+            ('Delete', _delete),
+            ('Clear', widget.controller.clear),
+            ('Done', _finish),
+          ];
     final rows = <List<(String, VoidCallback)>>[
       for (final row in _letters)
         [for (final letter in row.split('')) (letter, () => _insert(letter))],
@@ -201,7 +224,7 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
             spaceActivates: false,
             label: row < 4 ? 'Type $label' : label,
             selected: row == 4 && (col == 0 && _upper || col == 1 && _symbols),
-            style: row == 4 && col == 5
+            style: row == 4 && col == actions.length - 1
                 ? TvControlStyle.primary
                 : TvControlStyle.button,
             onPressed: () => _press(action),

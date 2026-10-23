@@ -1558,93 +1558,96 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             onLeft: () =>
                 _categories.currentState?.focusSelected(remember: true),
             onTop: () => _nav('settings').requestFocus(),
-            child: SingleChildScrollView(
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101A27),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(
-                      Icons.account_circle_outlined,
-                      size: 44,
-                      color: AppColors.accent,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: TvGlass.panel,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(
+                    Icons.account_circle_outlined,
+                    size: 30,
+                    color: TvGlass.accent,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    ref.watch(sessionProvider)?.credentials.username ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 19),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'SUBSCRIPTION',
+                    style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 1.3,
+                      color: TvGlass.muted,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      ref.watch(sessionProvider)?.credentials.username ?? '',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    info?.status ?? 'Not supplied',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'EXPIRY',
+                    style: TextStyle(
+                      fontSize: 11,
+                      letterSpacing: 1.3,
+                      color: TvGlass.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    info?.expiryLabel ?? 'Not supplied',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17),
+                  ),
+                  const Spacer(),
+                  TvControl(
+                    focusNode: _watch,
+                    reveal: false,
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const SpeedTestScreen(),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'SUBSCRIPTION',
-                      style: TextStyle(
-                        fontSize: 14,
-                        letterSpacing: 1.5,
-                        color: AppColors.muted,
+                    child: const Row(
+                      children: [
+                        Icon(Icons.speed, size: 19),
+                        SizedBox(width: 10),
+                        Text('Speed test', style: TextStyle(fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TvControl(
+                    reveal: false,
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AppUpdatesScreen(),
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    Text(
-                      info?.status ?? 'Not supplied',
-                      style: const TextStyle(fontSize: 22),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.system_update, size: 19),
+                        SizedBox(width: 10),
+                        Text('App updates', style: TextStyle(fontSize: 14)),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'EXPIRY',
-                      style: TextStyle(
-                        fontSize: 14,
-                        letterSpacing: 1.5,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      info?.expiryLabel ?? 'Not supplied',
-                      style: const TextStyle(fontSize: 22),
-                    ),
-                    const SizedBox(height: 22),
-                    TvControl(
-                      focusNode: _watch,
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const SpeedTestScreen(),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.speed),
-                          SizedBox(width: 10),
-                          Text('Speed test'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TvControl(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const AppUpdatesScreen(),
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.system_update),
-                          SizedBox(width: 10),
-                          Text('App updates'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

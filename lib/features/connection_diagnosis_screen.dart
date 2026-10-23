@@ -9,6 +9,7 @@ import '../data/diagnostic_transport.dart';
 import '../data/models.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/tv_page_navigation.dart';
+import 'tv_diagnosis_view.dart';
 
 final connectionDiagnosticsFactoryProvider =
     Provider<ConnectionDiagnostics Function()>(
@@ -160,6 +161,21 @@ class _ConnectionDiagnosisScreenState
     final next = diagnosticStages.values.elementAt(
       completed.clamp(0, diagnosticStages.length - 1),
     );
+    if (ref.watch(isTvProvider)) {
+      return TvDiagnosisView(
+        report: report,
+        busy: _busy,
+        canRun: credentials != null,
+        onRun: _run,
+        onStop: _stop,
+        onCopy: _copy,
+        progressLabel: next,
+        includeStream: widget.canTestStream && widget.item != null
+            ? _includeStream
+            : null,
+        onStreamChanged: (value) => setState(() => _includeStream = value),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Connection diagnosis')),
       body: TvPageNavigation(

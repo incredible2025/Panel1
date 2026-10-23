@@ -1,0 +1,11 @@
+# Fixed TV utility layouts
+
+The earlier speed-test page placed a large phone form inside a scroller. Autofocus revealed Start below the metric cards, moving the first two metrics offscreen. Settings groups used similar scrolling forms. TV utility pages now use TvUtilityScaffold, a scaled 1024×576 Glass canvas with fixed header, body and remote hints. No outer page scrolls on Settings, Speed test, Connection diagnosis, Updates, categories, favourite ordering or licences.
+
+TvRemoteList owns focus and scrolling inside bounded lists, supports complete-row viewports and a visible scrollbar, and reveals the entire selected row. Settings has stable option identities across saved-value changes. Left/right moves between section, option and reading zones. TvScrollPane handles D-pad reading and consumes top/bottom boundaries; an explicit exit returns to the list or action. TV menus use the same bounded remote list, including long language menus.
+
+Regression checks cover all six Settings groups at 960×540, 1280×720 and 1920×1080. Every option is visited using only the remote and checked against the fixed canvas bounds. Speed tests assert that all four metric labels remain visible, card bounds remain unchanged, fixed actions work after completion and partial HTTP failures, and Stop remains usable during a stalled test. DNS-failure reports exercise evidence/causes/steps and return focus from long reading content. Licence, category and favourite lists remain independently scrollable. PIN tests cover remote creation and protected Settings unlocking without a system IME.
+
+Visual captures use deterministic sample data; the displayed speed numbers are test fixtures, not results from the user's connection. The Cloudflare zero-byte and 1 MiB download endpoints returned HTTP 200 from the development computer during this investigation. That does not establish the response on a user's TV or ISP. Device results now retain the observed HTTP status without exposing native error text, credentials or provider URLs. No automatic retry or alternate measurement service was added; payload and time limits remain bounded.
+
+Automated checks verify Flutter key handling, focus, clipping and scrolling. Physical remote mappings and service availability still require target-device testing.

@@ -23,6 +23,7 @@ import 'package:streamline_iptv/widgets/media_card.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 import 'package:streamline_iptv/widgets/tv_controls.dart';
 import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
+import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
@@ -242,6 +243,7 @@ Future<void> _pumpApp(
   List<MediaItem>? seriesItems,
   Map<MediaKind, List<Category>>? suppliedCategories,
   UpdateController? updater,
+  String? moviePlot,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize =
@@ -295,6 +297,7 @@ Future<void> _pumpApp(
               imageUrl: item.imageUrl,
             ),
             plot:
+                moviePlot ??
                 'A journey across a quiet landscape becomes an unforgettable adventure.',
             cast: 'Alex Morgan, Jamie Lee',
             genre: 'Drama',
@@ -522,6 +525,41 @@ void main() {
       return found;
     });
   }
+
+  _uiTest(
+    'TV audit long movie descriptions scroll and return to Play using the remote',
+    (tester) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: true,
+        viewport: const Size(960, 540),
+        screen: MovieDetailScreen(item: _film),
+        moviePlot: List.filled(
+          90,
+          'A journey across a quiet landscape becomes an unforgettable adventure.',
+        ).join('\n\n'),
+      );
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Movie play');
+      await remote(tester, LogicalKeyboardKey.arrowDown, 2);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Movie description',
+      );
+      await remote(tester, LogicalKeyboardKey.arrowDown, 3);
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(TvScrollPane),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(scroll.position.pixels, greaterThan(0));
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Movie play');
+      expect(find.text('Play movie').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     _uiTest(

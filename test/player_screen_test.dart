@@ -279,6 +279,7 @@ Future<void> _mountPlayer(
   Episode? episode,
   List<Episode> episodes = const [],
   PlaybackFactory? factory,
+  bool tv = false,
 }) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
@@ -300,10 +301,15 @@ Future<void> _mountPlayer(
         storeProvider.overrideWithValue(store),
         if (factory != null) playbackFactoryProvider.overrideWithValue(factory),
         sessionProvider.overrideWith((ref) => _session),
-        isTvProvider.overrideWithValue(false),
+        isTvProvider.overrideWithValue(tv),
         epgProvider.overrideWith((ref, id) async => []),
       ],
       child: MaterialApp(
+        shortcuts: {
+          ...WidgetsApp.defaultShortcuts,
+          const SingleActivator(LogicalKeyboardKey.select):
+              const ActivateIntent(),
+        },
         theme: ThemeData.dark(),
         home: Builder(
           builder: (context) {
@@ -390,6 +396,82 @@ void main() {
           null,
         );
   });
+
+  testWidgets(
+    'TV audit player transport, track dialogs, picture and engine menu work by remote',
+    (tester) async {
+      tester.view.physicalSize = const Size(960, 540);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      store.preferences = const AppSettings(controlsSeconds: 0);
+      await _mountPlayer(tester, store, tv: true);
+      await _finishInitialization(tester, platform);
+      Future<void> press(LogicalKeyboardKey key) async {
+        await tester.sendKeyEvent(key);
+        await tester.pumpAndSettle();
+      }
+
+      bool focused(String text) {
+        final target = FocusManager.instance.primaryFocus?.context;
+        return find.text(text).evaluate().any((e) {
+          var found = identical(e, target);
+          e.visitAncestorElements((p) {
+            if (identical(p, target)) {
+              found = true;
+              return false;
+            }
+            return true;
+          });
+          return found;
+        });
+      }
+
+      await press(LogicalKeyboardKey.contextMenu);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Player play pause',
+      );
+      await press(LogicalKeyboardKey.select);
+      expect(platform.calls, contains('pause:1'));
+      await press(LogicalKeyboardKey.arrowDown);
+      for (var i = 0; i < 5 && !focused('Audio'); i++) {
+        await press(LogicalKeyboardKey.arrowLeft);
+      }
+      expect(focused('Audio'), isTrue);
+      await press(LogicalKeyboardKey.select);
+      expect(
+        find.text('Track selection is unavailable for this player.'),
+        findsOneWidget,
+      );
+      await press(LogicalKeyboardKey.arrowDown);
+      await press(LogicalKeyboardKey.select);
+      expect(focused('Audio'), isTrue);
+      await press(LogicalKeyboardKey.arrowRight);
+      expect(focused('Subtitles'), isTrue);
+      await press(LogicalKeyboardKey.select);
+      await press(LogicalKeyboardKey.arrowDown);
+      await press(LogicalKeyboardKey.select);
+      await press(LogicalKeyboardKey.arrowRight);
+      expect(focused('Picture: Fit'), isTrue);
+      await press(LogicalKeyboardKey.select);
+      expect(find.text('Picture: Fill'), findsOneWidget);
+      await press(LogicalKeyboardKey.arrowRight);
+      await press(LogicalKeyboardKey.select);
+      expect(find.text('Player options'), findsOneWidget);
+      await press(LogicalKeyboardKey.arrowDown);
+      await press(LogicalKeyboardKey.select);
+      expect(find.text('Player for this title'), findsOneWidget);
+      await press(LogicalKeyboardKey.arrowDown);
+      await press(LogicalKeyboardKey.arrowDown);
+      await press(LogicalKeyboardKey.arrowDown);
+      expect(focused('Compatibility · media_kit'), isTrue);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(PlayerScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'series resumes and saves the correct episode before advancing across seasons',

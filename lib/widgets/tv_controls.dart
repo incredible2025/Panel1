@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/design_system.dart';
+import 'tv_glass_theme.dart';
 
-enum TvControlStyle { button, navigation, row, poster, primary }
+enum TvControlStyle { button, navigation, row, poster, primary, programme }
 
 /// Large, high-contrast remote target. Focus and selection have distinct styles.
 class TvControl extends StatefulWidget {
@@ -49,138 +50,174 @@ class _TvControlState extends State<TvControl> {
   }
 
   @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    onKeyEvent: widget.onKeyEvent,
-    child: FocusableActionDetector(
-      focusNode: widget.focusNode ?? _own,
-      autofocus: widget.autofocus,
-      shortcuts: const {
-        SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-      },
-      actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onPressed();
-            return null;
-          },
-        ),
-      },
-      onFocusChange: (value) {
-        setState(() => _focused = value);
-        if (value) {
-          widget.onFocused?.call();
-          if (widget.reveal) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _focused) {
-                Scrollable.ensureVisible(
-                  context,
-                  duration: Duration.zero,
-                  alignmentPolicy:
-                      ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-                );
-              }
-            });
-          }
-        }
-      },
-      child: Semantics(
-        button: true,
-        label: widget.label,
-        selected: widget.selected,
-        child: AnimatedContainer(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 100),
-          decoration: BoxDecoration(
-            color: _light
-                ? AppColors.text
-                : widget.selected
-                ? const Color(0xFF1A2735)
-                : _row || _navigation || _poster
-                ? Colors.transparent
-                : const Color(0xFF18212D),
-            borderRadius: BorderRadius.circular(_poster ? 8 : 7),
-            border: Border.all(
-              width: 2,
-              color: _focused
-                  ? widget.style == TvControlStyle.primary
-                        ? AppColors.accent
-                        : Colors.white
-                  : Colors.transparent,
-            ),
-            boxShadow: _focused && _poster
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: .45),
-                      blurRadius: 18,
-                      offset: const Offset(0, 7),
-                    ),
-                  ]
-                : null,
+  Widget build(BuildContext context) {
+    final glass = TvGlassScope.of(context);
+    final programme = widget.style == TvControlStyle.programme;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: widget.onKeyEvent,
+      child: FocusableActionDetector(
+        focusNode: widget.focusNode ?? _own,
+        autofocus: widget.autofocus,
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onPressed();
+              return null;
+            },
           ),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              if (widget.selected && !_focused && (_row || _navigation))
-                Positioned(
-                  left: _row ? 0 : 18,
-                  right: _row ? null : 18,
-                  top: _row ? 12 : null,
-                  bottom: _row ? 12 : 0,
-                  width: _row ? 3 : null,
-                  height: _row ? null : 2,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.accent,
-                      borderRadius: BorderRadius.circular(2),
+        },
+        onFocusChange: (value) {
+          setState(() => _focused = value);
+          if (value) {
+            widget.onFocused?.call();
+            if (widget.reveal) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _focused) {
+                  Scrollable.ensureVisible(
+                    context,
+                    duration: Duration.zero,
+                    alignmentPolicy:
+                        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+                  );
+                }
+              });
+            }
+          }
+        },
+        child: Semantics(
+          button: true,
+          label: widget.label,
+          selected: widget.selected,
+          child: AnimatedContainer(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 100),
+            decoration: BoxDecoration(
+              color: _light && !(glass && _navigation)
+                  ? AppColors.text
+                  : widget.selected && !(glass && _navigation)
+                  ? glass
+                        ? const Color(0x1FFFFFFF)
+                        : const Color(0xFF1A2735)
+                  : programme
+                  ? const Color(0x0BFFFFFF)
+                  : _row || _navigation || _poster
+                  ? Colors.transparent
+                  : glass
+                  ? const Color(0x14FFFFFF)
+                  : const Color(0xFF18212D),
+              borderRadius: BorderRadius.circular(
+                glass
+                    ? 3
+                    : _poster
+                    ? 8
+                    : 7,
+              ),
+              border: Border.all(
+                width: glass ? 1 : 2,
+                color: _focused
+                    ? widget.style == TvControlStyle.primary
+                          ? AppColors.accent
+                          : Colors.white
+                    : Colors.transparent,
+              ),
+              boxShadow: _focused && _poster
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: .45),
+                        blurRadius: 18,
+                        offset: const Offset(0, 7),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: [
+                if (widget.selected &&
+                    (!_focused || glass && _navigation) &&
+                    (_row || _navigation))
+                  Positioned(
+                    left: _row
+                        ? 0
+                        : glass
+                        ? 0
+                        : 18,
+                    right: _row
+                        ? null
+                        : glass
+                        ? 0
+                        : 18,
+                    top: _row
+                        ? glass
+                              ? 3
+                              : 12
+                        : null,
+                    bottom: _row
+                        ? glass
+                              ? 3
+                              : 12
+                        : 0,
+                    width: _row ? 3 : null,
+                    height: _row ? null : 2,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-              Material(
-                type: MaterialType.transparency,
-                child: DefaultTextStyle.merge(
-                  style: TextStyle(
-                    color: _light ? AppColors.canvas : AppColors.text,
-                    fontSize: 18,
-                    height: 1.2,
-                    fontWeight: _focused
-                        ? FontWeight.w700
-                        : widget.selected ||
-                              widget.style == TvControlStyle.primary
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                  ),
-                  child: IconTheme.merge(
-                    data: IconThemeData(
-                      color: _light
+                Material(
+                  type: MaterialType.transparency,
+                  child: DefaultTextStyle.merge(
+                    style: TextStyle(
+                      color: _light && !(glass && _navigation)
                           ? AppColors.canvas
-                          : const Color(0xFFB5C3D3),
-                      size: 23,
+                          : AppColors.text,
+                      fontSize: glass ? 12 : 18,
+                      height: 1.2,
+                      fontWeight: _focused
+                          ? FontWeight.w700
+                          : widget.selected ||
+                                widget.style == TvControlStyle.primary
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
-                    child: InkWell(
-                      canRequestFocus: false,
-                      onTap: widget.onPressed,
-                      borderRadius: BorderRadius.circular(7),
-                      child: Padding(
-                        padding: widget.padding,
-                        child: widget.child,
+                    child: IconTheme.merge(
+                      data: IconThemeData(
+                        color: _light
+                            ? AppColors.canvas
+                            : const Color(0xFFB5C3D3),
+                        size: glass ? 15 : 23,
+                      ),
+                      child: InkWell(
+                        canRequestFocus: false,
+                        onTap: widget.onPressed,
+                        borderRadius: BorderRadius.circular(7),
+                        child: Padding(
+                          padding: widget.padding,
+                          child: widget.child,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class TvListEntry {
@@ -211,11 +248,13 @@ class TvRemoteList extends StatefulWidget {
     this.extent = 66,
     this.autofocus = false,
     this.label = 'List',
+    this.dense = false,
   });
   final List<TvListEntry> entries;
   final VoidCallback onLeft, onRight, onTop;
   final double extent;
   final bool autofocus;
+  final bool dense;
   final String label;
   @override
   State<TvRemoteList> createState() => TvRemoteListState();
@@ -344,7 +383,7 @@ class TvRemoteListState extends State<TvRemoteList> {
           },
           onPressed: e.onPressed,
           padding: EdgeInsets.symmetric(
-            horizontal: 14,
+            horizontal: widget.dense ? 8 : 14,
             vertical: widget.extent <= 60 ? 3 : 5,
           ),
           child: Row(
@@ -357,12 +396,19 @@ class TvRemoteListState extends State<TvRemoteList> {
                   children: [
                     Text(
                       e.title,
-                      maxLines: e.subtitle.isEmpty && e.trailing.isEmpty
+                      maxLines:
+                          !widget.dense &&
+                              e.subtitle.isEmpty &&
+                              e.trailing.isEmpty
                           ? 2
                           : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: widget.extent <= 60 ? 17 : 18,
+                        fontSize: widget.dense
+                            ? 12
+                            : widget.extent <= 60
+                            ? 17
+                            : 18,
                         height: 1.1,
                       ),
                     ),
@@ -371,8 +417,8 @@ class TvRemoteListState extends State<TvRemoteList> {
                         e.subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
+                        style: TextStyle(
+                          fontSize: widget.dense ? 10 : 14,
                           height: 1.2,
                           fontWeight: FontWeight.w400,
                         ),
@@ -384,8 +430,8 @@ class TvRemoteListState extends State<TvRemoteList> {
                 const SizedBox(width: 12),
                 Text(
                   e.trailing,
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style: TextStyle(
+                    fontSize: widget.dense ? 9 : 13,
                     fontWeight: FontWeight.w400,
                   ),
                 ),

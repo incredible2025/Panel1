@@ -11,12 +11,14 @@ import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../data/recommendations.dart';
 import '../widgets/live_channel_preview.dart';
-import '../widgets/media_card.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
 import '../widgets/tv_poster_browser.dart';
 import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_glass_theme.dart';
+import '../widgets/tv_glass_hero.dart';
+import '../widgets/tv_glass_guide.dart';
 import 'app_updates_screen.dart';
 import 'movie_detail_screen.dart';
 import 'player_screen.dart';
@@ -35,18 +37,20 @@ class TvDashboardScreen extends ConsumerStatefulWidget {
 
 class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   final _categories = GlobalKey<TvRemoteListState>();
-  final _channels = GlobalKey<TvRemoteListState>();
+  final _guide = GlobalKey<TvGlassGuideState>();
   final _grid = GlobalKey<TvPosterBrowserState>();
   final _preview = GlobalKey<LiveChannelPreviewState>();
   final _watch = FocusNode(debugLabel: 'Watch now');
+  final _options = FocusNode(debugLabel: 'Live options');
   final _hero = FocusNode(debugLabel: 'Featured title');
   final _searchFocus = FocusNode(debugLabel: 'Search');
   final _top = <String, FocusNode>{};
   final _category = <MediaKind, String?>{};
   String _section = 'home', _query = '', _liveFilter = 'all';
-  MediaItem? _channel, _pendingChannel;
+  MediaItem? _channel;
   CatalogSort _sort = CatalogSort.recentlyAdded;
-  bool _ready = false, _opening = false;
+  bool _ready = false, _opening = false, _catalog = false;
+  int _programmeColumn = 0;
   Timer? _clock;
   Timer? _channelFocusTimer;
   AppSettings get _settings =>
@@ -88,6 +92,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             ? s.lastCategories[k.name]
             : null;
       }
+      _catalog = _category[_kind] != null;
       _ready = true;
     });
   }
@@ -97,6 +102,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     _clock?.cancel();
     _channelFocusTimer?.cancel();
     _watch.dispose();
+    _options.dispose();
     _hero.dispose();
     _searchFocus.dispose();
     for (final n in _top.values) {
@@ -130,6 +136,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     unawaited(_preview.currentState?.stop() ?? Future<void>.value());
     setState(() {
       _section = section;
+      _catalog = _category[_kind] != null;
       _query = '';
       if (section != 'live') _liveFilter = 'all';
     });
@@ -137,7 +144,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   }
 
   bool _enterPage() {
-    if (_section == 'home') {
+    if (_section == 'home' ||
+        ((_section == 'movie' || _section == 'series') && !_catalog)) {
       _hero.requestFocus();
       return _hero.context != null;
     } else if (_section == 'list') {
@@ -194,6 +202,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       _category[_kind] = id;
       _liveFilter = filter;
       _channel = null;
+      _programmeColumn = 0;
     });
     _remember();
   }
@@ -262,7 +271,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         initial: _query,
       ),
     );
-    if (result != null && mounted) setState(() => _query = result.trim());
+    if (result != null && mounted) {
+      setState(() {
+        if (_section == 'home' || _section == 'settings') _section = 'movie';
+        _catalog = true;
+        _query = result.trim();
+      });
+    }
   }
 
   Future<void> _sortMenu() async {
@@ -286,7 +301,12 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         ],
       ),
     );
-    if (result != null && mounted) setState(() => _sort = result);
+    if (result != null && mounted) {
+      setState(() {
+        _sort = result;
+        _catalog = true;
+      });
+    }
   }
 
   void _refresh() {
@@ -313,148 +333,104 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     }
     final account = ref.watch(sessionProvider);
     final info = account == null ? null : AccountInfo(account);
-    return PopScope(
-      canPop: _section == 'home',
-      onPopInvokedWithResult: (popped, result) {
-        if (!popped) {
-          _sectionTo('home');
-          _nav('home').requestFocus();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF080C13),
-        body: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF111D2B), Color(0xFF080C13), Color(0xFF080C13)],
-              stops: [0, .55, 1],
-            ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, box) {
-                final compact = box.maxWidth < 1050;
-                return Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    compact ? 20 : 32,
-                    12,
-                    compact ? 20 : 32,
-                    10,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: compact ? 100 : 146,
-                            child: const FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: StreamlineMark(size: 28, wordmark: true),
+    return TvGlassScope(
+      child: Theme(
+        data: TvGlass.theme(Theme.of(context)),
+        child: PopScope(
+          canPop: _section == 'home',
+          onPopInvokedWithResult: (popped, result) {
+            if (!popped) {
+              if (_catalog && (_section == 'movie' || _section == 'series')) {
+                setState(() {
+                  _catalog = false;
+                  _category[_kind] = null;
+                  _query = '';
+                });
+                _remember();
+              } else {
+                _sectionTo('home');
+              }
+              _nav(_section).requestFocus();
+            }
+          },
+          child: Scaffold(
+            backgroundColor: TvGlass.canvas,
+            body: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  // Match the approved 1024-wide artwork at 540p, 720p and 1080p.
+                  final height = box.maxHeight * 1024 / box.maxWidth;
+                  return FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: 1024,
+                      height: height,
+                      child: DecoratedBox(
+                        decoration: TvGlass.background,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _glassHeader(),
+                            Expanded(
+                              child: switch (_section) {
+                                'home' => _home(),
+                                'settings' => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 26,
+                                  ),
+                                  child: _settingsHome(info),
+                                ),
+                                'list' => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 26,
+                                  ),
+                                  child: _saved(),
+                                ),
+                                _ => _library(true),
+                              },
                             ),
-                          ),
-                          const SizedBox(width: 18),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                for (final entry in [
-                                  ('home', 'Home', Icons.home_rounded),
-                                  ('live', 'Live TV', Icons.live_tv),
-                                  ('movie', 'Movies', Icons.movie_outlined),
-                                  (
-                                    'series',
-                                    'Series',
-                                    Icons.video_library_outlined,
-                                  ),
-                                  ('list', 'My List', Icons.bookmark_outline),
-                                  (
-                                    'settings',
-                                    'Settings',
-                                    Icons.settings_outlined,
-                                  ),
-                                ])
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(right: 7),
-                                      child: TvControl(
-                                        style: TvControlStyle.navigation,
-                                        focusNode: _nav(entry.$1),
-                                        autofocus: _section == entry.$1,
-                                        selected: _section == entry.$1,
-                                        label: entry.$2,
-                                        onFocused: () => _sectionTo(entry.$1),
-                                        onKeyEvent: _topKey,
-                                        onPressed: () => _sectionTo(entry.$1),
-                                        padding: EdgeInsets.symmetric(
-                                          vertical: compact ? 13 : 16,
-                                          horizontal: 6,
-                                        ),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                entry.$2,
-                                                maxLines: 1,
-                                                style: TextStyle(
-                                                  fontSize: compact ? 18 : 21,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 26,
+                              ),
+                              child: SizedBox(
+                                height: 38,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        info?.expiring == true
+                                            ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
+                                            : '↕ ↔  Browse     OK  Details / watch     ↶  Back',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: info?.expiring == true
+                                              ? AppColors.danger
+                                              : TvGlass.muted,
+                                          fontSize: 10,
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Expanded(
-                        child: switch (_section) {
-                          'home' => _home(),
-                          'settings' => _settingsHome(info),
-                          'list' => _saved(),
-                          _ => _library(compact),
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              info?.expiring == true
-                                  ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
-                                  : 'D-pad Browse    OK Select    Back Home',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: info?.expiring == true
-                                    ? AppColors.danger
-                                    : AppColors.muted,
-                                fontSize: 14,
+                                    Text(
+                                      guideClock(DateTime.now()),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: TvGlass.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            guideClock(DateTime.now()),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: AppColors.muted,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                );
-              },
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -462,12 +438,78 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     );
   }
 
+  Widget _glassHeader() => Container(
+    height: 64,
+    padding: const EdgeInsets.symmetric(horizontal: 26),
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: Color(0x12FFFFFF))),
+    ),
+    child: Row(
+      children: [
+        const SizedBox(
+          width: 120,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: StreamlineMark(size: 25, wordmark: true),
+          ),
+        ),
+        const SizedBox(width: 28),
+        for (final entry in [
+          ('home', 'Home'),
+          ('live', 'Live TV'),
+          ('movie', 'Movies'),
+          ('series', 'Series'),
+          ('list', 'My List'),
+        ])
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: TvControl(
+              style: TvControlStyle.navigation,
+              focusNode: _nav(entry.$1),
+              autofocus: _section == entry.$1,
+              selected: _section == entry.$1,
+              label: entry.$2,
+              onFocused: () => _sectionTo(entry.$1),
+              onKeyEvent: _topKey,
+              onPressed: () => _sectionTo(entry.$1),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+              child: Text(entry.$2, style: const TextStyle(fontSize: 13)),
+            ),
+          ),
+        const Spacer(),
+        TvControl(
+          style: TvControlStyle.navigation,
+          focusNode: _searchFocus,
+          onKeyEvent: _toolbarKey,
+          label: 'Search',
+          onPressed: _search,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          child: const Text('Search', style: TextStyle(fontSize: 11)),
+        ),
+        const SizedBox(width: 12),
+        TvControl(
+          style: TvControlStyle.navigation,
+          focusNode: _nav('settings'),
+          autofocus: _section == 'settings',
+          selected: _section == 'settings',
+          onFocused: () => _sectionTo('settings'),
+          onKeyEvent: _topKey,
+          label: 'Settings',
+          onPressed: () => _sectionTo('settings'),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+          child: const Text('Settings', style: TextStyle(fontSize: 11)),
+        ),
+      ],
+    ),
+  );
+
   Widget _heading(
     String title,
     String subtitle, {
     List<Widget> actions = const [],
   }) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.only(bottom: 12),
     child: Row(
       children: [
         Expanded(
@@ -477,8 +519,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 34,
-                  fontFamily: 'Streamline Display',
+                  fontSize: 25,
+                  fontFamily: 'Glass Sans',
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -487,7 +529,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 16),
+                  style: const TextStyle(color: TvGlass.muted, fontSize: 11),
                 ),
             ],
           ),
@@ -508,40 +550,41 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       onKeyEvent: _toolbarKey,
       label: label,
       onPressed: action,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 21),
+          Icon(icon, size: 14),
           const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontSize: 16)),
+          Text(label, style: const TextStyle(fontSize: 11)),
         ],
       ),
     ),
   );
   Widget _panel(String title, Widget child, {String? count}) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+    padding: EdgeInsets.zero,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 3, 4, 12),
+          padding: const EdgeInsets.fromLTRB(0, 5, 0, 8),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 10,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.muted,
+                    letterSpacing: 1.2,
+                    color: TvGlass.muted,
                   ),
                 ),
               ),
               if (count != null)
                 Text(
                   count,
-                  style: const TextStyle(fontSize: 15, color: AppColors.muted),
+                  style: const TextStyle(fontSize: 10, color: TvGlass.muted),
                 ),
             ],
           ),
@@ -604,7 +647,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         id: 'all',
         title: 'All',
         selected: _category[_kind] == null && _liveFilter == 'all',
-        leading: const Icon(Icons.grid_view, size: 19),
+        trailing: '${all.length}',
         onPressed: () => _chooseCategory(null),
       ),
       if (_kind == MediaKind.live) ...[
@@ -612,14 +655,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           id: 'favorites',
           title: 'Favorites',
           selected: _liveFilter == 'favorites',
-          leading: const Icon(Icons.star_outline, size: 19),
+          trailing:
+              '${favorites.where((e) => e.kind == MediaKind.live).length}',
           onPressed: () => _chooseCategory(null, filter: 'favorites'),
         ),
         TvListEntry(
           id: 'recent',
           title: 'Recently viewed',
           selected: _liveFilter == 'recent',
-          leading: const Icon(Icons.history, size: 19),
+          trailing: '${recent.length}',
           onPressed: () => _chooseCategory(null, filter: 'recent'),
         ),
       ],
@@ -644,360 +688,422 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             : _liveFilter == 'recent'
             ? 'Recently viewed'
             : 'All categories');
+    if (_kind == MediaKind.live) {
+      return _glassLiveLibrary(state, categoryState, categories, matching);
+    }
+    if (!_catalog && _query.isEmpty) {
+      if (state.isLoading) {
+        return const StatusView(title: 'Loading your library', loading: true);
+      }
+      if (state.hasError) return _state('Library unavailable', retry: _refresh);
+      return _cinemaLibrary(all, supplied);
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(26, 14, 26, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _heading(
+            _kind == MediaKind.live
+                ? 'Live TV'
+                : _kind == MediaKind.movie
+                ? 'Movies'
+                : 'Series',
+            _query.isEmpty
+                ? '$filterName · ${matching.length} ${_kind == MediaKind.live ? 'channels' : 'titles'}'
+                : 'Search: $_query · ${matching.length} results',
+            actions: [
+              if (_kind == MediaKind.live)
+                _action(
+                  'TV guide',
+                  Icons.calendar_view_week,
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const TvGuideScreen(),
+                    ),
+                  ),
+                )
+              else
+                _action(
+                  switch (_sort) {
+                    CatalogSort.recentlyAdded => 'Newest',
+                    CatalogSort.titleAscending => 'A–Z',
+                    CatalogSort.titleDescending => 'Z–A',
+                  },
+                  Icons.sort,
+                  _sortMenu,
+                ),
+              if (!compact) _action('Refresh', Icons.refresh, _refresh),
+            ],
+          ),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 136,
+                  child: _panel(
+                    'Categories',
+                    categoryState.hasError
+                        ? _state(
+                            'Unavailable',
+                            retry: () =>
+                                ref.invalidate(categoriesProvider(_kind)),
+                          )
+                        : TvRemoteList(
+                            key: _categories,
+                            label: 'Category',
+                            entries: categories,
+                            extent: TvGlass.rowHeight,
+                            dense: true,
+                            onLeft: () => _nav(_section).requestFocus(),
+                            onTop: () => _nav(_section).requestFocus(),
+                            onRight: () {
+                              if (_kind == MediaKind.live) {
+                                _guide.currentState?.focusSelected();
+                              } else {
+                                _grid.currentState?.focusFirst();
+                              }
+                            },
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: state.isLoading
+                      ? const StatusView(
+                          title: 'Loading your library',
+                          loading: true,
+                        )
+                      : state.hasError
+                      ? _state('Library unavailable', retry: _refresh)
+                      : matching.isEmpty
+                      ? _state('No matches found')
+                      : TvPosterBrowser(
+                          key: _grid,
+                          largePosters: _settings.largePosters,
+                          items: matching,
+                          onOpen: _open,
+                          onLeft: () => _categories.currentState?.focusSelected(
+                            remember: true,
+                          ),
+                          onTop: _searchFocus.requestFocus,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _glassLiveLibrary(
+    AsyncValue<List<MediaItem>> state,
+    AsyncValue<List<Category>> categoryState,
+    List<TvListEntry> categories,
+    List<MediaItem> channels,
+  ) {
+    final selected =
+        channels.where((e) => e.id == _channel?.id).firstOrNull ??
+        channels.where((e) => e.id == _settings.lastChannel).firstOrNull ??
+        channels.firstOrNull;
+    final epg = selected == null ? null : ref.watch(epgProvider(selected.id));
+    final slots = glassGuideSlots(epg?.asData?.value ?? [], DateTime.now());
+    final entry = slots[_programmeColumn];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _heading(
-          _kind == MediaKind.live
-              ? 'Live TV'
-              : _kind == MediaKind.movie
-              ? 'Movies'
-              : 'Series',
-          _query.isEmpty
-              ? '$filterName · ${matching.length} ${_kind == MediaKind.live ? 'channels' : 'titles'}'
-              : 'Search: $_query · ${matching.length} results',
-          actions: [
-            _action(
-              _query.isEmpty ? 'Search' : 'Clear search',
-              _query.isEmpty ? Icons.search : Icons.close,
-              _query.isEmpty ? _search : () => setState(() => _query = ''),
-              node: _searchFocus,
+        Stack(
+          children: [
+            TvGlassHero(
+              title: entry?.title ?? selected?.name ?? 'Live TV',
+              eyebrow: selected == null
+                  ? 'Live TV'
+                  : 'Live TV / ${selected.name}',
+              imageUrl: selected?.imageUrl ?? '',
+              metadata: entry == null
+                  ? '${channels.length} channels · $_liveFilter'
+                  : '${_programmeColumn == 0 ? 'LIVE' : 'UPCOMING'}  ${guideClock(entry.start)} – ${guideClock(entry.end)}',
+              description: entry?.description.isNotEmpty == true
+                  ? entry!.description
+                  : epg?.isLoading == true
+                  ? 'Loading programme information…'
+                  : 'No programme guide available',
             ),
-            if (_kind == MediaKind.live)
-              _action(
-                'TV guide',
-                Icons.calendar_view_week,
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => const TvGuideScreen(),
+            if (selected != null)
+              Positioned(
+                right: 26,
+                bottom: 13,
+                child: Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onKeyEvent: (_, event) {
+                    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                      if (_watch.hasFocus) {
+                        _options.requestFocus();
+                      } else {
+                        _guide.currentState?.focusSelected(remember: true);
+                      }
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                      if (_options.hasFocus) {
+                        _watch.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      _guide.currentState?.focusSelected(remember: true);
+                      return KeyEventResult.handled;
+                    }
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      _nav('live').requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TvControl(
+                        focusNode: _options,
+                        onPressed: () => _liveOptions(selected, channels),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: const Text(
+                          'Options',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      TvControl(
+                        style: TvControlStyle.primary,
+                        focusNode: _watch,
+                        onPressed: () => _open(selected, channels: channels),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 8,
+                        ),
+                        child: const Text(
+                          'Watch now',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              )
-            else
-              _action(
-                switch (_sort) {
-                  CatalogSort.recentlyAdded => 'Newest',
-                  CatalogSort.titleAscending => 'A–Z',
-                  CatalogSort.titleDescending => 'Z–A',
-                },
-                Icons.sort,
-                _sortMenu,
               ),
-            if (!compact) _action('Refresh', Icons.refresh, _refresh),
           ],
         ),
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: compact ? 188 : 230,
-                child: _panel(
-                  'Categories',
-                  categoryState.hasError
-                      ? _state(
-                          'Unavailable',
-                          retry: () =>
-                              ref.invalidate(categoriesProvider(_kind)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(26, 4, 26, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 136,
+                  padding: const EdgeInsets.only(right: 14),
+                  decoration: const BoxDecoration(
+                    border: Border(right: BorderSide(color: Color(0x12FFFFFF))),
+                  ),
+                  child: _panel(
+                    'CATEGORIES',
+                    categoryState.hasError
+                        ? _state(
+                            'Unavailable',
+                            retry: () => ref.invalidate(
+                              categoriesProvider(MediaKind.live),
+                            ),
+                          )
+                        : TvRemoteList(
+                            key: _categories,
+                            label: 'Category',
+                            dense: true,
+                            entries: categories,
+                            extent: TvGlass.rowHeight,
+                            onLeft: () => _nav('live').requestFocus(),
+                            onTop: () => _nav('live').requestFocus(),
+                            onRight: () => _guide.currentState?.focusSelected(),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: state.isLoading
+                      ? const StatusView(
+                          title: 'Loading channels',
+                          loading: true,
                         )
-                      : TvRemoteList(
-                          key: _categories,
-                          label: 'Category',
-                          entries: categories,
-                          extent: 57,
-                          onLeft: () => _nav(_section).requestFocus(),
-                          onTop: () => _nav(_section).requestFocus(),
-                          onRight: () {
-                            if (_kind == MediaKind.live) {
-                              _channels.currentState?.focusSelected();
-                            } else {
-                              _grid.currentState?.focusFirst();
-                            }
+                      : state.hasError
+                      ? _state('Channels unavailable', retry: _refresh)
+                      : selected == null
+                      ? _state('No matches found')
+                      : TvGlassGuide(
+                          key: _guide,
+                          channels: channels,
+                          selectedId: selected.id,
+                          onLeft: () => _categories.currentState?.focusSelected(
+                            remember: true,
+                          ),
+                          onRight: _options.requestFocus,
+                          onTop: _searchFocus.requestFocus,
+                          onOpen: (item) => _open(item, channels: channels),
+                          onProgramme: (item, programme) =>
+                              _programmeDetails(item, programme, channels),
+                          onFocused: (item, column) {
+                            _channelFocusTimer?.cancel();
+                            _channelFocusTimer = Timer(
+                              const Duration(milliseconds: 120),
+                              () {
+                                if (mounted && _section == 'live') {
+                                  setState(() {
+                                    _channel = item;
+                                    _programmeColumn = column;
+                                  });
+                                }
+                              },
+                            );
                           },
                         ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: state.isLoading
-                    ? const StatusView(
-                        title: 'Loading your library',
-                        loading: true,
-                      )
-                    : state.hasError
-                    ? _state('Library unavailable', retry: _refresh)
-                    : matching.isEmpty
-                    ? _state('No matches found')
-                    : _kind == MediaKind.live
-                    ? _live(matching, compact, ids)
-                    : TvPosterBrowser(
-                        key: _grid,
-                        largePosters: _settings.largePosters,
-                        items: matching,
-                        onOpen: _open,
-                        onLeft: () => _categories.currentState?.focusSelected(
-                          remember: true,
-                        ),
-                        onTop: _searchFocus.requestFocus,
-                      ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _live(List<MediaItem> channels, bool compact, Set<String> favorites) {
-    final selected =
-        channels.where((e) => e.id == _channel?.id).firstOrNull ??
-        channels.where((e) => e.id == _settings.lastChannel).firstOrNull ??
-        channels.first;
-    final epg = ref.watch(epgProvider(selected.id));
-    final programmes = epg.asData?.value ?? <EpgEntry>[];
-    final now = DateTime.now();
-    final current = programmes
-        .where((e) => !e.start.isAfter(now) && e.end.isAfter(now))
-        .firstOrNull;
-    final next = programmes.where((e) => e.start.isAfter(now)).firstOrNull;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          flex: 5,
-          child: _panel(
-            'Channels',
-            TvRemoteList(
-              key: _channels,
-              label: 'Channel',
-              extent: compact ? 62 : 70,
-              entries: [
-                for (var i = 0; i < channels.length; i++)
-                  TvListEntry(
-                    id: channels[i].id,
-                    title: channels[i].name,
-                    subtitle: favorites.contains(AppKey.item(channels[i]))
-                        ? 'Favourite'
-                        : '',
-                    trailing: (i + 1).toString().padLeft(3, '0'),
-                    leading: SizedBox(
-                      width: 37,
-                      height: 37,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(5),
-                        child: Artwork(
-                          url: channels[i].imageUrl,
-                          title: channels[i].name,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                    selected: selected.id == channels[i].id,
-                    onFocused: () {
-                      _pendingChannel = channels[i];
-                      _channelFocusTimer?.cancel();
-                      _channelFocusTimer = Timer(
-                        const Duration(milliseconds: 250),
-                        () {
-                          if (mounted &&
-                              _section == 'live' &&
-                              _channel?.id != channels[i].id) {
-                            setState(() => _channel = channels[i]);
-                          }
-                        },
-                      );
-                    },
-                    onPressed: () => _open(channels[i], channels: channels),
-                  ),
-              ],
-              onLeft: () =>
-                  _categories.currentState?.focusSelected(remember: true),
-              onRight: () {
-                _channelFocusTimer?.cancel();
-                if (_pendingChannel != null) {
-                  setState(() => _channel = _pendingChannel);
-                }
-                _watch.requestFocus();
-              },
-              onTop: _searchFocus.requestFocus,
-            ),
-            count: '${channels.length}',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          flex: compact ? 5 : 6,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101A27),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Focus(
-              canRequestFocus: false,
-              skipTraversal: true,
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                  _channels.currentState?.focusSelected(remember: true);
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SizedBox(
-                      height: compact ? 144 : 210,
-                      child: LiveChannelPreview(
-                        key: _preview,
-                        compact: true,
-                        item: selected,
-                        programme: current,
-                        onWatch: () => _open(selected, channels: channels),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      selected.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 9),
-                    Text(
-                      current?.title ?? 'No programme guide available',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: current == null ? 16 : 19,
-                        color: current == null
-                            ? AppColors.muted
-                            : AppColors.text,
-                      ),
-                    ),
-                    if (current != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '${guideClock(current.start)} – ${guideClock(current.end)}',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: AppColors.muted,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      LinearProgressIndicator(
-                        value:
-                            ((now.difference(current.start).inSeconds) /
-                                    current.end
-                                        .difference(current.start)
-                                        .inSeconds)
-                                .clamp(0, 1),
-                        minHeight: 3,
-                      ),
-                    ],
-                    if (next != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          'Next · ${next.title}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: AppColors.muted,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                    TvControl(
-                      style: TvControlStyle.primary,
-                      focusNode: _watch,
-                      onPressed: () => _open(selected, channels: channels),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.play_arrow),
-                          SizedBox(width: 8),
-                          Text('Watch now'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 9),
-                    TvControl(
-                      onPressed: () => _favorite(selected),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            favorites.contains(AppKey.item(selected))
-                                ? Icons.star
-                                : Icons.star_outline,
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              favorites.contains(AppKey.item(selected))
-                                  ? 'Remove favorite'
-                                  : 'Save favorite',
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (current?.description.isNotEmpty == true)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 14),
-                        child: Text(
-                          current!.description,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: AppColors.muted,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+  Future<void> _liveOptions(MediaItem item, List<MediaItem> channels) async {
+    final favorite =
+        ref.read(favoritesProvider).asData?.value.contains(item) ?? false;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(item.name),
+        children: [
+          for (final entry in [
+            (0, 'Preview'),
+            (1, favorite ? 'Remove favourite' : 'Save favourite'),
+            (2, 'Full TV guide'),
+            (3, 'Refresh channels'),
+          ])
+            TextButton(
+              autofocus: entry.$1 == 0,
+              onPressed: () => Navigator.pop(context, entry.$1),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(entry.$2),
               ),
             ),
+        ],
+      ),
+    );
+    if (!mounted || result == null) return;
+    _options.requestFocus();
+    switch (result) {
+      case 0:
+        await _livePreview(item, channels);
+      case 1:
+        await _favorite(item);
+      case 2:
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const TvGuideScreen()),
+        );
+      case 3:
+        _refresh();
+    }
+  }
+
+  Future<void> _livePreview(MediaItem item, List<MediaItem> channels) =>
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          child: SizedBox(
+            width: 580,
+            height: 320,
+            child: LiveChannelPreview(
+              key: _preview,
+              item: item,
+              programme: null,
+              onWatch: () {
+                Navigator.pop(dialogContext);
+                _open(item, channels: channels);
+              },
+            ),
           ),
         ),
-      ],
+      );
+
+  Future<void> _programmeDetails(
+    MediaItem item,
+    EpgEntry entry,
+    List<MediaItem> channels,
+  ) async {
+    final watch = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(entry.title),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Text(
+              '${guideClock(entry.start)} – ${guideClock(entry.end)}\n\n${entry.description.isEmpty ? 'No description supplied by your provider.' : entry.description}',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Watch live channel'),
+          ),
+        ],
+      ),
     );
+    if (watch == true && mounted) await _open(item, channels: channels);
   }
 
   Widget _rail(
     String title,
     List<MediaItem> items, {
     Map<String, double> progress = const {},
+    bool primary = false,
   }) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.fromLTRB(26, 16, 26, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             title,
-            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
           ),
-          const SizedBox(height: 13),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 285,
+            height: 128,
             child: TvPosterBrowser(
+              key: primary ? _grid : null,
               largePosters: _settings.largePosters,
               items: items.take(24).toList(),
               horizontal: true,
               progress: progress,
               onOpen: _open,
-              onLeft: () => _nav('home').requestFocus(),
+              onLeft: () => _nav(_section).requestFocus(),
               onTop: _hero.requestFocus,
             ),
           ),
@@ -1047,151 +1153,30 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final recommendations = _settings.recommendations
         ? recommendMovies(movies, history)
         : <RecommendationShelf>[];
-    return LayoutBuilder(
-      builder: (context, size) => SingleChildScrollView(
-        key: const PageStorageKey('tv-home'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (featured != null)
-              Container(
-                height: (size.maxHeight * .64).clamp(285, 350),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Positioned(
-                      left: size.maxWidth * .38,
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Artwork(
-                        url: detail?.backdropUrl.isNotEmpty == true
-                            ? detail!.backdropUrl
-                            : featured.imageUrl,
-                        title: featured.name,
-                      ),
-                    ),
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Color(0xFF101C2D),
-                            Color(0xF9101C2D),
-                            Color(0x36101C2D),
-                          ],
-                          stops: [0, .43, 1],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(26),
-                      child: SizedBox(
-                        width: size.maxWidth * .6,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width: size.maxWidth * .62,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'FEATURED FOR YOU',
-                                  style: TextStyle(
-                                    color: AppColors.accent,
-                                    letterSpacing: 2,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  featured.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 43,
-                                    height: 1.04,
-                                    fontFamily: 'Streamline Display',
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (detail?.genre.isNotEmpty == true)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Text(
-                                      '${detail!.year}   ${detail.genre}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: AppColors.muted,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    TvControl(
-                                      style: TvControlStyle.primary,
-                                      focusNode: _hero,
-                                      onPressed: () => _open(featured),
-                                      child: const Row(
-                                        children: [
-                                          Icon(Icons.play_arrow),
-                                          SizedBox(width: 8),
-                                          Text('View details'),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    TvControl(
-                                      onPressed: () {
-                                        _sectionTo('live');
-                                        _nav('live').requestFocus();
-                                      },
-                                      child: const Text('Live TV'),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              TvControl(
-                focusNode: _hero,
-                onPressed: () {
-                  _sectionTo('live');
-                  _nav('live').requestFocus();
-                },
-                child: const Padding(
-                  padding: EdgeInsets.all(36),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Welcome home', style: TextStyle(fontSize: 40)),
-                      SizedBox(height: 16),
-                      Text('Browse Live TV', style: TextStyle(fontSize: 22)),
-                    ],
-                  ),
-                ),
-              ),
+    return SingleChildScrollView(
+      key: const PageStorageKey('tv-home'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _featuredHero(featured, detail, 'Selected for you'),
+          if (continuing.isNotEmpty)
             _rail(
               'Continue watching',
               continuing.map((e) => available[AppKey.item(e.item)]!).toList(),
+              primary: true,
               progress: {
                 for (final e in continuing) AppKey.item(e.item): e.progress,
               },
+            )
+          else
+            _rail(
+              movies.any((e) => e.addedAt != null)
+                  ? 'Recently added movies'
+                  : 'Movies from your provider',
+              movies,
+              primary: true,
             ),
+          if (continuingSeries.isNotEmpty)
             _rail(
               'Continue watching series',
               continuingSeries
@@ -1202,27 +1187,222 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                   if (e.canResume) AppKey.item(e.item): e.progress,
               },
             ),
-            for (final recommendation in recommendations.take(2))
-              _rail(recommendation.title, recommendation.items),
+          for (final recommendation in recommendations.take(2))
+            _rail(recommendation.title, recommendation.items),
+          if (continuing.isNotEmpty)
             _rail(
               movies.any((e) => e.addedAt != null)
                   ? 'Recently added movies'
                   : 'Movies from your provider',
               movies,
             ),
-            _rail(
-              'Recently watched',
-              history.map((e) => available[AppKey.item(e.item)]!).toList(),
+          _rail(
+            'Recently watched',
+            history.map((e) => available[AppKey.item(e.item)]!).toList(),
+          ),
+          _rail('Series to discover', series),
+          if (moviesState.hasError)
+            TextButton(
+              onPressed: () => ref.invalidate(itemsProvider(MediaKind.movie)),
+              child: const Text('Reload movies'),
             ),
-            _rail('Series to discover', series),
-            if (moviesState.hasError)
-              TextButton(
-                onPressed: () => ref.invalidate(itemsProvider(MediaKind.movie)),
-                child: const Text('Reload movies'),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _featuredHero(MediaItem? item, MovieDetail? detail, String eyebrow) {
+    if (item == null) {
+      return SizedBox(
+        height: 220,
+        child: Padding(
+          padding: const EdgeInsets.all(26),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Welcome home',
+                style: TextStyle(fontSize: 36, fontWeight: FontWeight.w500),
               ),
-            const SizedBox(height: 20),
-          ],
+              const SizedBox(height: 12),
+              TvControl(
+                focusNode: _hero,
+                onPressed: () {
+                  _sectionTo('live');
+                  _nav('live').requestFocus();
+                },
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 8,
+                ),
+                child: const Text(
+                  'Browse Live TV',
+                  style: TextStyle(fontSize: 11),
+                ),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+    final resume = (ref.watch(historyProvider).asData?.value ?? <WatchEntry>[])
+        .any((e) => e.item == item && e.canResume);
+    return Stack(
+      children: [
+        TvGlassHero(
+          title: item.name,
+          eyebrow: eyebrow,
+          imageUrl: detail?.backdropUrl.isNotEmpty == true
+              ? detail!.backdropUrl
+              : item.imageUrl,
+          cinema: true,
+          height: 220,
+          metadata: [
+            if (detail?.year.isNotEmpty == true) detail!.year,
+            if (detail?.genre.isNotEmpty == true) detail!.genre,
+            if (item.rating.isNotEmpty) 'Rating ${item.rating}',
+          ].join(' · '),
+          description: detail?.plot ?? '',
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TvControl(
+                style: TvControlStyle.primary,
+                focusNode: _hero,
+                onPressed: () => _open(item),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 15,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.play_arrow, size: 13),
+                    const SizedBox(width: 6),
+                    Text(
+                      resume ? 'Resume watching' : 'View details',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_section == 'movie' || _section == 'series')
+          Positioned(
+            top: 13,
+            right: 26,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _action(
+                  switch (_sort) {
+                    CatalogSort.recentlyAdded => 'Newest',
+                    CatalogSort.titleAscending => 'A–Z',
+                    CatalogSort.titleDescending => 'Z–A',
+                  },
+                  Icons.sort,
+                  _sortMenu,
+                ),
+                _action('Browse all', Icons.grid_view, _browseCatalog),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _browseCatalog() {
+    setState(() => _catalog = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _categories.currentState?.focusSelected();
+    });
+  }
+
+  Widget _cinemaLibrary(List<MediaItem> all, List<Category> categories) {
+    final items = sortMediaItems(all, _sort);
+    final featured = items.firstOrNull;
+    final detail = featured?.kind == MediaKind.movie
+        ? ref.watch(movieDetailProvider(featured!)).asData?.value
+        : null;
+    final history = (ref.watch(historyProvider).asData?.value ?? <WatchEntry>[])
+        .where((e) => all.contains(e.item))
+        .toList();
+    final continuing = history.where((e) => e.canResume).toList();
+    final recent = items.where((e) => e.addedAt != null).toList();
+    final recommendations =
+        _kind == MediaKind.movie && _settings.recommendations
+        ? recommendMovies(items, history)
+        : <RecommendationShelf>[];
+    final name = _kind == MediaKind.series ? 'Series' : 'Movies';
+    return SingleChildScrollView(
+      key: PageStorageKey('tv-landing-$_section'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _featuredHero(featured, detail, '$name / Recently added'),
+          _rail(
+            recent.isNotEmpty ? 'Recently added' : '$name from your provider',
+            recent.isNotEmpty ? recent : items,
+            primary: true,
+          ),
+          for (final recommendation in recommendations.take(2))
+            _rail(recommendation.title, recommendation.items),
+          if (continuing.isNotEmpty)
+            _rail(
+              'Continue watching',
+              continuing.map((e) => e.item).toList(),
+              progress: {
+                for (final e in continuing) AppKey.item(e.item): e.progress,
+              },
+            ),
+          if (history.isNotEmpty)
+            _rail('Recently watched', history.map((e) => e.item).toList()),
+          if (categories.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(26, 16, 26, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Explore genres',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 9),
+                  Row(
+                    children: [
+                      for (final category in categories.take(6))
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: TvControl(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 9,
+                              ),
+                              onPressed: () async {
+                                await _chooseCategory(category.id);
+                                if (mounted) _browseCatalog();
+                              },
+                              child: Text(
+                                category.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }
@@ -1303,7 +1483,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                 child: TvRemoteList(
                   key: _categories,
                   label: 'Settings',
-                  extent: 77,
+                  extent: 58,
+                  dense: true,
                   onTop: () => _nav('settings').requestFocus(),
                   onLeft: () => _nav('settings').requestFocus(),
                   onRight: _watch.requestFocus,

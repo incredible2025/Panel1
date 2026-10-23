@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import 'media_card.dart';
 import 'tv_controls.dart';
+import 'tv_glass_theme.dart';
 
 class TvPosterBrowser extends StatefulWidget {
   const TvPosterBrowser({
@@ -112,6 +113,17 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
   }
 
   @override
+  void didUpdateWidget(covariant TvPosterBrowser oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.horizontal != widget.horizontal) {
+      _generation++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _scroll.dispose();
     for (final n in _nodes.values) {
@@ -123,16 +135,27 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, size) {
+      final glass = TvGlassScope.of(context);
       _columns = widget.horizontal
           ? 1
+          : glass
+          ? (widget.largePosters ? 5 : 6)
           : (size.maxWidth / (widget.largePosters ? 220 : 175)).floor().clamp(
               2,
               6,
             );
-      final width = widget.horizontal
+      final gap = glass ? 10.0 : 16.0;
+      final width = widget.horizontal && glass
+          ? (size.maxWidth - (widget.largePosters ? 4 : 5) * gap) /
+                (widget.largePosters ? 5 : 6)
+          : widget.horizontal
           ? (widget.largePosters ? 220.0 : 186.0)
-          : (size.maxWidth - (_columns - 1) * 16) / _columns;
-      _extent = widget.horizontal ? width + 16 : width * 1.38 + 64;
+          : (size.maxWidth - (_columns - 1) * gap) / _columns;
+      _extent = widget.horizontal
+          ? width + gap
+          : glass
+          ? width * .56 + 44 + gap
+          : width * 1.38 + 64;
       Widget tile(int index) {
         final item = widget.items[index],
             progress = widget.progress[_id(widget.items[index])];
@@ -153,14 +176,14 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
             children: [
               Expanded(
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(10),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(glass ? 3 : 10),
                   ),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
                       Artwork(url: item.imageUrl, title: item.name),
-                      if (item.rating.isNotEmpty)
+                      if (item.rating.isNotEmpty && !glass)
                         Positioned(
                           top: 9,
                           right: 9,
@@ -200,7 +223,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
                           right: 0,
                           child: LinearProgressIndicator(
                             value: progress.clamp(0, 1),
-                            minHeight: 5,
+                            minHeight: glass ? 2 : 5,
                           ),
                         ),
                     ],
@@ -208,17 +231,31 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 10,
+                padding: EdgeInsets.symmetric(
+                  horizontal: glass ? 1 : 11,
+                  vertical: glass ? 5 : 10,
                 ),
                 child: Text(
                   item.name,
-                  maxLines: 2,
+                  maxLines: glass ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16, height: 1.2),
+                  style: TextStyle(fontSize: glass ? 11 : 16, height: 1.2),
                 ),
               ),
+              if (glass)
+                Padding(
+                  padding: const EdgeInsets.only(left: 1, bottom: 5),
+                  child: Text(
+                    '${item.kind == MediaKind.series
+                        ? 'Series'
+                        : item.kind == MediaKind.live
+                        ? 'Live TV'
+                        : 'Movie'}${item.rating.isEmpty ? '' : ' · Rating ${item.rating}'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9, color: TvGlass.muted),
+                  ),
+                ),
             ],
           ),
         );
@@ -233,7 +270,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
           cacheExtent: _extent * 3,
           itemBuilder: (_, i) => Padding(
             key: ValueKey(_id(widget.items[i])),
-            padding: const EdgeInsets.only(right: 16),
+            padding: EdgeInsets.only(right: gap),
             child: tile(i),
           ),
         );
@@ -244,9 +281,9 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
         cacheExtent: _extent * 2,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: _columns,
-          mainAxisExtent: _extent - 16,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
+          mainAxisExtent: _extent - gap,
+          crossAxisSpacing: gap,
+          mainAxisSpacing: gap,
         ),
         itemBuilder: (_, i) =>
             KeyedSubtree(key: ValueKey(_id(widget.items[i])), child: tile(i)),

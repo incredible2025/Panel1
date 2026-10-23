@@ -225,7 +225,7 @@ class TvPosterBrowserState extends State<TvPosterBrowser> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xDF060E1B),
+                              color: const Color(0xDF071B38),
                               borderRadius: BorderRadius.circular(5),
                             ),
                             child: Row(

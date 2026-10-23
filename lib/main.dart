@@ -46,6 +46,12 @@ class _StartupError extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     theme: StreamlineTheme.dark,
+    shortcuts: {
+      ...WidgetsApp.defaultShortcuts,
+      const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent(),
+      const SingleActivator(LogicalKeyboardKey.gameButtonA):
+          const ActivateIntent(),
+    },
     builder: (_, child) => AppBackdrop(child: child!),
     home: Scaffold(
       body: Center(
@@ -60,7 +66,11 @@ class _StartupError extends StatelessWidget {
               const SizedBox(height: 12),
               const Text('Check available device storage, then try again.'),
               const SizedBox(height: 24),
-              FilledButton(onPressed: main, child: const Text('Try again')),
+              FilledButton(
+                autofocus: true,
+                onPressed: main,
+                child: const Text('Try again'),
+              ),
             ],
           ),
         ),

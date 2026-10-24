@@ -160,9 +160,16 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     }
   }
 
-  KeyEventResult _topKey(FocusNode node, KeyEvent event) {
+  KeyEventResult _topKey(String destination, KeyEvent event) {
     if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
         event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (destination != _section) {
+        _sectionTo(destination);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _enterPage();
+        });
+        return KeyEventResult.handled;
+      }
       return _enterPage() ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     return KeyEventResult.ignored;
@@ -262,15 +269,20 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   }
 
   Future<void> _search() async {
+    final section = switch (_section) {
+      'live' => 'live',
+      'series' => 'series',
+      _ => 'movie',
+    };
     final controller = TextEditingController(text: _query);
     final route = DialogRoute<bool>(
       context: context,
       builder: (_) => TvTextEntryDialog(
         controller: controller,
         label:
-            'Search ${_section == 'live'
+            'Search ${section == 'live'
                 ? 'channels'
-                : _section == 'series'
+                : section == 'series'
                 ? 'series'
                 : 'movies'}',
       ),
@@ -281,10 +293,11 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     controller.dispose();
     if (result != null && mounted) {
       setState(() {
-        if (_section == 'home' || _section == 'settings') _section = 'movie';
+        _section = section;
         _catalog = true;
         _query = result.trim();
       });
+      _remember();
     }
   }
 
@@ -467,8 +480,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
               autofocus: _section == entry.$1,
               selected: _section == entry.$1,
               label: entry.$2,
-              onFocused: () => _sectionTo(entry.$1),
-              onKeyEvent: _topKey,
+              onKeyEvent: (_, event) => _topKey(entry.$1, event),
               onPressed: () => _sectionTo(entry.$1),
               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
               child: Text(entry.$2, style: const TextStyle(fontSize: 13)),
@@ -490,8 +502,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           focusNode: _nav('settings'),
           autofocus: _section == 'settings',
           selected: _section == 'settings',
-          onFocused: () => _sectionTo('settings'),
-          onKeyEvent: _topKey,
+          onKeyEvent: (_, event) => _topKey('settings', event),
           label: 'Settings',
           onPressed: () => _sectionTo('settings'),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),

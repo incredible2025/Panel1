@@ -1177,6 +1177,149 @@ void main() {
     },
   );
 
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    for (final kind in MediaKind.values) {
+      _uiTest(
+        'TV Search preserves ${kind.name} while crossing header tabs at $size',
+        (tester) async {
+          const movie = MediaItem(
+            id: 'beacon-movie',
+            name: 'Beacon Movie',
+            kind: MediaKind.movie,
+          );
+          const series = MediaItem(
+            id: 'beacon-series',
+            name: 'Beacon Series',
+            kind: MediaKind.series,
+          );
+          const channel = MediaItem(
+            id: 'beacon-live',
+            name: 'Beacon Live',
+            kind: MediaKind.live,
+          );
+          final store = _MemoryStore()
+            ..preferences = AppSettings(lastSection: kind.name)
+            ..favoriteItems = [_otherFilm];
+          await _pumpApp(
+            tester,
+            store: store,
+            tv: true,
+            viewport: size,
+            movies: [movie, _otherFilm],
+            seriesItems: [series, _series],
+            liveChannels: [channel, _channel],
+          );
+          expect(
+            FocusManager.instance.primaryFocus?.debugLabel,
+            'Navigation: ${kind.name}',
+          );
+          final steps = kind == MediaKind.live
+              ? 4
+              : kind == MediaKind.movie
+              ? 3
+              : 2;
+          for (var i = 0; i < steps; i++) {
+            await remote(tester, LogicalKeyboardKey.arrowRight);
+            expect(store.preferences.lastSection, kind.name);
+          }
+          expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
+          await remote(tester, LogicalKeyboardKey.select);
+          expect(
+            tester
+                .widget<TvTextEntryDialog>(find.byType(TvTextEntryDialog))
+                .label,
+            'Search ${kind == MediaKind.live
+                ? 'channels'
+                : kind == MediaKind.series
+                ? 'series'
+                : 'movies'}',
+          );
+          for (final position in [
+            (3, 4),
+            (1, 2),
+            (2, 0),
+            (3, 2),
+            (1, 8),
+            (3, 5),
+          ]) {
+            await keyboardKey(tester, position.$1, position.$2);
+          }
+          await keyboardKey(tester, 4, 5);
+          final results = kind == MediaKind.live
+              ? tester.widget<TvGlassGuide>(find.byType(TvGlassGuide)).channels
+              : tester
+                    .widget<TvPosterBrowser>(find.byType(TvPosterBrowser))
+                    .items;
+          expect(results.map((item) => item.name), [
+            kind == MediaKind.live
+                ? 'Beacon Live'
+                : kind == MediaKind.series
+                ? 'Beacon Series'
+                : 'Beacon Movie',
+          ]);
+          expect(store.preferences.lastSection, kind.name);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  for (final activation in [
+    LogicalKeyboardKey.select,
+    LogicalKeyboardKey.arrowDown,
+  ]) {
+    _uiTest(
+      'TV header focus does not switch section; $activation opens the focused tab',
+      (tester) async {
+        final store = _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'movie');
+        await _pumpApp(tester, store: store, tv: true);
+        await remote(tester, LogicalKeyboardKey.arrowRight);
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'Navigation: series',
+        );
+        expect(store.preferences.lastSection, 'movie');
+        await remote(tester, activation);
+        expect(store.preferences.lastSection, 'series');
+        expect(find.text('The Coast'), findsWidgets);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  _uiTest(
+    'TV Search cancellation preserves series and explicit My List search opens the movie catalogue',
+    (tester) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(lastSection: 'series')
+        ..favoriteItems = [_otherFilm];
+      await _pumpApp(tester, store: store, tv: true);
+      await remote(tester, LogicalKeyboardKey.arrowRight, 2);
+      await remote(tester, LogicalKeyboardKey.select);
+      await remote(tester, LogicalKeyboardKey.escape);
+      expect(store.preferences.lastSection, 'series');
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search');
+      await remote(tester, LogicalKeyboardKey.arrowLeft);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(store.preferences.lastSection, 'list');
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      await remote(tester, LogicalKeyboardKey.select);
+      for (final letter in 'zephyr'.split('')) {
+        await tester.tap(find.text(letter));
+        await tester.pump();
+      }
+      await keyboardKey(tester, 4, 5);
+      expect(_gridTitles(tester), ['Zephyr']);
+      expect(store.preferences.lastSection, 'movie');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   _uiTest(
     'TV Settings preserves parental protection before showing account details',
     (tester) async {

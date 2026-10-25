@@ -23,8 +23,11 @@ Future<void> main() async {
   try {
     final store = await LocalStore.open();
     final saved = await store.readSession();
-    final session = saved != null && usesConfiguredPortal(saved) ? saved : null;
+    final session = restoreConfiguredSession(saved);
     if (saved != null && session == null) await store.clearSession();
+    if (session != null && !identical(session, saved)) {
+      await store.saveSession(session);
+    }
     final television = await detectTelevision();
     runApp(
       ProviderScope(

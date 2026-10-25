@@ -31,14 +31,14 @@ void main() {
       final a = account({});
       expect(
         portalCredentials(' viewer ', ' secret ').serverUrl,
-        'http://liquidmetal.vip',
+        'http://167.235.169.168',
       );
       expect(portalCredentials(' viewer ', ' secret ').username, 'viewer');
       expect(portalCredentials('viewer', ' secret ').password, ' secret ');
       expect(usesConfiguredPortal(a), true);
       final normalized = account(
         {},
-        server: 'http://LIQUIDMETAL.VIP/player_api.php',
+        server: 'http://167.235.169.168/player_api.php',
       );
       expect(usesConfiguredPortal(normalized), true);
       expect(a.accountId, normalized.accountId);

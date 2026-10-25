@@ -1444,6 +1444,7 @@ void main() {
         expect(find.text('Provider'), findsNothing);
         expect(find.textContaining('https://provider.example'), findsNothing);
         expect(find.textContaining('liquidmetal.vip'), findsNothing);
+        expect(find.textContaining('167.235.169.168'), findsNothing);
         expect(find.text('test-only'), findsNothing);
         await _screenshot(tester, tv ? 'v5-tv-account' : 'v5-phone-account');
         expect(tester.takeException(), isNull);
@@ -1701,6 +1702,7 @@ void main() {
     expect(store.savedSession?.credentials.username, 'viewer');
     expect(store.savedSession?.credentials.serverUrl, providerPortalUrl);
     expect(find.textContaining('liquidmetal.vip'), findsNothing);
+    expect(find.textContaining('167.235.169.168'), findsNothing);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1802,6 +1804,7 @@ void main() {
         expect(store.savedSession?.credentials.password, 'test-only');
         expect(store.savedSession?.credentials.serverUrl, providerPortalUrl);
         expect(find.textContaining('liquidmetal.vip'), findsNothing);
+        expect(find.textContaining('167.235.169.168'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

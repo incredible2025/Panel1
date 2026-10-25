@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'provider_addresses.dart';
+
 /// A provider's credentials. Passwords are never included in [toString].
 class Credentials {
   const Credentials({
@@ -68,17 +70,21 @@ class Session {
   final Map<String, dynamic> userInfo;
   final Map<String, dynamic> serverInfo;
 
-  /// Password changes keep history, while different users/providers are isolated.
+  /// Keep this operator's storage scope stable across its approved address move.
+  /// Different users and unrelated providers retain separate account identities.
   String get accountId => sha256
       .convert(
-        utf8.encode(
-          jsonEncode([
-            normalizeServerUri(credentials.serverUrl).toString(),
-            credentials.username.trim(),
-          ]),
-        ),
+        utf8.encode(jsonEncode([_accountPortal, credentials.username.trim()])),
       )
       .toString();
+
+  String get _accountPortal {
+    final address = normalizeServerUri(credentials.serverUrl);
+    return (address == normalizeServerUri(providerPortalUrl)
+            ? normalizeServerUri(previousProviderPortalUrl)
+            : address)
+        .toString();
+  }
 
   Map<String, dynamic> toJson() => {
     'credentials': credentials.toJson(),

@@ -1,7 +1,7 @@
 import '../data/models.dart';
+import '../data/provider_addresses.dart';
 
-/// Operator-managed portal. Customers enter only their account credentials.
-const providerPortalUrl = 'http://liquidmetal.vip';
+export '../data/provider_addresses.dart' show providerPortalUrl;
 
 Credentials portalCredentials(String username, String password) => Credentials(
   serverUrl: providerPortalUrl,
@@ -18,5 +18,28 @@ bool usesConfiguredPortal(Session session) {
         normalizeServerUri(providerPortalUrl);
   } on FormatException {
     return false;
+  }
+}
+
+/// The operator explicitly moved this service from its old domain to this IP.
+/// Migrate only that exact previous portal; unrelated providers remain signed out.
+Session? restoreConfiguredSession(Session? saved) {
+  if (saved == null) return null;
+  if (usesConfiguredPortal(saved)) return saved;
+  try {
+    if (normalizeServerUri(saved.credentials.serverUrl) !=
+        normalizeServerUri(previousProviderPortalUrl)) {
+      return null;
+    }
+    return Session(
+      credentials: portalCredentials(
+        saved.credentials.username,
+        saved.credentials.password,
+      ),
+      userInfo: saved.userInfo,
+      serverInfo: saved.serverInfo,
+    );
+  } on FormatException {
+    return null;
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/data/app_update.dart';
+import 'package:streamline_iptv/data/public_release_notes.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/core/design_system.dart';
@@ -53,7 +54,7 @@ void main() {
   for (final size in [const Size(960, 540), const Size(1280, 720)]) {
     for (final scale in [1.0, 1.3]) {
       testWidgets(
-        'TV audit updates remain accessible with long notes at $size scale $scale',
+        'TV audit condenses long notes and keeps update actions at $size scale $scale',
         (tester) async {
           final platform = FakePlatform();
           final transport = FakeTransport()
@@ -96,7 +97,15 @@ void main() {
               matching: find.byType(Scrollable),
             ),
           );
-          expect(scroll.position.pixels, greaterThan(0));
+          expect(
+            scroll.position.pixels,
+            inInclusiveRange(0, scroll.position.maxScrollExtent),
+          );
+          expect(find.text(defaultReleaseNotes), findsOneWidget);
+          expect(
+            find.textContaining('A long release description'),
+            findsNothing,
+          );
           expect(find.text('Download update').hitTestable(), findsOneWidget);
           await press(tester, LogicalKeyboardKey.arrowRight);
           await press(tester, LogicalKeyboardKey.select);

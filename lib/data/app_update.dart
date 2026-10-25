@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
+import 'public_release_notes.dart';
+
 const appUpdateManifestUrl = 'https://ultra-vpn.store/dl/app/update.json';
 
 const maxApkBytes = 512 * 1024 * 1024;
@@ -42,6 +44,11 @@ class AppUpdate {
   final String version, sha256, notes, packageId;
   final int code, bytes, minSdk;
   final Uri url;
+
+  String get publicNotes {
+    final safe = publicReleaseNotes(notes);
+    return safe.isEmpty ? defaultReleaseNotes : safe;
+  }
 
   factory AppUpdate.parse(String source, {Uri? sourceUri}) {
     try {

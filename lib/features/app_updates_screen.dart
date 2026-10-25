@@ -96,11 +96,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  update.notes.isEmpty
-                      ? 'Improvements and fixes for ULTRAVPN PLAYER.'
-                      : update.notes,
-                ),
+                Text(update.publicNotes),
                 const SizedBox(height: 20),
               ],
               if (c.stage == UpdateStage.downloading) ...[
@@ -242,9 +238,8 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                           const SizedBox(height: 16),
                         ],
                         Text(
-                          update?.notes.isNotEmpty == true
-                              ? update!.notes
-                              : 'Check for the latest improvements and fixes for Ultravpn-player.',
+                          update?.publicNotes ??
+                              'Check for the latest improvements and fixes for Ultravpn-player.',
                           style: const TextStyle(fontSize: 15, height: 1.5),
                         ),
                         const SizedBox(height: 20),

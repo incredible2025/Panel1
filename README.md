@@ -2,7 +2,7 @@
 
 A Flutter app for Android phones and Android TV using your own Xtream Codes account. One APK includes touch navigation and a remote-friendly TV layout.
 
-**v0.8.6** moves the embedded portal to the operator's new IP address and migrates existing accounts while retaining their saved data. Customers still enter only their username/password. See [release notes](docs/RELEASE_NOTES_0.8.6.md) and [provider configuration](docs/PROVIDER_CONFIGURATION.md). The Search fixes and Glass UI from earlier builds are retained.
+**v0.8.7** keeps update notes short and protects customer-facing update information. See [release notes](docs/RELEASE_NOTES_0.8.7.md) and the [public notes policy](docs/RELEASE_NOTES_POLICY.md).
 
 **v0.8.0** implements the approved Glass guide television design with a compact programme grid, Inter typography, blue-to-teal styling and six-card cinema shelves. See [release notes](docs/RELEASE_NOTES_0.8.0.md) and [design/QA details](docs/TV_GLASS_DESIGN.md).
 

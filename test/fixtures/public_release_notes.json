@@ -1,0 +1,24 @@
+{
+  "safe": [
+    "- Improved playback.\n- Faster browsing.",
+    "Fixes — TV and phones",
+    "Improved 0.8.7 navigation.",
+    "# Ultravpn-player 0.8.7\n- Improved browsing."
+  ],
+  "unsafe": [
+    "Service moved to http://192.0.2.1.",
+    "Service moved to 192.0.2.1:8080.",
+    "Use provider.example.com for service.",
+    "Use PROVIDER.EXAMPLE.COM for service.",
+    "Use [2001:db8::1]:8080.",
+    "Use ::ffff:192.0.2.1.",
+    "Use https://[::1]/service.",
+    "Contact support@example.com.",
+    "API key: private-value",
+    "Password: private-value",
+    "Token: private-value",
+    "Signing certificate changed.",
+    "One\nTwo\nThree\nFour\nFive\nSix",
+    "Hidden\u0000details"
+  ]
+}

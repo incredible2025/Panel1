@@ -37,6 +37,12 @@ jobs:
         run: flutter analyze
       - name: Release tooling tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Check public release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          python3 scripts/public_release_notes.py --input "docs/RELEASE_NOTES_$version.md"
       - name: Unit and widget tests
         run: flutter test
       - name: Render television previews
@@ -118,11 +124,8 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
-          notes="docs/RELEASE_NOTES_$version.md"
-          if [ ! -f "$notes" ]; then
-            notes="build/update-notes.md"
-            printf 'Improvements and fixes for Ultravpn-player.\n' > "$notes"
-          fi
+          notes="build/public-release-notes.txt"
+          python3 scripts/public_release_notes.py --input "docs/RELEASE_NOTES_$version.md" --output "$notes"
           mkdir -p build/remote-update
           apk="ultravpn-player-$version.apk"
           cp build/Ultravpn-player.apk "build/remote-update/$apk"
@@ -157,15 +160,27 @@ jobs:
               exit 1
             fi
             gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --notes-file build/public-release-notes.txt
           else
-            notes="docs/RELEASE_NOTES_$version.md"
-            if [ ! -f "$notes" ]; then
-              notes="build/release-notes.md"
-              printf 'Ultravpn-player %s for Android phones and Android TV.\n\nDownload Ultravpn-player.apk to install.\n' "$version" > "$notes"
-            fi
             gh release create "$tag" "${assets[@]}" \
-              --target "$GITHUB_SHA" --title "Ultravpn-player $version" --notes-file "$notes" --latest
+              --target "$GITHUB_SHA" --title "Ultravpn-player $version" --notes-file build/public-release-notes.txt --latest
           fi
+      - name: Correct previous release public notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # One-time correction; preserve the already published APK and identity.
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          if [ "$version" != "0.8.7" ]; then exit 0; fi
+          mkdir -p build/previous-release build/corrected-release
+          gh release download v0.8.6 --pattern remote-update.zip --dir build/previous-release --clobber
+          python3 scripts/repair_update_package.py --source build/previous-release/remote-update.zip \
+            --output build/corrected-release/remote-update.zip --notes docs/RELEASE_NOTES_0.8.6.md
+          gh release edit v0.8.6 --notes-file docs/RELEASE_NOTES_0.8.6.md
+          gh release upload v0.8.6 build/corrected-release/remote-update.zip --clobber
       - name: Remove signing material
         if: always()
         shell: bash

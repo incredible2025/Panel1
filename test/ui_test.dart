@@ -33,6 +33,7 @@ import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
+import 'package:streamline_iptv/data/public_release_notes.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
 import 'package:streamline_iptv/features/startup_update_gate.dart';
@@ -550,6 +551,33 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  for (final tv in [false, true]) {
+    _uiTest('Update notes protect private details on ${tv ? 'TV' : 'mobile'}', (
+      tester,
+    ) async {
+      const privateNotes =
+          'Service moved to http://192.0.2.1 and provider.example.com.';
+      final transport = FakeTransport()
+        ..next = AppUpdate.parse(
+          jsonEncode({...manifest(), 'releaseNotes': privateNotes}),
+        );
+      final controller = UpdateController(FakePlatform(), transport);
+      await controller.check();
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        tv: tv,
+        updater: controller,
+        screen: const AppUpdatesScreen(),
+      );
+      expect(find.text(privateNotes), findsNothing);
+      expect(find.textContaining('192.0.2.1'), findsNothing);
+      expect(find.textContaining('provider.example.com'), findsNothing);
+      expect(find.text(defaultReleaseNotes).hitTestable(), findsOneWidget);
+      expect(find.text('Download update').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   Future<void> remote(
     WidgetTester tester,
     LogicalKeyboardKey key, [

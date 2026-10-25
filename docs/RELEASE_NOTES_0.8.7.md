@@ -1,0 +1,2 @@
+- Shorter, clearer update notes.
+- Improved privacy in update information.

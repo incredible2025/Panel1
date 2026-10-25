@@ -8,6 +8,8 @@ import re
 import subprocess
 from urllib.parse import urlparse
 
+from public_release_notes import validate_notes
+
 
 def create_manifest(apk, badging, apk_url, notes):
     package = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
@@ -21,8 +23,7 @@ def create_manifest(apk, badging, apk_url, notes):
         raise ValueError('Use an HTTPS APK address or a relative APK filename without folders or credentials.')
     if not 0 < apk.stat().st_size <= 512 * 1024 * 1024:
         raise ValueError('APK size must be between 1 byte and 512 MB.')
-    if len(notes) > 20000:
-        raise ValueError('Release notes exceed the app limit.')
+    notes = validate_notes(notes)
     with apk.open('rb') as source:
         digest = hashlib.file_digest(source, 'sha256').hexdigest()
     return dict(schemaVersion=1, applicationId=package[1], versionCode=int(package[2]),

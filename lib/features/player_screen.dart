@@ -396,7 +396,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           .indexWhere((channel) => channel.id == item.id)
           .clamp(0, _channels.isNotEmpty ? _channels.length - 1 : 0);
     }
-    _engine = _settings.engineFor(item);
+    _engine = ref.read(isDesktopProvider)
+        ? PlayerEngine.compatibility
+        : _settings.engineFor(item);
     if (!_movieOpened && item.kind == MediaKind.movie && _session != null) {
       _movieOpened = true;
       unawaited(
@@ -820,7 +822,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _showControls();
     final action = await showTvMenu(context, 'Player options', {
       'engine':
-          'Player · ${_engine == PlayerEngine.native ? 'ExoPlayer' : 'Compatibility'}',
+          'Player · ${ref.read(isDesktopProvider)
+              ? 'Windows'
+              : _engine == PlayerEngine.native
+              ? 'ExoPlayer'
+              : 'Compatibility'}',
       if (_isLive) 'channels': 'Switch channel',
       'info': 'Playback diagnostics',
     });
@@ -849,8 +855,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       {
         for (final entry in {
           'default': 'Use default player',
-          'native': 'ExoPlayer',
-          'compatibility': 'Compatibility · media_kit',
+          if (!ref.read(isDesktopProvider)) 'native': 'ExoPlayer',
+          'compatibility': ref.read(isDesktopProvider)
+              ? 'Windows · media_kit'
+              : 'Compatibility · media_kit',
         }.entries)
           entry.key: entry.value,
       },
@@ -954,7 +962,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               ? 'Playing'
               : 'Paused';
           final fields = {
-            'Player': _engine == PlayerEngine.native
+            'Player': ref.read(isDesktopProvider)
+                ? 'Windows · media_kit'
+                : _engine == PlayerEngine.native
                 ? 'ExoPlayer'
                 : 'Compatibility · media_kit',
             'Connection': state,
@@ -1014,7 +1024,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               );
       },
     );
-    if (ref.read(isTvProvider)) {
+    if (ref.read(isLargeScreenProvider)) {
       await showTvReadingDialog(context, 'Playback diagnostics', content);
     } else {
       await showDialog<void>(
@@ -1257,7 +1267,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final controller = _controller;
     final value = controller?.value;
     final ready = value?.isInitialized ?? false;
@@ -1281,6 +1291,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           backgroundColor: Colors.black,
           body: Listener(
             onPointerDown: (_) => _armControls(),
+            onPointerHover: (_) => _armControls(),
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _toggleControls,

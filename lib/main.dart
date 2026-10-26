@@ -9,9 +9,14 @@ import 'core/providers.dart';
 import 'core/provider_config.dart';
 import 'data/local_store.dart';
 import 'core/design_system.dart';
+import 'core/windows_smoke.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (args.contains('--smoke-test')) {
+    await runWindowsSmoke(args);
+    return;
+  }
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks([
       'Inter typeface',
@@ -71,7 +76,7 @@ class _StartupError extends StatelessWidget {
               const SizedBox(height: 24),
               FilledButton(
                 autofocus: true,
-                onPressed: main,
+                onPressed: () => main(const []),
                 child: const Text('Try again'),
               ),
             ],

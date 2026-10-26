@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 import '../data/local_store.dart';
 import '../data/models.dart';
@@ -16,6 +18,12 @@ final apiProvider = Provider<XtreamApi>((ref) {
 
 final sessionProvider = StateProvider<Session?>((ref) => null);
 final isTvProvider = Provider<bool>((ref) => false);
+final isDesktopProvider = Provider<bool>(
+  (ref) => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
+);
+final isLargeScreenProvider = Provider<bool>(
+  (ref) => ref.watch(isTvProvider) || ref.watch(isDesktopProvider),
+);
 
 final historyProvider = FutureProvider<List<WatchEntry>>((ref) async {
   final session = ref.watch(sessionProvider);

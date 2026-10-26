@@ -71,7 +71,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _setPin() async {
     String? pin;
-    if (ref.read(isTvProvider)) {
+    if (ref.read(isLargeScreenProvider)) {
       final first = await showTvPinEntry(context, 'New PIN');
       if (first == null || !mounted) return;
       final second = await showTvPinEntry(context, 'Confirm PIN');
@@ -251,11 +251,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return _settings(value, pin.asData?.value == true);
       },
     );
-    if (ref.watch(isTvProvider) && content is TvSettingsView) return content;
+    if (ref.watch(isLargeScreenProvider) && content is TvSettingsView) {
+      return content;
+    }
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: widget.embedded ? null : AppBar(title: const Text('Settings')),
-      body: TvPageNavigation(enabled: ref.watch(isTvProvider), child: content),
+      body: TvPageNavigation(
+        enabled: ref.watch(isLargeScreenProvider),
+        child: content,
+      ),
     );
   }
 
@@ -264,10 +269,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final account = session == null ? null : AccountInfo(session);
     final groups = <Widget>[
       _group('Playback', Icons.play_circle_outline, [
-        _choice('Default player', s.engine.name, {
-          'native': 'ExoPlayer · Standard',
-          'compatibility': 'Compatibility · media_kit',
-        }, (v) => _save({'engine': v})),
+        _choice(
+          'Default player',
+          ref.watch(isDesktopProvider) ? 'compatibility' : s.engine.name,
+          {
+            if (!ref.watch(isDesktopProvider)) 'native': 'ExoPlayer · Standard',
+            'compatibility': ref.watch(isDesktopProvider)
+                ? 'Windows · media_kit'
+                : 'Compatibility · media_kit',
+          },
+          (v) => _save({'engine': v}),
+        ),
         _choice(
           'Hide player controls',
           s.controlsSeconds.toString(),
@@ -484,7 +496,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
         const UpdateNotice(),
-        if (ref.read(isTvProvider))
+        if (ref.read(isLargeScreenProvider))
           _action(
             'App updates',
             'Check for new versions and install updates',
@@ -507,7 +519,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'Open source licences',
           'Licences for Flutter, the playback engines and bundled libraries.',
           Icons.description_outlined,
-          () => ref.read(isTvProvider)
+          () => ref.read(isLargeScreenProvider)
               ? Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const TvLicencesScreen(),
@@ -545,7 +557,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
     ];
-    if (ref.read(isTvProvider)) {
+    if (ref.read(isLargeScreenProvider)) {
       return TvSettingsView(
         groups: groups.cast<TvSettingsGroup>(),
         initialGroup: widget.groupIndex ?? 0,
@@ -635,7 +647,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     'nl': 'Dutch',
   };
   Widget _group(String title, IconData icon, List<Widget> children) =>
-      ref.read(isTvProvider)
+      ref.read(isLargeScreenProvider)
       ? TvSettingsGroup(
           title: title,
           entries: children.whereType<TvSetting>().toList(),
@@ -675,7 +687,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     String description,
     bool value,
     ValueChanged<bool> change,
-  ) => ref.read(isTvProvider)
+  ) => ref.read(isLargeScreenProvider)
       ? TvSetting(
           title: title,
           value: value ? 'On' : 'Off',
@@ -685,12 +697,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       : SwitchListTile(
           title: Text(
             title,
-            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+            style: TextStyle(
+              fontSize: ref.read(isLargeScreenProvider) ? 18 : 14,
+            ),
           ),
           subtitle: Text(
             description,
             style: TextStyle(
-              fontSize: ref.read(isTvProvider) ? 16 : 12,
+              fontSize: ref.read(isLargeScreenProvider) ? 16 : 12,
               color: AppColors.muted,
             ),
           ),
@@ -702,7 +716,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     String value,
     Map<String, String> options,
     ValueChanged<String> change,
-  ) => ref.read(isTvProvider)
+  ) => ref.read(isLargeScreenProvider)
       ? TvSetting(
           title: title,
           value: options[value] ?? value,
@@ -715,13 +729,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       : ListTile(
           title: Text(
             title,
-            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+            style: TextStyle(
+              fontSize: ref.read(isLargeScreenProvider) ? 18 : 14,
+            ),
           ),
           subtitle: Text(
             options[value] ?? value,
             style: TextStyle(
               color: AppColors.muted,
-              fontSize: ref.read(isTvProvider) ? 16 : 12,
+              fontSize: ref.read(isLargeScreenProvider) ? 16 : 12,
             ),
           ),
           trailing: const Icon(Icons.chevron_right, size: 20),
@@ -729,7 +745,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             final selected = await showDialog<String>(
               context: context,
               builder: (context) => TvPageNavigation(
-                enabled: ref.read(isTvProvider),
+                enabled: ref.read(isLargeScreenProvider),
                 child: SimpleDialog(
                   title: Text(title),
                   children: [
@@ -756,25 +772,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     String description,
     IconData icon,
     VoidCallback? action,
-  ) => ref.read(isTvProvider)
+  ) => ref.read(isLargeScreenProvider)
       ? TvSetting(title: title, description: description, onPressed: action)
       : ListTile(
           enabled: action != null,
           leading: Icon(icon, size: 20),
           title: Text(
             title,
-            style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 14),
+            style: TextStyle(
+              fontSize: ref.read(isLargeScreenProvider) ? 18 : 14,
+            ),
           ),
           subtitle: Text(
             description,
             style: TextStyle(
               color: AppColors.muted,
-              fontSize: ref.read(isTvProvider) ? 16 : 12,
+              fontSize: ref.read(isLargeScreenProvider) ? 16 : 12,
             ),
           ),
           onTap: action,
         );
-  Widget _info(String name, String value) => ref.read(isTvProvider)
+  Widget _info(String name, String value) => ref.read(isLargeScreenProvider)
       ? TvSetting(title: name, value: value)
       : Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -786,7 +804,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   name,
                   style: TextStyle(
                     color: AppColors.muted,
-                    fontSize: ref.read(isTvProvider) ? 16 : 12,
+                    fontSize: ref.read(isLargeScreenProvider) ? 16 : 12,
                   ),
                 ),
               ),
@@ -796,7 +814,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 child: Text(
                   value,
                   textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: ref.read(isTvProvider) ? 18 : 13),
+                  style: TextStyle(
+                    fontSize: ref.read(isLargeScreenProvider) ? 18 : 13,
+                  ),
                 ),
               ),
             ],
@@ -935,7 +955,7 @@ class _CategorySettingsScreenState
                   canRequestFocus: false,
                   skipTraversal: true,
                   onKeyEvent: (_, event) {
-                    if (ref.read(isTvProvider) &&
+                    if (ref.read(isLargeScreenProvider) &&
                         (event is KeyDownEvent || event is KeyRepeatEvent) &&
                         event.logicalKey == LogicalKeyboardKey.arrowDown) {
                       _tvList.currentState?.focusSelected(remember: true);
@@ -1000,7 +1020,7 @@ class _CategorySettingsScreenState
                     );
               }
 
-              if (ref.watch(isTvProvider)) {
+              if (ref.watch(isLargeScreenProvider)) {
                 return TvRemoteList(
                   key: _tvList,
                   autofocus: true,
@@ -1116,7 +1136,7 @@ class _CategorySettingsScreenState
         ),
       ],
     );
-    return ref.watch(isTvProvider)
+    return ref.watch(isLargeScreenProvider)
         ? TvUtilityScaffold(title: 'Manage categories', child: content)
         : Scaffold(
             appBar: AppBar(title: const Text('Manage categories')),
@@ -1232,7 +1252,7 @@ class FavoriteOrderScreen extends ConsumerWidget {
           });
         }
 
-        if (ref.watch(isTvProvider)) {
+        if (ref.watch(isLargeScreenProvider)) {
           return TvRemoteList(
             autofocus: true,
             extent: 54,
@@ -1280,7 +1300,7 @@ class FavoriteOrderScreen extends ConsumerWidget {
         );
       },
     );
-    return ref.watch(isTvProvider)
+    return ref.watch(isLargeScreenProvider)
         ? TvUtilityScaffold(title: 'Favourite channel order', child: content)
         : Scaffold(
             appBar: AppBar(title: const Text('Favourite channel order')),

@@ -6,9 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/app_update.dart';
+import '../data/windows_update_platform.dart';
 
 final updateControllerProvider = ChangeNotifierProvider<UpdateController>(
-  (ref) => UpdateController(AndroidUpdatePlatform(), UpdateTransport()),
+  (ref) => Platform.isWindows
+      ? UpdateController(
+          WindowsUpdatePlatform(),
+          UpdateTransport(target: UpdateTarget.windows),
+          manifestUrl: windowsUpdateManifestUrl,
+        )
+      : UpdateController(AndroidUpdatePlatform(), UpdateTransport()),
 );
 
 enum UpdateStage {
@@ -24,13 +31,18 @@ enum UpdateStage {
 }
 
 class UpdateController extends ChangeNotifier {
-  UpdateController(this.platform, this.transport);
+  UpdateController(
+    this.platform,
+    this.transport, {
+    this.manifestUrl = appUpdateManifestUrl,
+  });
   final UpdatePlatform platform;
   final UpdateTransport transport;
   UpdateDevice? device;
   AppUpdate? update;
   UpdateStage stage = UpdateStage.idle;
-  String get url => appUpdateManifestUrl;
+  final String manifestUrl;
+  String get url => manifestUrl;
   DateTime? lastCheck;
   String? error, _path;
   int received = 0;
@@ -105,7 +117,9 @@ class UpdateController extends ChangeNotifier {
       if (_disposed) return;
       if (candidate.code > device!.code && candidate.minSdk > device!.sdk) {
         throw UpdateFailure(
-          'Version ${candidate.version} needs Android API ${candidate.minSdk} or newer. This device uses API ${device!.sdk}.',
+          candidate.target == UpdateTarget.windows
+              ? 'This update needs Windows build ${candidate.minSdk} or newer. Update Windows and try again.'
+              : 'Version ${candidate.version} needs Android API ${candidate.minSdk} or newer. This device uses API ${device!.sdk}.',
         );
       }
       // Throttle failed automatic attempts too, without claiming they succeeded.
@@ -194,7 +208,7 @@ class UpdateController extends ChangeNotifier {
   static String describe(Object e) {
     if (e is UpdateFailure) return e.message;
     if (e is MissingPluginException) {
-      return 'App updates are available in the Android app.';
+      return 'App updates are unavailable in this build.';
     }
     if (e is TimeoutException) {
       return 'The update server took too long to respond. Check your connection and try again.';
@@ -210,7 +224,7 @@ class UpdateController extends ChangeNotifier {
       return 'The update server has a TLS certificate problem. Check the device date and ask the administrator to check HTTPS.';
     }
     if (e is FileSystemException) {
-      return 'The APK could not be saved. Free some device storage and try again.';
+      return 'The update file could not be saved. Free some device storage and try again.';
     }
     return 'The update could not finish. Check your connection and update address, then try again.';
   }

@@ -155,7 +155,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         break;
       }
     }
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     if (tv) {
       return TvMovieView(
         item: widget.item,

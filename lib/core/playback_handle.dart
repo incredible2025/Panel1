@@ -7,14 +7,15 @@ import 'package:media_kit_video/media_kit_video.dart' as mkv;
 import '../data/app_settings.dart';
 import 'app_brand.dart';
 import 'player_tracks.dart';
+import 'providers.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
-final playbackFactoryProvider = Provider<PlaybackFactory>(
-  (ref) =>
-      (uri, engine) => engine == PlayerEngine.compatibility
+final playbackFactoryProvider = Provider<PlaybackFactory>((ref) {
+  final desktop = ref.watch(isDesktopProvider);
+  return (uri, engine) => desktop || engine == PlayerEngine.compatibility
       ? CompatibilityPlayback(uri)
-      : NativePlayback(uri),
-);
+      : NativePlayback(uri);
+});
 
 abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   PlaybackHandle() : super(const VideoPlayerValue(duration: Duration.zero));
@@ -101,8 +102,9 @@ class NativePlayback extends PlaybackHandle {
 /// Normalizes the compatibility engine into the same state used by the native
 /// player. The UI, recovery policy and serialized history writes stay shared.
 class CompatibilityPlayback extends PlaybackHandle {
-  CompatibilityPlayback(this.uri);
+  CompatibilityPlayback(this.uri, {this.audioOutput});
   final Uri uri;
+  final String? audioOutput;
   late mk.Player _player;
   late mkv.VideoController _video;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -127,6 +129,12 @@ class CompatibilityPlayback extends PlaybackHandle {
       ),
     );
     _created = true;
+    if (audioOutput != null && _player.platform is mk.NativePlayer) {
+      await (_player.platform as mk.NativePlayer).setProperty(
+        'ao',
+        audioOutput!,
+      );
+    }
     _video = mkv.VideoController(_player);
     for (final stream in <Stream<dynamic>>[
       _player.stream.position,

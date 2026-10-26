@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'tv_controls.dart';
 import 'tv_glass_theme.dart';
@@ -116,7 +117,10 @@ class _TvUtilityScaffoldState extends State<TvUtilityScaffold> {
                                 Expanded(child: widget.child),
                                 const SizedBox(height: 10),
                                 Text(
-                                  widget.hint,
+                                  defaultTargetPlatform ==
+                                          TargetPlatform.windows
+                                      ? 'Mouse / arrows  Browse    Enter  Select    F11  Fullscreen    Esc  Back'
+                                      : widget.hint,
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: TvGlass.muted,

@@ -212,7 +212,9 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.headlineLarge
                           ?.copyWith(
-                            fontSize: ref.watch(isTvProvider) ? 36 : 30,
+                            fontSize: ref.watch(isLargeScreenProvider)
+                                ? 36
+                                : 30,
                           ),
                     ),
                     const SizedBox(height: 12),

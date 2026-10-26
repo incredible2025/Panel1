@@ -1,4 +1,4 @@
-name: Ultravpn-player Android release
+name: Ultravpn-player Android and Windows release
 
 on:
   push:
@@ -59,6 +59,20 @@ jobs:
           path: build/qa/tv-redesign-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Render desktop previews
+        if: always() && github.event_name == 'pull_request'
+        env:
+          STREAMLINE_QA_ART: test/fixtures/glass/mountains.jpg
+          STREAMLINE_QA_ART_DIR: test/fixtures/glass
+        run: flutter test --dart-define=CAPTURE_UI=true --dart-define=CAPTURE_UI_ART=true test/ui_test.dart --plain-name "Windows desktop"
+      - name: Upload desktop previews
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-previews
+          path: build/qa/desktop-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
   android-compile:
     if: github.event_name == 'pull_request' && !github.event.pull_request.draft
@@ -79,8 +93,55 @@ jobs:
       - name: Compile Android app
         run: flutter build apk --debug
 
-  release:
+  windows-build:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     needs: validate
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Check installer and media tools
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe")) {
+            choco install innosetup --version=6.4.3 -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          }
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Media test tooling installation failed.' }
+          }
+      - name: Compile Windows desktop
+        run: flutter build windows --release
+      - name: Package installer and portable app
+        run: ./scripts/build_windows_release.ps1
+      - name: Exercise portable and installed Windows app
+        run: ./scripts/test_windows_package.ps1
+      - name: Upload Windows smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-reports
+          path: build/windows-smoke/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Windows distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-distribution
+          path: build/windows-distribution/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: [validate, windows-build]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -143,6 +204,11 @@ jobs:
             build/remote-update.zip
           if-no-files-found: error
           retention-days: 30
+      - name: Download verified Windows distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-distribution
+          path: build/windows-distribution
       - name: Publish direct APK download
         env:
           GH_TOKEN: ${{ github.token }}
@@ -152,7 +218,7 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
-          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip)
+          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip build/windows-distribution/*)
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then

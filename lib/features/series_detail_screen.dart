@@ -29,7 +29,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
     final protection = protectedLibraryView(context, ref, widget.item);
     if (protection != null) return protection;
     final detail = ref.watch(seriesDetailProvider(widget.item));
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final series = detail.asData?.value;
     final seasons = series?.seasons.keys.toList() ?? <String>[];
     seasons.sort((a, b) {

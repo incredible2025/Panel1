@@ -10,6 +10,11 @@ import 'public_release_notes.dart';
 const appUpdateManifestUrl = 'https://ultra-vpn.store/dl/app/update.json';
 
 const maxApkBytes = 512 * 1024 * 1024;
+final windowsUpdateManifestUrl = Uri.parse(
+  appUpdateManifestUrl,
+).resolve('windows-update.json').toString();
+
+enum UpdateTarget { android, windows }
 
 class UpdateFailure implements Exception {
   const UpdateFailure(this.message);
@@ -40,23 +45,32 @@ class AppUpdate {
     required this.minSdk,
     required this.notes,
     required this.packageId,
+    this.target = UpdateTarget.android,
   });
   final String version, sha256, notes, packageId;
   final int code, bytes, minSdk;
   final Uri url;
+  final UpdateTarget target;
+  String get fileExtension => target == UpdateTarget.windows ? 'exe' : 'apk';
 
   String get publicNotes {
     final safe = publicReleaseNotes(notes);
     return safe.isEmpty ? defaultReleaseNotes : safe;
   }
 
-  factory AppUpdate.parse(String source, {Uri? sourceUri}) {
+  factory AppUpdate.parse(
+    String source, {
+    Uri? sourceUri,
+    UpdateTarget target = UpdateTarget.android,
+  }) {
     try {
       final json = jsonDecode(source) as Map<String, dynamic>;
       final version = json['versionName'] as String;
       final code = json['versionCode'] as int;
       final size = json['sizeBytes'] as int;
-      final minSdk = json['minSdk'] as int;
+      final minSdk =
+          json[target == UpdateTarget.windows ? 'minWindowsBuild' : 'minSdk']
+              as int;
       final hash = json['sha256'] as String;
       final notes = json['releaseNotes'] as String? ?? '';
       final packageId = json['applicationId'] as String;
@@ -66,14 +80,25 @@ class AppUpdate {
           code <= 0 ||
           size <= 0 ||
           size > maxApkBytes ||
-          minSdk < 24 ||
+          minSdk < (target == UpdateTarget.windows ? 19041 : 24) ||
           notes.length > 20000 ||
-          packageId != 'com.streamline.iptv' ||
+          packageId !=
+              (target == UpdateTarget.windows
+                  ? 'com.streamline.iptv.windows'
+                  : 'com.streamline.iptv') ||
+          (target == UpdateTarget.windows &&
+              json['platform'] != 'windows-x64') ||
           !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(hash)) {
         throw const FormatException();
       }
-      final address = json['apkUrl'] as String;
+      final address =
+          json[target == UpdateTarget.windows ? 'installerUrl' : 'apkUrl']
+              as String;
       if (address.trim().isEmpty) throw const FormatException();
+      if (target == UpdateTarget.windows &&
+          !Uri.parse(address).path.toLowerCase().endsWith('.exe')) {
+        throw const FormatException();
+      }
       return AppUpdate(
         version: version,
         code: code,
@@ -85,6 +110,7 @@ class AppUpdate {
         minSdk: minSdk,
         notes: notes,
         packageId: packageId,
+        target: target,
       );
     } on UpdateFailure {
       rethrow;
@@ -173,8 +199,10 @@ class UpdateTransport {
   UpdateTransport({
     HttpClient Function()? clientFactory,
     this.operationTimeout = const Duration(minutes: 15),
+    this.target = UpdateTarget.android,
   }) : _clientFactory = clientFactory ?? HttpClient.new;
   final Duration operationTimeout;
+  final UpdateTarget target;
   final HttpClient Function() _clientFactory;
   HttpClient? _active;
   bool _cancelled = false;
@@ -253,7 +281,11 @@ class UpdateTransport {
         throw const UpdateFailure('The update file exceeds the 64 KB limit.');
       }
     }
-    return AppUpdate.parse(utf8.decode(buffer), sourceUri: remote.uri);
+    return AppUpdate.parse(
+      utf8.decode(buffer),
+      sourceUri: remote.uri,
+      target: target,
+    );
   });
   Future<String> download(
     AppUpdate update,
@@ -263,7 +295,7 @@ class UpdateTransport {
     final folder = Directory(directory);
     await folder.create(recursive: true);
     final partial = File('$directory/update.part');
-    final apk = File('$directory/update.apk');
+    final apk = File('$directory/update.${update.fileExtension}');
     if (await apk.exists()) await apk.delete();
     final output = await partial.open(mode: FileMode.write);
     var closed = false;

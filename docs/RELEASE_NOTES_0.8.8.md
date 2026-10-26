@@ -1,0 +1,2 @@
+- Added a Windows desktop edition.
+- Improved desktop playback and keyboard controls.

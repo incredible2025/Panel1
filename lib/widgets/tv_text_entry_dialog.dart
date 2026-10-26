@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'tv_controls.dart';
 import 'tv_glass_theme.dart';
@@ -174,6 +175,34 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      return AlertDialog(
+        title: Text(widget.label),
+        content: SizedBox(
+          width: 440,
+          child: TextField(
+            controller: widget.controller,
+            autofocus: true,
+            obscureText: widget.password,
+            maxLength: widget.numericOnly ? 8 : null,
+            inputFormatters: widget.numericOnly
+                ? [FilteringTextInputFormatter.digitsOnly]
+                : null,
+            onSubmitted: (_) => Navigator.pop(context, true),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Done'),
+          ),
+        ],
+      );
+    }
     final footer = <(String, VoidCallback)>[
       if (widget.password)
         (

@@ -41,7 +41,7 @@ class _MyListButtonState extends ConsumerState<MyListButton> {
     final collection = ref.watch(favoritesProvider);
     final saved =
         collection.asData?.value.any((item) => item == widget.item) ?? false;
-    if (ref.watch(isTvProvider)) {
+    if (ref.watch(isLargeScreenProvider)) {
       return TvControl(
         onPressed: _saving || collection.isLoading
             ? () {}

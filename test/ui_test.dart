@@ -5,7 +5,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
-    show LicenseRegistry, LicenseEntryWithLineBreaks;
+    show
+        LicenseRegistry,
+        LicenseEntryWithLineBreaks,
+        debugDefaultTargetPlatformOverride;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +36,7 @@ import 'package:streamline_iptv/widgets/tv_poster_browser.dart';
 import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
+import 'package:streamline_iptv/features/tv_dashboard_screen.dart';
 import 'package:streamline_iptv/data/public_release_notes.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
@@ -262,6 +266,7 @@ Future<void> _pumpApp(
   WidgetTester tester, {
   required _MemoryStore store,
   bool tv = false,
+  bool desktop = false,
   bool signedIn = true,
   Widget? screen,
   _TestApi? api,
@@ -290,6 +295,7 @@ Future<void> _pumpApp(
         storeProvider.overrideWithValue(store),
         sessionProvider.overrideWith((ref) => signedIn ? _account : null),
         isTvProvider.overrideWithValue(tv),
+        isDesktopProvider.overrideWithValue(desktop),
         startupUpdatesEnabledProvider.overrideWithValue(startupUpdates),
         if (speed != null) speedTestFactoryProvider.overrideWithValue(speed),
         if (diagnosis != null)
@@ -517,6 +523,7 @@ Future<void> _remoteSort(
 
 void _uiTest(String description, WidgetTesterCallback callback) {
   testWidgets(description, (tester) async {
+    final originalPlatform = debugDefaultTargetPlatformOverride;
     try {
       await tester.runAsync(() async {
         await installQaArtwork();
@@ -546,11 +553,78 @@ void _uiTest(String description, WidgetTesterCallback callback) {
     } finally {
       // The framework checks painting globals before suite teardown runs.
       restoreQaArtwork();
+      debugDefaultTargetPlatformOverride = originalPlatform;
     }
   });
 }
 
 void main() {
+  _uiTest('Windows desktop login uses physical text fields and F11', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final calls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('streamline/platform'),
+      (call) async {
+        calls.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('streamline/platform'),
+        null,
+      ),
+    );
+    await _pumpApp(
+      tester,
+      store: _MemoryStore(),
+      signedIn: false,
+      desktop: true,
+      viewport: const Size(1280, 720),
+    );
+    expect(find.byType(TextFormField), findsNWidgets(2));
+    await tester.enterText(find.byType(TextFormField).first, 'desktop-user');
+    await tester.enterText(find.byType(TextFormField).last, 'test-only');
+    await tester.sendKeyEvent(LogicalKeyboardKey.f11);
+    await tester.pumpAndSettle();
+    expect(calls, contains('toggleFullscreen'));
+    expect(find.byType(TvTextEntryDialog), findsNothing);
+    await _screenshot(tester, 'desktop-login');
+    expect(tester.takeException(), isNull);
+  });
+  for (final size in [
+    const Size(960, 600),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest('Windows desktop Glass browsing and physical search at $size', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        desktop: true,
+        viewport: size,
+      );
+      expect(find.byType(TvDashboardScreen), findsOneWidget);
+      await tester.tap(find.text('Movies').hitTestable());
+      await tester.pumpAndSettle();
+      await _screenshot(tester, 'desktop-movies-${size.width.toInt()}');
+      await tester.tap(find.text('Search').hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Zephyr');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.text('Zephyr').hitTestable(), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final tv in [false, true]) {
     _uiTest('Update notes protect private details on ${tv ? 'TV' : 'mobile'}', (
       tester,

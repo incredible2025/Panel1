@@ -161,7 +161,7 @@ class _ConnectionDiagnosisScreenState
     final next = diagnosticStages.values.elementAt(
       completed.clamp(0, diagnosticStages.length - 1),
     );
-    if (ref.watch(isTvProvider)) {
+    if (ref.watch(isLargeScreenProvider)) {
       return TvDiagnosisView(
         report: report,
         busy: _busy,
@@ -179,7 +179,7 @@ class _ConnectionDiagnosisScreenState
     return Scaffold(
       appBar: AppBar(title: const Text('Connection diagnosis')),
       body: TvPageNavigation(
-        enabled: ref.watch(isTvProvider),
+        enabled: ref.watch(isLargeScreenProvider),
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(

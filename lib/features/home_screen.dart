@@ -23,7 +23,7 @@ class HomeScreen extends ConsumerWidget {
   final VoidCallback onSettings;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final s = ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     final unlocked = ref.watch(parentalSessionProvider);
     bool visible(MediaItem item) =>

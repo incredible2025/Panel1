@@ -24,7 +24,7 @@ class MovieShelf extends ConsumerWidget {
   final VoidCallback? onViewAll;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final s = ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     final width = (tv ? 174.0 : 140.0) * (s.largePosters ? 1.22 : 1);
     return Padding(

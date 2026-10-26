@@ -91,7 +91,7 @@ class _StartupUpdateGateState extends ConsumerState<StartupUpdateGate> {
     final controller = ref.watch(updateControllerProvider);
     final available =
         controller.update != null && controller.stage != UpdateStage.failed;
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final content = ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 720),
       child: Column(

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/providers.dart';
 import 'core/update_controller.dart';
 import 'core/app_brand.dart';
+import 'core/desktop_controls.dart';
 import 'core/design_system.dart';
 import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
@@ -48,7 +49,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final settings =
         ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -69,7 +70,14 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
                 MediaQuery.disableAnimationsOf(context) ||
                 settings.reducedMotion,
           ),
-          child: AppBackdrop(cinema: settings.theme == 'cinema', child: child!),
+          child: ref.watch(isDesktopProvider)
+              ? DesktopControls(
+                  child: AppBackdrop(
+                    cinema: settings.theme == 'cinema',
+                    child: child!,
+                  ),
+                )
+              : AppBackdrop(cinema: settings.theme == 'cinema', child: child!),
         ),
         shortcuts: <ShortcutActivator, Intent>{
           ...WidgetsApp.defaultShortcuts,

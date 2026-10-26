@@ -163,7 +163,7 @@ class _PinDialogState extends ConsumerState<_PinDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => ref.watch(isTvProvider)
+  Widget build(BuildContext context) => ref.watch(isLargeScreenProvider)
       ? AlertDialog(
           title: Text(widget.reason),
           content: SizedBox(

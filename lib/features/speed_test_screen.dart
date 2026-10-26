@@ -144,11 +144,11 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
         : result.notices.isNotEmpty
         ? 'Test finished with notices'
         : 'Your results';
-    if (ref.watch(isTvProvider)) return _television(heading, result);
+    if (ref.watch(isLargeScreenProvider)) return _television(heading, result);
     return Scaffold(
       appBar: AppBar(title: const Text('Speed test')),
       body: TvPageNavigation(
-        enabled: ref.watch(isTvProvider),
+        enabled: ref.watch(isLargeScreenProvider),
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(

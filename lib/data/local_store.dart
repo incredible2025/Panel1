@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'app_settings.dart';
@@ -7,6 +8,8 @@ import 'app_settings.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sqlite;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'models.dart';
 
@@ -24,10 +27,22 @@ class LocalStore {
     String? databasePath,
     FlutterSecureStorage? secureStorage,
   }) async {
-    final factory = databaseFactory ?? sqlite.databaseFactory;
+    if (databaseFactory == null && Platform.isWindows) sqfliteFfiInit();
+    final factory =
+        databaseFactory ??
+        (Platform.isWindows ? databaseFactoryFfi : sqlite.databaseFactory);
+    final windowsDirectory = databasePath == null && Platform.isWindows
+        ? await getApplicationSupportDirectory()
+        : null;
+    if (windowsDirectory != null) {
+      await windowsDirectory.create(recursive: true);
+    }
     final database = await factory.openDatabase(
       databasePath ??
-          path.join(await factory.getDatabasesPath(), 'streamline.db'),
+          path.join(
+            windowsDirectory?.path ?? await factory.getDatabasesPath(),
+            'streamline.db',
+          ),
       options: sqlite.OpenDatabaseOptions(
         version: 4,
         onCreate: (db, _) async {

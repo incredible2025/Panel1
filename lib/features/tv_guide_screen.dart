@@ -53,7 +53,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   bool _syncing = false;
   bool _jumpPending = true;
   int _dayOffset = 0;
-  double get _rowHeight => ref.read(isTvProvider) ? 56.0 : 90.0;
+  double get _rowHeight => ref.read(isLargeScreenProvider) ? 56.0 : 90.0;
   double _hourWidth = 170;
 
   DateTime get _day {
@@ -112,7 +112,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
         : now.isBefore(entry.end)
         ? 'ON NOW'
         : 'EARLIER';
-    final play = await (ref.read(isTvProvider)
+    final play = await (ref.read(isLargeScreenProvider)
         ? showTvReadingDialog(
             context,
             entry.title,
@@ -220,7 +220,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tv = ref.watch(isTvProvider);
+    final tv = ref.watch(isLargeScreenProvider);
     final preferences = ref.watch(settingsProvider);
     final unlocked = ref.watch(parentalSessionProvider);
     if (preferences.isLoading) {

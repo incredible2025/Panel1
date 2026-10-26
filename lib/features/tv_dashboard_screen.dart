@@ -411,6 +411,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                                         child: Text(
                                           info?.expiring == true
                                               ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
+                                              : ref.watch(isDesktopProvider)
+                                              ? 'Mouse / arrows  Browse     Enter  Select     F11  Fullscreen'
                                               : 'D-pad  Browse     OK  Details / watch     Back  Home',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,

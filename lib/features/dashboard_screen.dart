@@ -315,7 +315,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isTv = ref.watch(isTvProvider);
+    final isTv = ref.watch(isLargeScreenProvider);
     final settings = ref.watch(settingsProvider);
     final unlocked = ref.watch(parentalSessionProvider);
     final preferences = settings.asData?.value ?? const AppSettings();
@@ -813,7 +813,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final search = Focus(
         canRequestFocus: false,
         skipTraversal: true,
-        onKeyEvent: ref.read(isTvProvider) ? _searchKey : null,
+        onKeyEvent: ref.read(isLargeScreenProvider) ? _searchKey : null,
         child: TextField(
           controller: _search,
           focusNode: _searchFocus,
@@ -879,7 +879,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     onKeyEvent: (node, event) {
                       if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
                           event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-                          ref.read(isTvProvider)) {
+                          ref.read(isLargeScreenProvider)) {
                         _categoryStripKey.currentState?.focusLastFocused();
                         return KeyEventResult.handled;
                       }
@@ -933,7 +933,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ],
         ],
       );
-      if (!ref.read(isTvProvider) && constraints.maxWidth > 760) {
+      if (!ref.read(isLargeScreenProvider) && constraints.maxWidth > 760) {
         return Row(
           children: [
             SizedBox(
@@ -1029,7 +1029,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _categoryStrip(List<Category> supplied) {
     final categories = _orderedCategories(supplied);
-    if (ref.read(isTvProvider)) {
+    if (ref.read(isLargeScreenProvider)) {
       final listOnly = _myListOnly.contains(_kind);
       return TvCategoryStrip(
         key: _categoryStripKey,

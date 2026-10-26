@@ -889,6 +889,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 Text(
                   tv
                       ? 'Use your remote to navigate and select'
+                      : ref.watch(isDesktopProvider)
+                      ? 'Windows desktop · F11 fullscreen'
                       : 'Mobile & Android TV',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: AppColors.subdued,

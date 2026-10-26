@@ -61,7 +61,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
       UpdateStage.installer => 'Installer opened',
       UpdateStage.failed => 'Update needs attention',
     };
-    if (ref.watch(isTvProvider)) return _television(c, status);
+    if (ref.watch(isLargeScreenProvider)) return _television(c, status);
     return Scaffold(
       appBar: AppBar(title: const Text('App updates')),
       body: Center(
@@ -136,8 +136,10 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                 child: const Text('Check for updates'),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Updates download only when you choose. Android asks you to approve installation.',
+              Text(
+                ref.watch(isDesktopProvider)
+                    ? 'Updates download only when you choose. Follow the Windows installer and close the player when asked.'
+                    : 'Updates download only when you choose. Android asks you to approve installation.',
               ),
             ],
           ),
@@ -243,8 +245,10 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                           style: const TextStyle(fontSize: 15, height: 1.5),
                         ),
                         const SizedBox(height: 20),
-                        const Text(
-                          'Updates download only when you choose. Android asks you to approve installation.',
+                        Text(
+                          ref.watch(isDesktopProvider)
+                              ? 'Updates download only when you choose. Follow the Windows installer and close the player when asked.'
+                              : 'Updates download only when you choose. Android asks you to approve installation.',
                           style: TextStyle(
                             fontSize: 13,
                             height: 1.5,

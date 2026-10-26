@@ -28,6 +28,7 @@ SetupIconFile=runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\Ultravpn-player.exe
 VersionInfoProductName=Ultravpn-player
 VersionInfoVersion={#AppVersion}.{#BuildNumber}
+VersionInfoTextVersion={#AppVersion}.{#BuildNumber}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

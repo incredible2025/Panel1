@@ -40,8 +40,9 @@ if (-not (Test-Path -LiteralPath $taskIscc)) { throw 'Inno Setup 6 is required.'
 if ($LASTEXITCODE -ne 0) { throw 'Windows installer compilation failed.' }
 $taskInstaller = Join-Path $taskOutput 'Ultravpn-player-Setup.exe'
 $taskInstallerInfo = (Get-Item -LiteralPath $taskInstaller).VersionInfo
-if ($taskInstallerInfo.ProductName -ne 'Ultravpn-player' -or $taskInstallerInfo.FileVersion -ne "$taskVersion.$taskBuild") {
-    throw 'Windows installer identity verification failed.'
+$taskInstallerVersion = @($taskInstallerInfo.FileMajorPart, $taskInstallerInfo.FileMinorPart, $taskInstallerInfo.FileBuildPart, $taskInstallerInfo.FilePrivatePart) -join '.'
+if ($taskInstallerInfo.ProductName.Trim() -ne 'Ultravpn-player' -or $taskInstallerVersion -ne "$taskVersion.$taskBuild") {
+    throw "Windows installer identity verification failed: product '$($taskInstallerInfo.ProductName)', version '$taskInstallerVersion'."
 }
 Compress-Archive -Path (Join-Path $taskRelease '*') -DestinationPath (Join-Path $taskOutput 'Ultravpn-player-Windows-x64.zip') -Force
 $taskRemote = Join-Path $taskRoot 'build/windows-remote-update'

@@ -98,7 +98,7 @@ class WindowsUpdatePlatform implements UpdatePlatform {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        r'$v=(Get-Item -LiteralPath $env:ULTRAVPN_UPDATE_INSTALLER).VersionInfo; [Console]::Write(($v.ProductName+"|"+$v.FileVersion))',
+        r'$v=(Get-Item -LiteralPath $env:ULTRAVPN_UPDATE_INSTALLER).VersionInfo; $n=@($v.FileMajorPart,$v.FileMinorPart,$v.FileBuildPart,$v.FilePrivatePart)-join "."; [Console]::Write(($v.ProductName.Trim()+"|"+$n))',
       ],
       environment: {'ULTRAVPN_UPDATE_INSTALLER': path},
     ).timeout(const Duration(seconds: 10));

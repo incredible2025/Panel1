@@ -22,10 +22,18 @@ function Invoke-DesktopSmoke([string]$Executable, [string]$Name) {
         throw "Desktop smoke timed out: $Name"
     }
     $taskProcess.Refresh()
-    if (-not (Test-Path -LiteralPath $taskReport)) { throw "Desktop did not produce its verification report: $Name" }
+    if (-not (Test-Path -LiteralPath $taskReport)) {
+        Get-Content -LiteralPath (Join-Path $taskRoot "build/windows-smoke/$Name.stderr.log") -Tail 30 |
+            ForEach-Object { $_ -replace 'https?://\S+', '[local test media]' }
+        throw "Desktop did not produce its verification report: $Name"
+    }
     $taskResult = Get-Content -LiteralPath $taskReport -Raw | ConvertFrom-Json
     $taskResult | ConvertTo-Json -Depth 5 | Write-Output
-    if ($taskProcess.ExitCode -ne 0 -or -not $taskResult.passed) { throw "Desktop smoke failed: $Name" }
+    if ($taskProcess.ExitCode -ne 0 -or -not $taskResult.passed) {
+        Get-Content -LiteralPath (Join-Path $taskRoot "build/windows-smoke/$Name.stderr.log") -Tail 30 |
+            ForEach-Object { $_ -replace 'https?://\S+', '[local test media]' }
+        throw "Desktop smoke failed: $Name"
+    }
 }
 
 $taskTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }

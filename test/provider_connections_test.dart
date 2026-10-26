@@ -408,6 +408,34 @@ void main() {
     },
   );
 
+  test(
+    'an old network certificate failure cannot poison a newer network selection',
+    () async {
+      final manager = ProviderConnections();
+      final gate = Completer<void>();
+      final pending = manager.run(
+        Uri.parse(providerPortalUrl),
+        ProviderRoute.api,
+        (_) => gate.future,
+      );
+      final failed = expectLater(pending, throwsA(isA<HandshakeException>()));
+      manager.reset();
+      gate.completeError(const HandshakeException('old network certificate'));
+      await failed;
+      final result = await manager.run(
+        Uri.parse(providerPortalUrl),
+        ProviderRoute.api,
+        (base) async {
+          if (base.scheme == 'https') {
+            throw const SocketException('Connection refused');
+          }
+          return base.scheme;
+        },
+      );
+      expect(result, 'http');
+    },
+  );
+
   for (final (index, location) in [
     'http://liquidmetal.vip/player_api.php',
     'https://other.example/player_api.php',

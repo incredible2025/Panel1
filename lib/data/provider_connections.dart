@@ -128,6 +128,7 @@ class ProviderConnections {
       remember(first);
       return value;
     } catch (error) {
+      if (revision != _revision) rethrow;
       if (isCertificateFailure(error)) _secureOnly = true;
       if (_secureOnly || !canSwitchProviderTransport(error)) rethrow;
       final second = Uri.parse(
@@ -138,7 +139,9 @@ class ProviderConnections {
         remember(second);
         return value;
       } catch (error) {
-        if (isCertificateFailure(error)) _secureOnly = true;
+        if (revision == _revision && isCertificateFailure(error)) {
+          _secureOnly = true;
+        }
         rethrow;
       }
     }

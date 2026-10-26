@@ -222,6 +222,7 @@ Future<void> runWindowsSmoke(List<String> args) async {
       }),
     );
   } catch (error) {
+    if (playback != null) observations['failureState'] = playback.debugState;
     await report.writeAsString(
       jsonEncode({
         'passed': false,

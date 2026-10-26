@@ -107,6 +107,17 @@ class CompatibilityPlayback extends PlaybackHandle {
   final Uri uri;
   final String? audioOutput;
   final void Function(String)? onDiagnostic;
+  String _initializationStage = 'created';
+  Map<String, Object?> get debugState => {
+    'initialization': _initializationStage,
+    'durationMs': _created ? _player.state.duration.inMilliseconds : 0,
+    'positionMs': _created ? _player.state.position.inMilliseconds : 0,
+    'nativeWidth': _created ? _player.state.width : null,
+    'nativeHeight': _created ? _player.state.height : null,
+    'buffering': _created ? _player.state.buffering : false,
+    'videoOutput': hasVideoOutput,
+    'error': value.hasError,
+  };
   late final _recovery = NativePlaybackRecovery(() {
     if (_dead) return;
     if (!_mediaReady.isCompleted) {
@@ -157,6 +168,10 @@ class CompatibilityPlayback extends PlaybackHandle {
     _video = mkv.VideoController(_player);
     _videoCreated = true;
     _video.rect.addListener(_sync);
+    // media_kit initializes its renderer in a post-frame callback. A static or
+    // reduced-motion screen may otherwise never schedule that next frame.
+    WidgetsBinding.instance.scheduleFrame();
+    _initializationStage = 'renderer';
     for (final stream in <Stream<dynamic>>[
       _player.stream.position,
       _player.stream.duration,
@@ -185,11 +200,14 @@ class CompatibilityPlayback extends PlaybackHandle {
         }
       }),
     );
+    _initializationStage = 'open';
     await _player.open(mk.Media(uri.toString()), play: false);
+    _initializationStage = 'metadata';
     _sync();
     await _mediaReady.future;
     if (_dead) return;
     value = value.copyWith(isInitialized: true);
+    _initializationStage = 'ready';
     _sync();
   }
 

@@ -25,12 +25,20 @@ Future<void> runWindowsSmoke(List<String> args) async {
   LocalStore? store;
   CompatibilityPlayback? playback;
   final secure = const FlutterSecureStorage();
+  final surface = ValueNotifier<PlaybackHandle?>(null);
   final secureKey = 'ultravpn.smoke.${DateTime.now().microsecondsSinceEpoch}';
   try {
     runApp(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
-          body: Center(child: Text('Ultravpn-player Windows verification')),
+          body: ValueListenableBuilder<PlaybackHandle?>(
+            valueListenable: surface,
+            builder: (_, player, _) =>
+                player?.buildView() ??
+                const Center(
+                  child: Text('Ultravpn-player Windows verification'),
+                ),
+          ),
         ),
       ),
     );
@@ -113,6 +121,8 @@ Future<void> runWindowsSmoke(List<String> args) async {
         audioOutput: 'null',
       );
       await playback.initialize().timeout(const Duration(seconds: 25));
+      surface.value = playback;
+      await WidgetsBinding.instance.endOfFrame;
       await playback.play();
       for (
         var attempt = 0;
@@ -127,6 +137,8 @@ Future<void> runWindowsSmoke(List<String> args) async {
           playback.value.position.inMilliseconds >= 250;
       await playback.pause();
       await playback.seekTo(const Duration(seconds: 1));
+      surface.value = null;
+      await WidgetsBinding.instance.endOfFrame;
       await playback.dispose();
       playback = null;
       if (!checks[stage]!) throw StateError('Media verification failed');
@@ -152,6 +164,8 @@ Future<void> runWindowsSmoke(List<String> args) async {
       }),
     );
   } finally {
+    surface.value = null;
+    await WidgetsBinding.instance.endOfFrame;
     await playback?.dispose();
     await server?.close(force: true);
     await store?.close();

@@ -16,7 +16,7 @@ function Invoke-DesktopSmoke([string]$Executable, [string]$Name) {
     $taskArguments = @('--smoke-test', "`"$taskReport`"", '--media-fixtures', "`"$taskFixtures`"",
         '--installer', "`"$(Join-Path $taskRoot 'build/windows-distribution/Ultravpn-player-Setup.exe')`"",
         '--manifest', "`"$(Join-Path $taskRoot 'build/windows-remote-update/windows-update.json')`"")
-    $taskProcess = Start-Process -FilePath $Executable -ArgumentList $taskArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput "build/windows-smoke/$Name.stdout.log" -RedirectStandardError "build/windows-smoke/$Name.stderr.log"
+    $taskProcess = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -ArgumentList $taskArguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $taskRoot "build/windows-smoke/$Name.stdout.log") -RedirectStandardError (Join-Path $taskRoot "build/windows-smoke/$Name.stderr.log")
     if (-not $taskProcess.WaitForExit(150000)) {
         Stop-Process -Id $taskProcess.Id -Force
         throw "Desktop smoke timed out: $Name"
@@ -28,10 +28,11 @@ function Invoke-DesktopSmoke([string]$Executable, [string]$Name) {
     if ($taskProcess.ExitCode -ne 0 -or -not $taskResult.passed) { throw "Desktop smoke failed: $Name" }
 }
 
-$taskPortable = Join-Path $taskRoot 'build/windows-smoke/portable'
+$taskTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }
+$taskPortable = Join-Path $taskTemp 'Ultravpn-player-smoke/portable'
 Expand-Archive -LiteralPath build/windows-distribution/Ultravpn-player-Windows-x64.zip -DestinationPath $taskPortable -Force
 Invoke-DesktopSmoke (Join-Path $taskPortable 'Ultravpn-player.exe') 'portable'
-$taskInstall = Join-Path $taskRoot 'build/windows-smoke/installed'
+$taskInstall = Join-Path $taskTemp 'Ultravpn-player-smoke/installed'
 $taskSetup = Start-Process -FilePath (Join-Path $taskRoot 'build/windows-distribution/Ultravpn-player-Setup.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', "/DIR=`"$taskInstall`"") -WindowStyle Hidden -Wait -PassThru
 if ($taskSetup.ExitCode -ne 0) { throw 'Silent test installation failed.' }
 Invoke-DesktopSmoke (Join-Path $taskInstall 'Ultravpn-player.exe') 'installed'

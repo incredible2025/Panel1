@@ -304,7 +304,7 @@ class UpdateTransport {
       if (response.contentLength >= 0 &&
           response.contentLength != update.bytes) {
         throw const UpdateFailure(
-          'The APK size does not match the update file. No installation was started.',
+          'The download size does not match the update file. No installation was started.',
         );
       }
       var received = 0;
@@ -313,7 +313,7 @@ class UpdateTransport {
         received += chunk.length;
         if (received > update.bytes) {
           throw const UpdateFailure(
-            'The APK is larger than expected. No installation was started.',
+            'The download is larger than expected. No installation was started.',
           );
         }
         await output.writeFrom(chunk);
@@ -326,7 +326,7 @@ class UpdateTransport {
           (await sha256.bind(partial.openRead()).first).toString() !=
               update.sha256) {
         throw const UpdateFailure(
-          'APK verification failed. The download is incomplete or changed. Please download it again.',
+          'Update verification failed. The download is incomplete or changed. Please download it again.',
         );
       }
       if (_cancelled) throw const UpdateFailure('Download cancelled.');

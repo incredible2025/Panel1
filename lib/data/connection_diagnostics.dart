@@ -243,7 +243,7 @@ DiagnosticFinding _dnsReason(DnsObservation o) {
     'error:notFound' => const DiagnosticFinding(
       'DNS_NAME_NOT_FOUND',
       'The system resolver could not find the name',
-      'Android reported a name/address lookup failure without an exact DNS response code. This alone cannot distinguish NXDOMAIN from every other negative answer.',
+      'The system resolver reported a name/address lookup failure without an exact DNS response code. This alone cannot distinguish NXDOMAIN from every other negative answer.',
       causes: ['An incorrect hostname, missing DNS record or resolver policy.'],
       steps: [
         'Ask support to verify the provider DNS configuration.',
@@ -253,7 +253,7 @@ DiagnosticFinding _dnsReason(DnsObservation o) {
     'error:temporary' => const DiagnosticFinding(
       'DNS_TEMPORARY',
       'The system resolver reported a temporary failure',
-      'Android reported a temporary resolver failure. It did not expose an exact DNS response code.',
+      'The system resolver reported a temporary failure. It did not expose an exact DNS response code.',
       causes: ['A transient resolver, upstream DNS or network problem.'],
       steps: [
         'Wait briefly and retry.',
@@ -681,9 +681,11 @@ class ConnectionDiagnostics {
         }
         return DiagnosticFinding(
           n.validated == true ? 'NETWORK_VALIDATED' : 'NETWORK_UNCONFIRMED',
-          n.validated == true
-              ? 'Android reports internet access'
-              : 'Internet access is not confirmed by Android',
+          n.validated == null
+              ? 'System network status unavailable'
+              : n.validated == true
+              ? 'The system reports internet access'
+              : 'Internet access is not confirmed by the system',
           '$detail Network validation is a system snapshot, not a guarantee that this provider is reachable. Provider tests continue separately.',
           status: n.validated == true
               ? DiagnosticStatus.passed

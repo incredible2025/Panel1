@@ -31,14 +31,14 @@ void main() {
       final a = account({});
       expect(
         portalCredentials(' viewer ', ' secret ').serverUrl,
-        'http://167.235.169.168',
+        providerPortalUrl,
       );
       expect(portalCredentials(' viewer ', ' secret ').username, 'viewer');
       expect(portalCredentials('viewer', ' secret ').password, ' secret ');
       expect(usesConfiguredPortal(a), true);
       final normalized = account(
         {},
-        server: 'http://167.235.169.168/player_api.php',
+        server: '$providerPortalUrl/player_api.php',
       );
       expect(usesConfiguredPortal(normalized), true);
       expect(a.accountId, normalized.accountId);

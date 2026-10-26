@@ -1,7 +1,8 @@
 import '../data/models.dart';
 import '../data/provider_addresses.dart';
 
-export '../data/provider_addresses.dart' show providerPortalUrl;
+export '../data/provider_addresses.dart'
+    show providerPortalUrl, providerFallbackUrl;
 
 Credentials portalCredentials(String username, String password) => Credentials(
   serverUrl: providerPortalUrl,
@@ -14,21 +15,21 @@ Credentials portalCredentials(String username, String password) => Credentials(
 /// forwarding its stored password to a different service.
 bool usesConfiguredPortal(Session session) {
   try {
-    return normalizeServerUri(session.credentials.serverUrl) ==
-        normalizeServerUri(providerPortalUrl);
+    return isConfiguredProviderUri(
+      normalizeServerUri(session.credentials.serverUrl),
+    );
   } on FormatException {
     return false;
   }
 }
 
-/// The operator explicitly moved this service from its old domain to this IP.
-/// Migrate only that exact previous portal; unrelated providers remain signed out.
+/// Canonicalize approved sessions and migrate only the exact retired destination.
 Session? restoreConfiguredSession(Session? saved) {
   if (saved == null) return null;
-  if (usesConfiguredPortal(saved)) return saved;
   try {
-    if (normalizeServerUri(saved.credentials.serverUrl) !=
-        normalizeServerUri(previousProviderPortalUrl)) {
+    final address = normalizeServerUri(saved.credentials.serverUrl);
+    if (address == Uri.parse(providerPortalUrl)) return saved;
+    if (!isConfiguredProviderUri(address) && !isRetiredProviderUri(address)) {
       return null;
     }
     return Session(

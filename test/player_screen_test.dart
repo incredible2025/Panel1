@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,8 @@ import 'package:video_player/video_player.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
+import 'package:streamline_iptv/data/xtream_api.dart';
+import 'package:streamline_iptv/core/provider_config.dart';
 import 'package:streamline_iptv/features/player_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
@@ -280,6 +283,8 @@ Future<void> _mountPlayer(
   List<Episode> episodes = const [],
   PlaybackFactory? factory,
   bool tv = false,
+  Session session = _session,
+  XtreamApi? api,
 }) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
@@ -299,8 +304,9 @@ Future<void> _mountPlayer(
     ProviderScope(
       overrides: [
         storeProvider.overrideWithValue(store),
+        if (api != null) apiProvider.overrideWithValue(api),
         if (factory != null) playbackFactoryProvider.overrideWithValue(factory),
-        sessionProvider.overrideWith((ref) => _session),
+        sessionProvider.overrideWith((ref) => session),
         isTvProvider.overrideWithValue(tv),
         epgProvider.overrideWith((ref, id) async => []),
       ],
@@ -351,6 +357,42 @@ Future<void> _finishInitialization(
 }
 
 void main() {
+  testWidgets('player opens the fallback URI and keeps movie resume position', (
+    tester,
+  ) async {
+    final store = _HistoryStore();
+    final player = _FakeCompatibility();
+    final probes = <String>[];
+    final opened = <Uri>[];
+    final api = XtreamApi(
+      streamProbe: (uri) async {
+        probes.add(uri.scheme);
+        if (uri.scheme == 'https') {
+          throw const SocketException('Connection refused');
+        }
+      },
+    );
+    addTearDown(api.dispose);
+    await _mountPlayer(
+      tester,
+      store,
+      startPosition: const Duration(minutes: 2),
+      session: Session(
+        credentials: portalCredentials('viewer', 'secret'),
+        userInfo: const {},
+        serverInfo: const {},
+      ),
+      api: api,
+      factory: (uri, _) {
+        opened.add(uri);
+        return player;
+      },
+    );
+    await tester.pumpAndSettle();
+    expect(probes, ['https', 'http']);
+    expect(opened.single.scheme, 'http');
+    expect(player.calls, contains('seek:120000'));
+  });
   TestWidgetsFlutterBinding.ensureInitialized();
   late VideoPlayerPlatform originalPlatform;
   late _VideoPlatform platform;

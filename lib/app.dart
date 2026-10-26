@@ -24,20 +24,30 @@ class StreamlineApp extends ConsumerStatefulWidget {
 class _StreamlineAppState extends ConsumerState<StreamlineApp>
     with WidgetsBindingObserver {
   bool _startupFinished = false;
+  static const _platform = MethodChannel('streamline/platform');
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _platform.setMethodCallHandler((call) async {
+      if (call.method == 'networkChanged' && mounted) {
+        ref.read(apiProvider).resetConnectionPreferences();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _platform.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(apiProvider).resetConnectionPreferences();
+    }
     if (state == AppLifecycleState.resumed && _startupFinished) {
       ref.read(updateControllerProvider).autoCheck();
     }

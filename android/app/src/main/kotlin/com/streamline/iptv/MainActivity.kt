@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Network
+import android.net.LinkProperties
 import android.os.Build
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -14,8 +16,18 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var updater: AppUpdater? = null
     private var dnsDiagnostics: NetworkDnsDiagnostics? = null
+    private var platformChannel: MethodChannel? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        networkCallback?.let { callback ->
+            try {
+                (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(callback)
+            } catch (_: Exception) { }
+        }
+        networkCallback = null
+        platformChannel?.setMethodCallHandler(null)
+        platformChannel = null
         updater?.close()
         updater = null
         dnsDiagnostics?.close()
@@ -27,7 +39,8 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         updater = AppUpdater(this, flutterEngine.dartExecutor.binaryMessenger)
         dnsDiagnostics = NetworkDnsDiagnostics(this)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "streamline/platform")
+        platformChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "streamline/platform")
+        platformChannel!!
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "dnsDiagnosis" -> dnsDiagnostics?.lookup(
@@ -79,5 +92,17 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private fun changed() {
+                runOnUiThread { platformChannel?.invokeMethod("networkChanged", null) }
+            }
+            override fun onAvailable(network: Network) = changed()
+            override fun onLost(network: Network) = changed()
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = changed()
+        }
+        try {
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (_: Exception) { /* Resume and bounded cooldown still recheck HTTPS. */ }
     }
 }

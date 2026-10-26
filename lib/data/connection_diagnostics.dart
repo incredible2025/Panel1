@@ -7,6 +7,7 @@ import '../core/app_version.dart';
 import 'diagnostic_transport.dart';
 import 'dns_lookup.dart';
 import 'models.dart';
+import 'provider_addresses.dart';
 import 'subscription_expiry.dart';
 import 'xtream_api.dart';
 
@@ -41,6 +42,7 @@ const diagnosticStages = {
   'dns': 'Provider DNS lookup',
   'tcp': 'Provider server connection',
   'tls': 'HTTPS security',
+  'fallback': 'Alternative connection',
   'api': 'Provider API response',
   'account': 'Account authorization',
   'limits': 'Connection allowance',
@@ -744,10 +746,25 @@ class ConnectionDiagnostics {
         addresses = result?.networkChanged == true ? null : result?.addresses;
       }
       if (addresses == null || addresses.isEmpty || _cancelled) return;
+      String? reachabilityFailure;
+      var secureFailure = false;
+      bool retryable(ProbeFailure error) => const {
+        'timeout',
+        'refused',
+        'unreachable',
+        'socket',
+        'http_protocol',
+      }.contains(error.code);
+      final configured = isConfiguredProviderUri(base);
       final tcp = await probe(
         'tcp',
         () async {
-          await transport.connect(base.host, base.port);
+          try {
+            await transport.connect(base.host, base.port);
+          } on ProbeFailure catch (error) {
+            if (retryable(error)) reachabilityFailure = error.code;
+            rethrow;
+          }
           return true;
         },
         (_) => const DiagnosticFinding(
@@ -767,7 +784,18 @@ class ConnectionDiagnostics {
           await probe(
             'tls',
             () async {
-              await transport.tls(base.host, base.port);
+              try {
+                await transport.tls(base.host, base.port);
+              } on ProbeFailure catch (error) {
+                if (const {
+                  'certificate',
+                  'tls_handshake',
+                }.contains(error.code)) {
+                  secureFailure = true;
+                }
+                if (retryable(error)) reachabilityFailure = error.code;
+                rethrow;
+              }
               return true;
             },
             (_) => const DiagnosticFinding(
@@ -792,6 +820,35 @@ class ConnectionDiagnostics {
           ),
         );
       }
+      var fallbackTried = false;
+      Future<bool> tryFallback() async {
+        if (!configured ||
+            secureFailure ||
+            base.scheme != 'https' ||
+            fallbackTried ||
+            _cancelled) {
+          return false;
+        }
+        fallbackTried = true;
+        final fallback = Uri.parse(providerFallbackUrl);
+        final reachable = await probe(
+          'fallback',
+          () async {
+            await transport.connect(fallback.host, fallback.port);
+            return true;
+          },
+          (_) => const DiagnosticFinding(
+            'HTTP_FALLBACK_REACHABLE',
+            'Alternative connection is reachable',
+            'The HTTPS transport could not connect from this device. The configured HTTP fallback accepted a connection. API and account checks below use that fallback. HTTP does not encrypt credentials or requests; server addresses remain omitted.',
+            status: DiagnosticStatus.warning,
+          ),
+        );
+        if (reachable == true) base = fallback;
+        return reachable == true;
+      }
+
+      if (reachabilityFailure != null) await tryFallback();
       if (_cancelled) return;
       if (credentials.username.trim().isEmpty || credentials.password.isEmpty) {
         skip(
@@ -812,28 +869,41 @@ class ConnectionDiagnostics {
         },
       );
       Map<String, dynamic>? payload;
-      final response = await probe('api', () => transport.get(endpoint()), (r) {
-        if (!httpOk(r)) return diagnosticFailure('http', httpStatus: r.status);
-        final decoded = json(r);
-        if (decoded is! Map || decoded['user_info'] is! Map) {
+      final response = await probe(
+        'api',
+        () async {
+          try {
+            return await transport.get(endpoint());
+          } on ProbeFailure catch (error) {
+            if (!retryable(error) || !await tryFallback()) rethrow;
+            return transport.get(endpoint());
+          }
+        },
+        (r) {
+          if (!httpOk(r)) {
+            return diagnosticFailure('http', httpStatus: r.status);
+          }
+          final decoded = json(r);
+          if (decoded is! Map || decoded['user_info'] is! Map) {
+            return const DiagnosticFinding(
+              'API_FORMAT',
+              'The response is not an Xtream account',
+              'Valid JSON was received, but it does not contain the expected user_info account object.',
+              steps: [
+                'Contact support to verify the service configuration.',
+                'Confirm Xtream Codes support with the provider.',
+              ],
+            );
+          }
+          payload = objectValue(decoded);
           return const DiagnosticFinding(
-            'API_FORMAT',
-            'The response is not an Xtream account',
-            'Valid JSON was received, but it does not contain the expected user_info account object.',
-            steps: [
-              'Contact support to verify the service configuration.',
-              'Confirm Xtream Codes support with the provider.',
-            ],
+            'API_RESPONDED',
+            'The Xtream API responded',
+            'A valid account-response structure was returned. Account authorization is checked separately below.',
+            status: DiagnosticStatus.passed,
           );
-        }
-        payload = objectValue(decoded);
-        return const DiagnosticFinding(
-          'API_RESPONDED',
-          'The Xtream API responded',
-          'A valid account-response structure was returned. Account authorization is checked separately below.',
-          status: DiagnosticStatus.passed,
-        );
-      });
+        },
+      );
       if (response == null || payload == null || _cancelled) return;
       final user = objectValue(payload!['user_info']);
       final authorized = user['auth'] == true || textValue(user['auth']) == '1';
@@ -1039,15 +1109,21 @@ class ConnectionDiagnostics {
         try {
           final api = XtreamApi();
           try {
-            uri = api.streamUri(
-              Session(
-                credentials: credentials,
-                userInfo: user,
-                serverInfo: server,
-              ),
-              item,
-              episode: episode,
-            );
+            uri = api
+                .streamUri(
+                  Session(
+                    credentials: credentials,
+                    userInfo: user,
+                    serverInfo: server,
+                  ),
+                  item,
+                  episode: episode,
+                )
+                .replace(
+                  scheme: base.scheme,
+                  host: base.host,
+                  port: base.hasPort ? base.port : null,
+                );
           } finally {
             api.dispose();
           }

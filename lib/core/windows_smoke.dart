@@ -19,6 +19,7 @@ Future<void> runWindowsSmoke(List<String> args) async {
   final report = File(args[args.indexOf('--smoke-test') + 1]);
   final fixtures = args[args.indexOf('--media-fixtures') + 1];
   final checks = <String, bool>{};
+  final observations = <String, Object>{};
   var stage = 'startup';
   Directory? temporary;
   HttpServer? server;
@@ -104,8 +105,42 @@ Future<void> runWindowsSmoke(List<String> args) async {
             ? 'video/mp2t'
             : 'video/mp4',
       );
-      request.response.contentLength = await file.length();
-      await request.response.addStream(file.openRead());
+      final length = await file.length();
+      var start = 0, end = length - 1;
+      request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+      final range = request.headers.value(HttpHeaders.rangeHeader);
+      if (range != null) {
+        final match = RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(range);
+        if (match == null || (match[1]!.isEmpty && match[2]!.isEmpty)) {
+          request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+          await request.response.close();
+          return;
+        }
+        if (match[1]!.isEmpty) {
+          start = (length - int.parse(match[2]!)).clamp(0, length);
+        } else {
+          start = int.parse(match[1]!);
+          end = match[2]!.isEmpty ? end : int.parse(match[2]!).clamp(0, end);
+        }
+        if (start >= length || start > end) {
+          request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+          request.response.headers.set(
+            HttpHeaders.contentRangeHeader,
+            'bytes */$length',
+          );
+          await request.response.close();
+          return;
+        }
+        request.response.statusCode = HttpStatus.partialContent;
+        request.response.headers.set(
+          HttpHeaders.contentRangeHeader,
+          'bytes $start-$end/$length',
+        );
+      }
+      request.response.contentLength = end - start + 1;
+      if (request.method != 'HEAD') {
+        await request.response.addStream(file.openRead(start, end + 1));
+      }
       await request.response.close();
     });
     for (final name in ['fixture.mp4', 'fixture.ts', 'fixture.m3u8']) {
@@ -119,6 +154,16 @@ Future<void> runWindowsSmoke(List<String> args) async {
           path: '/$name',
         ),
         audioOutput: 'null',
+        onDiagnostic: (message) {
+          final logs =
+              observations.putIfAbsent('decoderMessages', () => <String>[])
+                  as List<String>;
+          if (logs.length < 8) {
+            logs.add(
+              message.replaceAll(RegExp(r'https?://\S+'), '[local media]'),
+            );
+          }
+        },
       );
       await playback.initialize().timeout(const Duration(seconds: 25));
       surface.value = playback;
@@ -126,17 +171,38 @@ Future<void> runWindowsSmoke(List<String> args) async {
       await playback.play();
       for (
         var attempt = 0;
-        attempt < 80 && playback.value.position.inMilliseconds < 250;
+        attempt < 80 &&
+            (!playback.hasVideoOutput ||
+                playback.value.position.inMilliseconds < 250);
         attempt++
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
       checks[stage] =
           playback.value.isInitialized &&
-          playback.value.size.width > 0 &&
+          playback.hasVideoOutput &&
           playback.value.position.inMilliseconds >= 250;
+      observations[stage] = {
+        'positionMs': playback.value.position.inMilliseconds,
+        'durationMs': playback.value.duration.inMilliseconds,
+        'videoOutput': playback.hasVideoOutput,
+        'error': playback.value.hasError,
+        'playing': playback.value.isPlaying,
+      };
       await playback.pause();
       await playback.seekTo(const Duration(seconds: 1));
+      for (
+        var attempt = 0;
+        attempt < 20 &&
+            (playback.value.position - const Duration(seconds: 1)).abs() >
+                const Duration(milliseconds: 500);
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      checks['seek_${p.extension(name).substring(1)}'] =
+          (playback.value.position - const Duration(seconds: 1)).abs() <=
+          const Duration(milliseconds: 500);
       surface.value = null;
       await WidgetsBinding.instance.endOfFrame;
       await playback.dispose();
@@ -152,6 +218,7 @@ Future<void> runWindowsSmoke(List<String> args) async {
         'version': appVersionName,
         'build': appBuildNumber,
         'checks': checks,
+        'observations': observations,
       }),
     );
   } catch (error) {
@@ -161,6 +228,7 @@ Future<void> runWindowsSmoke(List<String> args) async {
         'stage': stage,
         'errorType': error.runtimeType.toString(),
         'checks': checks,
+        'observations': observations,
       }),
     );
   } finally {

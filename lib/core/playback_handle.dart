@@ -8,6 +8,7 @@ import '../data/app_settings.dart';
 import 'app_brand.dart';
 import 'player_tracks.dart';
 import 'providers.dart';
+import 'native_playback_recovery.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
 final playbackFactoryProvider = Provider<PlaybackFactory>((ref) {
@@ -102,18 +103,36 @@ class NativePlayback extends PlaybackHandle {
 /// Normalizes the compatibility engine into the same state used by the native
 /// player. The UI, recovery policy and serialized history writes stay shared.
 class CompatibilityPlayback extends PlaybackHandle {
-  CompatibilityPlayback(this.uri, {this.audioOutput});
+  CompatibilityPlayback(this.uri, {this.audioOutput, this.onDiagnostic});
   final Uri uri;
   final String? audioOutput;
+  final void Function(String)? onDiagnostic;
+  late final _recovery = NativePlaybackRecovery(() {
+    if (_dead) return;
+    if (!_mediaReady.isCompleted) {
+      _mediaReady.completeError(StateError('Compatibility stream unavailable'));
+    }
+    value = VideoPlayerValue.erroneous(
+      'Compatibility playback is unavailable.',
+    );
+  });
   late mk.Player _player;
   late mkv.VideoController _video;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   PlayerTracks? _bridge;
   AppSettings _preferences = const AppSettings();
-  bool _created = false, _dead = false;
+  bool _created = false, _videoCreated = false, _dead = false;
   bool _audioApplied = false, _textApplied = false;
   Future<void>? _release;
   final _mediaReady = Completer<void>();
+  bool get hasVideoOutput =>
+      _videoCreated &&
+      !_dead &&
+      (_player.state.width ?? 0) > 0 &&
+      (_player.state.height ?? 0) > 0 &&
+      _video.id.value != null &&
+      (_video.rect.value?.width ?? 0) > 1 &&
+      (_video.rect.value?.height ?? 0) > 1;
   @override
   Future<void> initialize() async {
     unawaited(_mediaReady.future.catchError((Object _) {}));
@@ -136,6 +155,8 @@ class CompatibilityPlayback extends PlaybackHandle {
       );
     }
     _video = mkv.VideoController(_player);
+    _videoCreated = true;
+    _video.rect.addListener(_sync);
     for (final stream in <Stream<dynamic>>[
       _player.stream.position,
       _player.stream.duration,
@@ -157,16 +178,10 @@ class CompatibilityPlayback extends PlaybackHandle {
       }),
     );
     _subscriptions.add(
-      _player.stream.error.listen((_) {
+      _player.stream.error.listen((message) {
         if (!_dead) {
-          if (!_mediaReady.isCompleted) {
-            _mediaReady.completeError(
-              StateError('Compatibility stream unavailable'),
-            );
-          }
-          value = VideoPlayerValue.erroneous(
-            'Compatibility playback is unavailable.',
-          );
+          onDiagnostic?.call(message);
+          _recovery.signal(_player.state.position);
         }
       }),
     );
@@ -181,6 +196,17 @@ class CompatibilityPlayback extends PlaybackHandle {
   void _sync() {
     if (_dead || !_created || value.hasError) return;
     final state = _player.state;
+    _recovery.observe(
+      position: state.position,
+      playing: state.playing,
+      buffering: state.buffering,
+      videoOutput: hasVideoOutput,
+      audioOnly:
+          state.tracks.video
+              .where((track) => !{'auto', 'no'}.contains(track.id))
+              .isEmpty &&
+          state.tracks.audio.any((track) => !{'auto', 'no'}.contains(track.id)),
+    );
     if (!_mediaReady.isCompleted &&
         (state.duration > Duration.zero ||
             (state.width ?? 0) > 0 ||
@@ -401,6 +427,8 @@ class CompatibilityPlayback extends PlaybackHandle {
 
   Future<void> _dispose() async {
     _dead = true;
+    _recovery.dispose();
+    if (_videoCreated) _video.rect.removeListener(_sync);
     if (_created && !_mediaReady.isCompleted) {
       _mediaReady.completeError(StateError('Playback closed'));
     }

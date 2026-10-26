@@ -10,8 +10,9 @@ preferences reset. No certificate validation callback is disabled.
 API requests have a six-second header/connection deadline and a separate
 25-second response-body deadline so large catalogues retain their reading time.
 Timed-out requests are aborted before a second attempt. Managed API redirects
-remain inside approved roots and cannot silently downgrade HTTPS. Every request
-is attempted at most once per root; retries cannot add arbitrary providers.
+remain inside approved roots and cannot silently downgrade HTTPS. A failed
+operation tries at most two roots; redirect chains are bounded and cannot add
+arbitrary providers.
 
 API and playback selections are independent and memory-only. Playback makes a
 six-second headers-only HEAD request before opening the native player. This

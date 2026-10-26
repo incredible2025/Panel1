@@ -408,13 +408,13 @@ void main() {
     },
   );
 
-  for (final location in [
+  for (final (index, location) in [
     'http://liquidmetal.vip/player_api.php',
     'https://other.example/player_api.php',
     'https://liquidmetal.vip:8443/player_api.php',
-  ]) {
+  ].indexed) {
     test(
-      'redirect cannot downgrade or forward credentials to an unapproved destination: $location',
+      'redirect cannot downgrade or forward credentials to an unapproved destination, case $index',
       () async {
         final calls = <Uri>[];
         final api = XtreamApi(

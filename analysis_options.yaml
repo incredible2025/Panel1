@@ -1,6 +1,7 @@
 include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
+    - build/**
     - .tooling/**
     - .pub-cache/**
     - packages/video_player_android/**

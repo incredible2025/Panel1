@@ -16,6 +16,7 @@ import '../widgets/tv_page_navigation.dart';
 import '../widgets/tv_reading_dialog.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
+import '../data/provider_connections.dart';
 import 'connection_diagnosis_screen.dart';
 
 /// Keeps every seek within a known, finite on-demand timeline.
@@ -416,9 +417,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         });
         return;
       }
-      final uri = ref
+      final uri = await ref
           .read(apiProvider)
-          .streamUri(session, item, episode: _episode);
+          .prepareStreamUri(session, item, episode: _episode);
+      if (!mounted || generation != _generation || _exiting) return;
       controller = ref.read(playbackFactoryProvider)(uri, _engine);
       _controller = controller;
       controller.addListener(_onControllerChanged);
@@ -445,14 +447,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _recordLivePlayback(controller, generation, item);
       setState(() => _loading = false);
       _showControls();
-    } catch (_) {
+    } catch (error) {
       // Native playback exceptions often include the complete stream URI,
       // including Xtream credentials. Never expose those exception strings.
       if (mounted && generation == _generation && !_exiting) {
         setState(() {
           _loading = false;
-          _playbackError =
-              'This stream could not be played. Check your connection or try again.';
+          _playbackError = isCertificateFailure(error)
+              ? 'The secure connection could not be verified. Check your device date and time or run Connection diagnosis.'
+              : 'This stream could not be played. Check your connection or try again.';
         });
       }
       if (controller != null) await _release(controller);

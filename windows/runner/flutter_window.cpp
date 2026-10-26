@@ -1,8 +1,20 @@
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 #include "flutter_window.h"
 
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+constexpr UINT kNetworkChangedMessage = WM_APP + 24;
+void CALLBACK NetworkChanged(void* context, PMIB_IPINTERFACE_ROW,
+                             MIB_NOTIFICATION_TYPE) {
+  // OS callbacks run off the UI thread; deliver the Dart event on the window.
+  PostMessageW(static_cast<HWND>(context), kNetworkChangedMessage, 0, 0);
+}
+}
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -48,6 +60,10 @@ bool FlutterWindow::OnCreate() {
         }
       });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  if (NotifyIpInterfaceChange(AF_UNSPEC, NetworkChanged, GetHandle(), FALSE,
+                             &network_change_handle_) != NO_ERROR) {
+    network_change_handle_ = nullptr;
+  }
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -62,6 +78,10 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (network_change_handle_) {
+    CancelMibChangeNotify2(network_change_handle_);
+    network_change_handle_ = nullptr;
+  }
   SetThreadExecutionState(ES_CONTINUOUS);
   platform_channel_.reset();
   if (flutter_controller_) {
@@ -75,6 +95,10 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == kNetworkChangedMessage) {
+    if (platform_channel_) platform_channel_->InvokeMethod("networkChanged", nullptr);
+    return 0;
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

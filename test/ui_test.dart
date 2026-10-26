@@ -21,6 +21,7 @@ import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
+import 'package:streamline_iptv/data/provider_connections.dart';
 import 'package:streamline_iptv/features/movie_detail_screen.dart';
 import 'package:streamline_iptv/features/settings_screen.dart';
 import 'package:streamline_iptv/features/series_detail_screen.dart';
@@ -559,6 +560,36 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  _uiTest(
+    'network change notification resets connection selection for new requests',
+    (tester) async {
+      await _pumpApp(tester, store: _MemoryStore(), signedIn: false);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(StreamlineApp)),
+      );
+      final manager = container.read(apiProvider).connections;
+      await manager.run(Uri.parse(providerPortalUrl), ProviderRoute.api, (
+        base,
+      ) async {
+        if (base.scheme == 'https') {
+          throw const SocketException('Connection refused');
+        }
+        return true;
+      });
+      expect(manager.preferred(ProviderRoute.api).scheme, 'http');
+      final delivered = Completer<void>();
+      tester.binding.channelBuffers.push(
+        'streamline/platform',
+        const StandardMethodCodec().encodeMethodCall(
+          const MethodCall('networkChanged'),
+        ),
+        (_) => delivered.complete(),
+      );
+      await delivered.future;
+      expect(manager.preferred(ProviderRoute.api).scheme, 'https');
+      expect(find.text('Username'), findsOneWidget);
+    },
+  );
   _uiTest('Windows desktop login uses physical text fields and F11', (
     tester,
   ) async {

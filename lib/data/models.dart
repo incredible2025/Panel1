@@ -80,7 +80,7 @@ class Session {
 
   String get _accountPortal {
     final address = normalizeServerUri(credentials.serverUrl);
-    return (address == normalizeServerUri(providerPortalUrl)
+    return (isConfiguredProviderUri(address) || isRetiredProviderUri(address)
             ? normalizeServerUri(previousProviderPortalUrl)
             : address)
         .toString();

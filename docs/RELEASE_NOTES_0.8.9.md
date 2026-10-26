@@ -1,0 +1,2 @@
+- Improved connection reliability and recovery.
+- Preserved existing accounts, favourites and watch history.

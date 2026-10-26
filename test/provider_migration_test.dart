@@ -30,22 +30,26 @@ void main() {
   sqfliteFfiInit();
 
   test(
-    'approved old sessions move to the IP without losing credentials or the historical account key',
+    'approved sessions retain credentials and the historical account key',
     () {
       for (final address in [
         'http://liquidmetal.vip',
         'http://LIQUIDMETAL.VIP/player_api.php',
+        'http://167.235.169.168',
       ]) {
         final saved = _saved(address: address);
         final migrated = restoreConfiguredSession(saved)!;
-        expect(migrated.credentials.serverUrl, 'http://167.235.169.168');
+        expect(migrated.credentials.serverUrl, providerPortalUrl);
         expect(migrated.credentials.username, saved.credentials.username);
         expect(migrated.credentials.password, saved.credentials.password);
         expect(migrated.userInfo, saved.userInfo);
         expect(migrated.serverInfo, saved.serverInfo);
         expect(saved.accountId, _oldAccountId);
         expect(migrated.accountId, _oldAccountId);
-        expect(usesConfiguredPortal(saved), false);
+        expect(
+          usesConfiguredPortal(saved),
+          !address.contains('167.235.169.168'),
+        );
         expect(usesConfiguredPortal(migrated), true);
         expect(restoreConfiguredSession(migrated), same(migrated));
         expect(
@@ -81,72 +85,70 @@ void main() {
     },
   );
 
-  test(
-    'migrated and fresh authentication, catalogue and all stream kinds use only the configured IP',
-    () async {
-      final requests = <Uri>[];
-      final api = XtreamApi(
-        client: MockClient((request) async {
-          requests.add(request.url);
-          if (request.url.queryParameters.containsKey('action')) {
-            return http.Response('[]', 200);
-          }
-          return http.Response(
-            jsonEncode({
-              'user_info': {'auth': 1, 'status': 'Active'},
-              'server_info': {'url': 'liquidmetal.vip'},
-            }),
-            200,
-          );
-        }),
-      );
-      addTearDown(api.dispose);
-      final migrated = restoreConfiguredSession(_saved())!;
-      final fresh = await api.authenticate(migrated.credentials);
-      final signedIn = await api.authenticate(
-        portalCredentials('viewer', ' secret '),
-      );
-      for (final session in [migrated, fresh, signedIn]) {
-        expect(session.accountId, _oldAccountId);
-        for (final kind in MediaKind.values) {
-          await api.categories(session, kind);
-          await api.items(session, kind);
-          final item = MediaItem(id: '101', name: 'Title', kind: kind);
-          final stream = api.streamUri(
-            session,
-            item,
-            episode: kind == MediaKind.series
-                ? const Episode(
-                    id: '201',
-                    title: 'Episode',
-                    season: '1',
-                    episodeNumber: 1,
-                  )
-                : null,
-          );
-          expect(stream.host, '167.235.169.168');
-          expect(stream.scheme, 'http');
-          expect(
-            stream.pathSegments.first,
-            kind == MediaKind.live
-                ? 'live'
-                : kind == MediaKind.movie
-                ? 'movie'
-                : 'series',
-          );
+  test('migrated and fresh accounts use approved secure connections', () async {
+    final requests = <Uri>[];
+    final api = XtreamApi(
+      client: MockClient((request) async {
+        requests.add(request.url);
+        if (request.url.queryParameters.containsKey('action')) {
+          return http.Response('[]', 200);
         }
+        return http.Response(
+          jsonEncode({
+            'user_info': {'auth': 1, 'status': 'Active'},
+            'server_info': {'url': 'liquidmetal.vip'},
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(api.dispose);
+    final migrated = restoreConfiguredSession(_saved())!;
+    final fresh = await api.authenticate(migrated.credentials);
+    final signedIn = await api.authenticate(
+      portalCredentials('viewer', ' secret '),
+    );
+    for (final session in [migrated, fresh, signedIn]) {
+      expect(session.accountId, _oldAccountId);
+      for (final kind in MediaKind.values) {
+        await api.categories(session, kind);
+        await api.items(session, kind);
+        final item = MediaItem(id: '101', name: 'Title', kind: kind);
+        final stream = api.streamUri(
+          session,
+          item,
+          episode: kind == MediaKind.series
+              ? const Episode(
+                  id: '201',
+                  title: 'Episode',
+                  season: '1',
+                  episodeNumber: 1,
+                )
+              : null,
+        );
+        expect(stream.host, Uri.parse(providerPortalUrl).host);
+        expect(stream.scheme, 'https');
+        expect(
+          stream.pathSegments.first,
+          kind == MediaKind.live
+              ? 'live'
+              : kind == MediaKind.movie
+              ? 'movie'
+              : 'series',
+        );
       }
-      expect(requests, isNotEmpty);
-      expect(
-        requests.every(
-          (request) =>
-              request.host == '167.235.169.168' && request.scheme == 'http',
-        ),
-        true,
-      );
-      expect(requests.first.queryParameters['password'], ' secret ');
-    },
-  );
+    }
+    expect(requests, isNotEmpty);
+    expect(
+      requests.every(
+        (request) =>
+            request.host == Uri.parse(providerPortalUrl).host &&
+            request.scheme == 'https',
+      ),
+      true,
+    );
+    expect(requests.first.queryParameters['password'], ' secret ');
+  });
 
   test(
     'saved history, settings, favourites, PIN and cache survive session migration and re-login',

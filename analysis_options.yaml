@@ -1,6 +1,7 @@
 include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
+    - DELETE-ME-*/**
     - build/**
     - .tooling/**
     - .pub-cache/**

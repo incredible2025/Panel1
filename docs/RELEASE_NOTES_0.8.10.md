@@ -1,0 +1,3 @@
+- Added clear buttons to save and remove favourite live channels.
+- Improved programme information for favourite channels.
+- Improved TV remote navigation for favourites.

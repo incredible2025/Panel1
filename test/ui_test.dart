@@ -3221,6 +3221,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final size in [const Size(960, 540), const Size(1280, 720)]) {
+    _uiTest('TV favourite button and saved EPG work with remote at $size', (
+      tester,
+    ) async {
+      final store = _MemoryStore();
+      await _pumpApp(tester, store: store, tv: true, viewport: size);
+      expect(find.text('Add to favourites').hitTestable(), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      await remote(tester, LogicalKeyboardKey.arrowRight, 4);
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        'Channel favourite',
+      );
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(store.favoriteItems, [_channel]);
+      expect(find.text('Remove favourite'), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.arrowRight);
+      expect(FocusManager.instance.primaryFocus?.debugLabel, 'Live options');
+      await remote(tester, LogicalKeyboardKey.arrowLeft);
+      await remote(tester, LogicalKeyboardKey.arrowLeft, 4);
+      await remote(tester, LogicalKeyboardKey.arrowDown);
+      await remote(tester, LogicalKeyboardKey.select);
+      final guide = tester.widget<TvGlassGuide>(find.byType(TvGlassGuide));
+      expect(guide.channels, [_channel]);
+      expect(find.text('The World Today'), findsWidgets);
+      await _screenshot(tester, 'tv-favourites-${size.width.toInt()}');
+      await tester.tap(find.text('Remove favourite'));
+      await tester.pumpAndSettle();
+      expect(store.favoriteItems, isEmpty);
+      expect(find.text('No favourite channels yet'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  _uiTest(
+    'Mobile labelled favourite action saves a channel and shows its EPG',
+    (tester) async {
+      final store = _MemoryStore();
+      await _pumpApp(tester, store: store);
+      await tester.tap(find.text('Add to favourites'));
+      await tester.pumpAndSettle();
+      expect(store.favoriteItems, [_channel]);
+      expect(find.text('Remove favourite'), findsOneWidget);
+      await _reveal(tester, find.text('Favorites'));
+      await tester.tap(find.text('Favorites'));
+      await tester.pumpAndSettle();
+      await _reveal(tester, find.text('Now · The World Today'));
+      expect(find.text('Now · The World Today'), findsOneWidget);
+      expect(find.text('Arena Sports'), findsNothing);
+      await _screenshot(tester, 'mobile-favourites');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   _uiTest(
     'live favorites persist across reload and the Favorites filter handles removal',
     (tester) async {

@@ -20,6 +20,7 @@ class LocalStore {
 
   final sqlite.Database _database;
   final FlutterSecureStorage _secureStorage;
+  final _progressRevisions = <String, int>{};
   static const _sessionKey = 'streamline.session.v1';
 
   static Future<LocalStore> open({
@@ -190,6 +191,9 @@ class LocalStore {
         episode.id.isEmpty) {
       return;
     }
+    final key = jsonEncode([accountId, 'episode', item.id, episode.id]);
+    final revision = (_progressRevisions[key] ?? 0) + 1;
+    _progressRevisions[key] = revision;
     await _database.transaction((txn) async {
       final rows = await txn.query(
         'episode_history',
@@ -197,6 +201,7 @@ class LocalStore {
         whereArgs: [accountId, item.id, episode.id],
         limit: 1,
       );
+      if (_progressRevisions[key] != revision) return;
       final existing = rows.firstOrNull;
       final oldDuration = intValue(existing?['duration_ms']);
       final duration = durationMs > 0 ? durationMs : oldDuration;
@@ -428,8 +433,12 @@ class LocalStore {
     required int durationMs,
   }) async {
     if (item.kind != MediaKind.movie) return;
+    final key = jsonEncode([accountId, 'movie', item.id]);
+    final revision = (_progressRevisions[key] ?? 0) + 1;
+    _progressRevisions[key] = revision;
     await _database.transaction((txn) async {
       final existing = await _progressRow(txn, accountId, item.id);
+      if (_progressRevisions[key] != revision) return;
       final previousDuration = intValue(existing?['duration_ms']);
       final duration = durationMs > 0 ? durationMs : previousDuration;
       // Failed initialization must not erase the position of a resumable movie.

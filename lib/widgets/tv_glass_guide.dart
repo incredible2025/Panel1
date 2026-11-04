@@ -240,8 +240,10 @@ class _GlassGuideRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final time =
+        ref.watch(programmeClockProvider).asData?.value ?? DateTime.now();
     final state = ref.watch(epgProvider(item.id));
-    final slots = glassGuideSlots(state.asData?.value ?? [], DateTime.now());
+    final slots = glassGuideSlots(state.asData?.value ?? [], time);
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(

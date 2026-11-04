@@ -150,9 +150,13 @@ class _MemoryStore implements LocalStore {
   List<MediaItem> recentItems = [];
   int favoriteWrites = 0;
 
+  Completer<void>? favoritesGate;
   @override
-  Future<List<MediaItem>> favorites(String accountId) async =>
-      List.of(favoriteItems);
+  Future<List<MediaItem>> favorites(String accountId) async {
+    await favoritesGate?.future;
+    return List.of(favoriteItems);
+  }
+
   @override
   Future<void> setFavorite(
     String accountId,
@@ -3274,6 +3278,20 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  _uiTest('favourite toggles wait for saved channels to load', (tester) async {
+    final store = _MemoryStore()
+      ..favoriteItems = [_channel]
+      ..favoritesGate = Completer<void>();
+    await _pumpApp(tester, store: store);
+    await tester.tap(find.text('Add to favourites'));
+    await tester.pump();
+    expect(store.favoriteWrites, 0);
+    store.favoritesGate!.complete();
+    await tester.pumpAndSettle();
+    expect(store.favoriteWrites, 1);
+    expect(store.favoriteItems, isEmpty);
+  });
 
   _uiTest(
     'live favorites persist across reload and the Favorites filter handles removal',

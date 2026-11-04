@@ -194,6 +194,7 @@ jobs:
           python3 scripts/create_update_manifest.py --apk "build/remote-update/$apk" --aapt "$aapt" \
             --apk-url "$apk" --notes "$notes" --output build/remote-update/update.json
           (cd build/remote-update && zip -q ../remote-update.zip update.json "$apk" Ultravpn-player.apk)
+          cp build/remote-update.zip "build/Ultravpn-player-$version-remote-update.zip"
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
@@ -202,6 +203,8 @@ jobs:
             build/Ultravpn-player.apk
             build/Ultravpn-player.apk.sha256
             build/remote-update.zip
+            build/Ultravpn-player-*-remote-update.zip
+            build/remote-update/update.json
           if-no-files-found: error
           retention-days: 30
       - name: Download verified Windows distribution
@@ -218,7 +221,7 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
-          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip build/windows-distribution/*)
+          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip build/Ultravpn-player-*-remote-update.zip build/remote-update/update.json build/windows-distribution/*)
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then

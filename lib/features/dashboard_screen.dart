@@ -243,12 +243,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _toggleFavorite(MediaItem item) async {
     final session = ref.read(sessionProvider);
     if (session == null || _savingFavorites.contains(item.id)) return;
-    final saved = ref.read(favoritesProvider).asData?.value ?? <MediaItem>[];
-    final favorite = saved.any(
-      (entry) => entry.id == item.id && entry.kind == item.kind,
-    );
     setState(() => _savingFavorites.add(item.id));
     try {
+      final saved = await ref.read(favoritesProvider.future);
+      if (!mounted ||
+          ref.read(sessionProvider)?.accountId != session.accountId) {
+        return;
+      }
+      final favorite = saved.any(
+        (entry) => entry.id == item.id && entry.kind == item.kind,
+      );
       await ref
           .read(storeProvider)
           .setFavorite(session.accountId, item, !favorite);
@@ -1610,9 +1614,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   .where((item) => item.id == _preferences.lastChannel)
                   .firstOrNull ??
               channels.first;
+    final guideTime =
+        ref.watch(programmeClockProvider).asData?.value ?? DateTime.now();
     final epg = ref.watch(epgProvider(selected.id));
     final entries = epg.asData?.value ?? <EpgEntry>[];
-    final now = DateTime.now();
+    final now = guideTime;
     EpgEntry? programme;
     for (final entry in entries) {
       if (entry.start.isBefore(now) && entry.end.isAfter(now)) {

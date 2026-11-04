@@ -72,9 +72,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late final List<MediaItem> _channels;
   late MediaItem _item;
   PlaybackHandle? _controller;
+  Future<void> _pendingReleases = Future<void>.value();
+  VideoPlayerValue? _suspendedValue;
+  bool _suspended = false;
   Timer? _progressTimer;
   Timer? _retryTimer;
   Timer? _initializationTimer;
+  Completer<void>? _initializationPending;
   Timer? _nextTimer;
   Timer? _controlsTimer;
   bool _controlsVisible = true;
@@ -214,11 +218,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _enqueueHistory(Future<void> Function() write) {
-    // Serialize opens and progress updates so a slow earlier write cannot
-    // overwrite a newer playback position or the movie's last-accessed time.
+    // Normally preserve write order, but let later attempts proceed if storage
+    // stalls. LocalStore revisions reject superseded pending progress writes.
     _historyWrites = _historyWrites.then((_) async {
       try {
-        await write();
+        await write().timeout(const Duration(seconds: 10));
         if (!mounted) return;
         ref.invalidate(historyProvider);
         ref.invalidate(seriesHistoryProvider);
@@ -228,6 +232,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     });
     return _historyWrites;
+  }
+
+  Future<void> _waitForHistory(Future<void> saved) async {
+    // Keep the ordered write alive, but never trap navigation behind storage.
+    try {
+      await saved.timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      if (mounted && !_exiting) setState(() => _saveFailed = true);
+    }
   }
 
   Future<void> _persistProgress() {
@@ -315,16 +328,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (existing != null) return existing;
     final release = _disposeController(controller);
     _controllerReleases[controller] = release;
+    _pendingReleases = Future.wait([_pendingReleases, release]);
     return release;
   }
 
   Future<void> _disposeController(PlaybackHandle controller) async {
     controller.removeListener(_onControllerChanged);
-    try {
-      await controller.pause();
-    } catch (_) {
-      // An initialization can be interrupted by rapid channel navigation.
-    }
+    // A failed-player notification can request release while notifying listeners.
+    await Future<void>.value();
+    // Disposal closes the stream. Do not put it behind a potentially pending
+    // pause command, a history write, track cleanup or a route animation.
     try {
       await controller.dispose();
     } catch (_) {
@@ -338,15 +351,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     Episode? episode,
   }) async {
     _retryTimer?.cancel();
-    _initializationTimer?.cancel();
+    _cancelInitialization();
     _cancelNext();
     _bufferingSince = null;
     _healthySince = null;
     final generation = ++_generation;
-    await _tracks.detach();
-    if (!mounted || generation != _generation || _exiting) return;
     final previous = _controller;
     _controller = null;
+    if (previous != null) unawaited(_release(previous));
+    final detached = _tracks.detach();
+    _suspended = false;
+    _suspendedValue = null;
     if (mounted) {
       setState(() {
         _item = item;
@@ -356,7 +371,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _dragPosition = null;
       });
     }
-    if (previous != null) await _release(previous);
+    // A second rapid zap must also wait for the first zap's disposal, even
+    // when that zap has already cleared _controller.
+    await _pendingReleases;
+    await detached;
+    if (!mounted || generation != _generation || _exiting) return;
     await ref.read(settingsProvider.notifier).ready;
     if (!mounted || generation != _generation || _exiting) return;
     if (ref.read(settingsProvider).hasError) {
@@ -500,7 +519,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _wantsPlayback) {
       _startNextCountdown();
     }
-    if (value.hasError && !_loading) _scheduleReconnect();
+    if (value.hasError && !_loading) {
+      final failed = _controller;
+      unawaited(_persistProgress());
+      _controller = null;
+      if (failed != null) unawaited(_release(failed));
+      _scheduleReconnect();
+    }
     setState(() {
       if (value.hasError) {
         _loading = false;
@@ -510,7 +535,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
   }
 
-  Future<void> _pauseAndSave() async {
+  Future<void> _pauseAndSave({bool disconnect = false}) async {
     _wantsPlayback = false;
     _retryTimer?.cancel();
     _cancelNext();
@@ -518,12 +543,35 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // Capture position before pausing: another lifecycle callback may arrive
     // while the native pause request is still in flight.
     final saved = _persistProgress();
-    if (controller != null && controller.value.isInitialized) {
+    if (disconnect) {
+      _generation++;
+      _cancelInitialization();
+      if (controller != null) {
+        final value = controller.value;
+        if (value.isInitialized && value.duration > Duration.zero) {
+          _resumePosition = clampPlaybackPosition(
+            value.position,
+            value.duration,
+          );
+        }
+        _suspendedValue = value.copyWith(isPlaying: false, isBuffering: false);
+        _controller = null;
+        unawaited(_release(controller));
+      }
+      _suspended = true;
+      unawaited(_tracks.detach());
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _controlsVisible = true;
+        });
+      }
+    } else if (controller != null && controller.value.isInitialized) {
       try {
         await controller.pause();
       } catch (_) {}
     }
-    await saved;
+    await _waitForHistory(saved);
   }
 
   @override
@@ -541,22 +589,31 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(_pauseAndSave());
+      unawaited(_pauseAndSave(disconnect: true));
     }
   }
 
   Future<void> _leave() async {
     if (_exiting) return;
     _exiting = true;
-    _initializationTimer?.cancel();
+    _cancelInitialization();
     _retryTimer?.cancel();
     _cancelNext();
     _progressTimer?.cancel();
-    await _pauseAndSave();
+    await _pauseAndSave(disconnect: true);
     if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _togglePlayback() async {
+    if (_suspended && !_exiting && _appActive) {
+      _wantsPlayback = true;
+      final completed = _suspendedValue?.isCompleted == true;
+      await _open(
+        _item,
+        startPosition: completed ? Duration.zero : _resumePosition,
+      );
+      return;
+    }
     final controller = _controller;
     final generation = _generation;
     final item = _item;
@@ -569,7 +626,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _retryTimer?.cancel();
         _cancelNext();
         await controller.pause();
-        await _persistProgress();
+        await _waitForHistory(_persistProgress());
       } else if (_appActive) {
         _wantsPlayback = true;
         if (!_isLive &&
@@ -601,7 +658,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await controller.seekTo(
         clampPlaybackPosition(position, controller.value.duration),
       );
-      await _persistProgress();
+      await _waitForHistory(_persistProgress());
     } catch (_) {
       // A channel switch or exit can dispose a controller during a seek.
     }
@@ -638,8 +695,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     unawaited(_open(_item, startPosition: position));
   }
 
+  void _cancelInitialization() {
+    _initializationTimer?.cancel();
+    final pending = _initializationPending;
+    _initializationPending = null;
+    if (pending != null && !pending.isCompleted) {
+      pending.completeError(StateError('Playback initialization cancelled'));
+    }
+  }
+
   Future<void> _initialize(PlaybackHandle controller) {
     final complete = Completer<void>();
+    _initializationPending = complete;
     final timer = Timer(const Duration(seconds: 25), () {
       if (!complete.isCompleted) {
         complete.completeError(
@@ -658,7 +725,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (!complete.isCompleted) complete.completeError(error, stack);
       },
     );
-    return complete.future;
+    return complete.future.whenComplete(() {
+      if (identical(_initializationPending, complete)) {
+        _initializationPending = null;
+      }
+    });
   }
 
   void _checkBuffering() {
@@ -705,7 +776,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           generation != _generation) {
         return;
       }
-      await _persistProgress();
+      await _waitForHistory(_persistProgress());
       if (!mounted ||
           _exiting ||
           !_appActive ||
@@ -746,7 +817,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (next == null || _advancing || _exiting) return;
     _advancing = true;
     _cancelNext();
-    await _persistProgress();
+    await _waitForHistory(_persistProgress());
     if (!mounted || _exiting || !_appActive) {
       _advancing = false;
       return;
@@ -869,7 +940,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     if (engine == null || !mounted || _exiting) return;
     final position = _resumePosition;
-    await _persistProgress();
+    await _waitForHistory(_persistProgress());
     final saved = await ref.read(settingsProvider.notifier).update((settings) {
       final overrides = {...settings.playerOverrides};
       if (engine == 'default') {
@@ -920,11 +991,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _exiting = true;
     _generation++;
     _retryTimer?.cancel();
-    _initializationTimer?.cancel();
+    _cancelInitialization();
     _progressTimer?.cancel();
     _controlsTimer?.cancel();
     _cancelNext();
-    await _pauseAndSave();
+    await _pauseAndSave(disconnect: true);
     await _tracks.detach();
     final controller = _controller;
     _controller = null;
@@ -1178,8 +1249,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (key == LogicalKeyboardKey.mediaPlay) {
       final controller = _controller;
       if (event is KeyDownEvent &&
-          controller != null &&
-          !controller.value.isPlaying) {
+          (_suspended || controller != null && !controller.value.isPlaying)) {
         unawaited(_togglePlayback());
       }
       return KeyEventResult.handled;
@@ -1252,7 +1322,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _controlsTimer?.cancel();
     _retryTimer?.cancel();
     _nextTimer?.cancel();
-    _initializationTimer?.cancel();
+    _cancelInitialization();
     _tracks.dispose();
     // Normal exits await this queue; this fallback also captures an unexpected
     // route removal without retaining access to Riverpod after disposal.
@@ -1272,7 +1342,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget build(BuildContext context) {
     final tv = ref.watch(isLargeScreenProvider);
     final controller = _controller;
-    final value = controller?.value;
+    final value =
+        controller?.value ??
+        (_suspended
+            ? (_suspendedValue ??
+                      const VideoPlayerValue(duration: Duration.zero))
+                  .copyWith(
+                    isInitialized: true,
+                    isPlaying: false,
+                    isBuffering: false,
+                  )
+            : null);
     final ready = value?.isInitialized ?? false;
     final error = _playbackError;
     final title = _episode?.title ?? _item.name;

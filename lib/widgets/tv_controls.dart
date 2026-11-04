@@ -115,14 +115,14 @@ class _TvControlState extends State<TvControl> {
                   : widget.selected && !(glass && _navigation)
                   ? glass
                         ? const Color(0x1FFFFFFF)
-                        : const Color(0xFF183A60)
+                        : AppPalette.of(context).surfaceRaised
                   : programme
                   ? const Color(0x0BFFFFFF)
                   : _row || _navigation || _poster
                   ? Colors.transparent
                   : glass
                   ? const Color(0x14FFFFFF)
-                  : const Color(0xFF122F56),
+                  : AppPalette.of(context).surface,
               borderRadius: BorderRadius.circular(
                 glass
                     ? 3
@@ -134,7 +134,7 @@ class _TvControlState extends State<TvControl> {
                 width: glass ? 1 : 2,
                 color: _focused
                     ? widget.style == TvControlStyle.primary
-                          ? AppColors.accent
+                          ? AppPalette.of(context).accent
                           : Colors.white
                     : Colors.transparent,
               ),
@@ -179,7 +179,7 @@ class _TvControlState extends State<TvControl> {
                     height: _row ? null : 2,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: AppColors.accent,
+                        color: AppPalette.of(context).accent,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -189,7 +189,7 @@ class _TvControlState extends State<TvControl> {
                   child: DefaultTextStyle.merge(
                     style: TextStyle(
                       color: _light && !(glass && _navigation)
-                          ? AppColors.canvas
+                          ? AppPalette.of(context).canvas
                           : AppColors.text,
                       fontSize: glass ? 12 : 18,
                       height: 1.2,
@@ -203,7 +203,7 @@ class _TvControlState extends State<TvControl> {
                     child: IconTheme.merge(
                       data: IconThemeData(
                         color: _light
-                            ? AppColors.canvas
+                            ? AppPalette.of(context).canvas
                             : const Color(0xFFB5C3D3),
                         size: glass ? 15 : 23,
                       ),

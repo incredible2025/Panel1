@@ -133,9 +133,9 @@ class _StartupUpdateGateState extends ConsumerState<StartupUpdateGate> {
           const SizedBox(height: 24),
           if (_checking)
             MediaQuery.disableAnimationsOf(context)
-                ? const Icon(
+                ? Icon(
                     Icons.system_update,
-                    color: AppColors.accent,
+                    color: AppPalette.of(context).accent,
                     size: 28,
                   )
                 : const SizedBox(

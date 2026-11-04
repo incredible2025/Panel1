@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../core/app_palette.dart';
+export '../core/app_palette.dart';
 
 /// The approved 1024 × 576 Glass concept, expressed in television design units.
 abstract final class TvGlass {
@@ -9,24 +11,19 @@ abstract final class TvGlass {
   static const panel = Color(0xFF122F56);
   static const rowHeight = 35.0;
 
-  static ThemeData theme(ThemeData base) => base.copyWith(
-    textTheme: base.textTheme.apply(fontFamily: 'Glass Sans'),
-    scaffoldBackgroundColor: canvas,
-    colorScheme: base.colorScheme.copyWith(
-      primary: accent,
-      surface: panel,
-      onSurface: ink,
-    ),
-  );
-
-  static const background = BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [Color(0xFF253A7B), Color(0xFF123951), canvas],
-      stops: [0, .5, 1],
-    ),
-  );
+  static ThemeData theme(ThemeData base) {
+    final palette = AppPalette.fromTheme(base);
+    return base.copyWith(
+      textTheme: base.textTheme.apply(fontFamily: 'Glass Sans'),
+      scaffoldBackgroundColor: palette.canvas,
+      colorScheme: base.colorScheme.copyWith(
+        primary: palette.accent,
+        onPrimary: palette.canvas,
+        surface: palette.surface,
+        onSurface: ink,
+      ),
+    );
+  }
 }
 
 class TvGlassScope extends InheritedWidget {
@@ -42,25 +39,31 @@ class TvGlassBackdrop extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => ColoredBox(
-    color: TvGlass.canvas,
+    color: AppPalette.of(context).canvas,
     child: Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
               center: Alignment(.9, -.6),
               radius: 1.3,
-              colors: [Color(0xFF075568), Color(0x00075568)],
+              colors: [
+                AppPalette.of(context).glow,
+                AppPalette.of(context).glow.withValues(alpha: 0),
+              ],
             ),
           ),
         ),
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
               center: Alignment.topLeft,
               radius: 1.15,
-              colors: [Color(0xFF253A7B), Color(0x00253A7B)],
+              colors: [
+                AppPalette.of(context).gradientStart,
+                AppPalette.of(context).gradientStart.withValues(alpha: 0),
+              ],
             ),
           ),
         ),

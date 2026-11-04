@@ -128,11 +128,14 @@ class MovieRecommendations extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: AppPalette.of(context).border),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.auto_awesome_outlined, color: AppColors.accent),
+                    Icon(
+                      Icons.auto_awesome_outlined,
+                      color: AppPalette.of(context).accent,
+                    ),
                     SizedBox(width: 16),
                     Expanded(
                       child: Column(

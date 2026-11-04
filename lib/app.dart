@@ -65,15 +65,20 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: AppColors.canvas,
+        systemNavigationBarColor: AppPalette.forAppearance(
+          AppAppearance.parse(settings.theme),
+        ).canvas,
         systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: MaterialApp(
         title: appBrandName,
         debugShowCheckedModeBanner: false,
-        theme: settings.theme == 'cinema'
-            ? StreamlineTheme.cinema
-            : StreamlineTheme.dark,
+        theme: StreamlineTheme.forAppearance(
+          AppAppearance.parse(settings.theme),
+        ),
+        themeAnimationDuration: settings.reducedMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 200),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             disableAnimations:
@@ -81,13 +86,8 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
                 settings.reducedMotion,
           ),
           child: ref.watch(isDesktopProvider)
-              ? DesktopControls(
-                  child: AppBackdrop(
-                    cinema: settings.theme == 'cinema',
-                    child: child!,
-                  ),
-                )
-              : AppBackdrop(cinema: settings.theme == 'cinema', child: child!),
+              ? DesktopControls(child: AppBackdrop(child: child!))
+              : AppBackdrop(child: child!),
         ),
         shortcuts: <ShortcutActivator, Intent>{
           ...WidgetsApp.defaultShortcuts,

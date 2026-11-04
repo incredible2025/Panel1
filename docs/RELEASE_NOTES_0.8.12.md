@@ -1,0 +1,3 @@
+- Added Cyberpunk, Aurora, Emerald and Sunset themes.
+- Added theme previews with easy remote and touch selection.
+- Improved colour consistency throughout the app.

@@ -97,12 +97,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: AppPalette.of(context).canvas,
       body: Stack(
         children: [
-          const Positioned.fill(
+          Positioned.fill(
             child: IgnorePointer(
-              child: CustomPaint(painter: _AperturePainter()),
+              child: CustomPaint(
+                painter: _AperturePainter(AppPalette.of(context)),
+              ),
             ),
           ),
           SafeArea(
@@ -236,7 +238,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     child: Theme(
       data: TvGlass.theme(Theme.of(context)),
       child: Scaffold(
-        backgroundColor: TvGlass.canvas,
+        backgroundColor: AppPalette.of(context).canvas,
         resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: LayoutBuilder(
@@ -292,13 +294,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                                 const SizedBox(width: 12),
                                 if (hasUpdate)
-                                  const Padding(
+                                  Padding(
                                     padding: EdgeInsets.only(right: 12),
                                     child: Text(
                                       'Update available',
                                       style: TextStyle(
                                         fontSize: 11,
-                                        color: TvGlass.accent,
+                                        color: AppPalette.of(context).accent,
                                       ),
                                     ),
                                   ),
@@ -347,7 +349,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 52),
                             child: Row(
                               children: [
-                                const Expanded(
+                                Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -358,7 +360,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         style: TextStyle(
                                           fontSize: 10,
                                           letterSpacing: 1.8,
-                                          color: TvGlass.accent,
+                                          color: AppPalette.of(context).accent,
                                         ),
                                       ),
                                       SizedBox(height: 20),
@@ -622,13 +624,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           const SizedBox(height: 42),
-          const SizedBox(width: 48, child: Divider(color: AppColors.accent)),
+          SizedBox(
+            width: 48,
+            child: Divider(color: AppPalette.of(context).accent),
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.history_rounded,
-                color: AppColors.accent,
+                color: AppPalette.of(context).accent,
                 size: 19,
               ),
               const SizedBox(width: 12),
@@ -649,8 +654,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final theme = Theme.of(context).textTheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: .88),
-        border: Border.all(color: AppColors.border),
+        color: AppPalette.of(context).surface.withValues(alpha: .88),
+        border: Border.all(color: AppPalette.of(context).border),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -668,12 +673,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Row(
+                Row(
                   children: [
                     Expanded(child: Eyebrow('PROVIDER SIGN IN')),
                     Icon(
                       Icons.north_east_rounded,
-                      color: AppColors.accent,
+                      color: AppPalette.of(context).accent,
                       size: 18,
                     ),
                   ],
@@ -860,7 +865,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Divider(color: AppColors.border, height: 1),
+        Divider(color: AppPalette.of(context).border, height: 1),
         const SizedBox(height: 20),
         Flex(
           direction: wide ? Axis.horizontal : Axis.vertical,
@@ -909,12 +914,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 /// Static aperture outlines and grazing light create atmosphere without an
 /// invented content catalog, network assets, or continuous animation.
 class _AperturePainter extends CustomPainter {
-  const _AperturePainter();
+  const _AperturePainter(this.palette);
+  final AppPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
     final bounds = Offset.zero & size;
-    canvas.drawRect(bounds, Paint()..color = AppColors.canvas);
+    canvas.drawRect(bounds, Paint()..color = palette.canvas);
     canvas.drawRect(
       bounds,
       Paint()
@@ -922,8 +928,8 @@ class _AperturePainter extends CustomPainter {
           center: const Alignment(-.8, -.3),
           radius: 1.2,
           colors: [
-            AppColors.accent.withValues(alpha: .075),
-            AppColors.canvas.withValues(alpha: 0),
+            palette.accent.withValues(alpha: .075),
+            palette.canvas.withValues(alpha: 0),
           ],
         ).createShader(bounds),
     );
@@ -943,7 +949,7 @@ class _AperturePainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = i == 0 ? 1.2 : .65
-          ..color = AppColors.accent.withValues(
+          ..color = palette.accent.withValues(
             alpha: i == 0 ? .12 : .025 + i * .009,
           ),
       );
@@ -961,14 +967,12 @@ class _AperturePainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppColors.accent.withValues(alpha: .025),
-            Colors.transparent,
-          ],
+          colors: [palette.accent.withValues(alpha: .025), Colors.transparent],
         ).createShader(bounds),
     );
   }
 
   @override
-  bool shouldRepaint(covariant _AperturePainter oldDelegate) => false;
+  bool shouldRepaint(covariant _AperturePainter oldDelegate) =>
+      palette != oldDelegate.palette;
 }

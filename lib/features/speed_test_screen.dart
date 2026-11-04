@@ -210,9 +210,11 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                                 child: Container(
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
-                                    color: AppColors.surface,
+                                    color: AppPalette.of(context).surface,
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: AppColors.border),
+                                    border: Border.all(
+                                      color: AppPalette.of(context).border,
+                                    ),
                                   ),
                                   child: Column(
                                     crossAxisAlignment:
@@ -223,7 +225,9 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                                           Icon(
                                             metric.$4,
                                             size: 18,
-                                            color: AppColors.accent,
+                                            color: AppPalette.of(
+                                              context,
+                                            ).accent,
                                           ),
                                           const SizedBox(width: 8),
                                           Flexible(child: Text(metric.$1)),
@@ -238,7 +242,11 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                                         style: Theme.of(context)
                                             .textTheme
                                             .headlineLarge
-                                            ?.copyWith(color: AppColors.accent),
+                                            ?.copyWith(
+                                              color: AppPalette.of(
+                                                context,
+                                              ).accent,
+                                            ),
                                       ),
                                       Text(
                                         metric.$3,
@@ -346,7 +354,7 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                     height: 112,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: TvGlass.panel,
+                      color: AppPalette.of(context).surface,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Column(
@@ -366,10 +374,10 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                                 metric.$3 == 'Mbps' ? 1 : 0,
                               ) ??
                               '—',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 30,
                             height: 1.1,
-                            color: TvGlass.accent,
+                            color: AppPalette.of(context).accent,
                           ),
                         ),
                         Text(
@@ -415,9 +423,12 @@ class _SpeedTestScreenState extends ConsumerState<SpeedTestScreen>
                               ),
                             ),
                           ),
-                      const Text(
+                      Text(
                         'YOUR CURRENT CONNECTION',
-                        style: TextStyle(fontSize: 12, color: TvGlass.accent),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppPalette.of(context).accent,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       const Text(

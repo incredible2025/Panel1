@@ -37,20 +37,20 @@ class TvGlassHero extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                const Color(0xFF142B59),
-                const Color(0xFF142B59).withValues(alpha: .9),
-                const Color(0xFF142B59).withValues(alpha: .1),
+                AppPalette.of(context).gradientMiddle,
+                AppPalette.of(context).gradientMiddle.withValues(alpha: .9),
+                AppPalette.of(context).gradientMiddle.withValues(alpha: .1),
               ],
               stops: [0, cinema ? .34 : .43, 1],
             ),
           ),
         ),
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Color(0xFF112D51)],
+              colors: [Colors.transparent, AppPalette.of(context).canvas],
               stops: [.65, 1],
             ),
           ),
@@ -76,8 +76,8 @@ class TvGlassHero extends StatelessWidget {
                     eyebrow.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: TvGlass.accent,
+                    style: TextStyle(
+                      color: AppPalette.of(context).accent,
                       fontSize: 10,
                       height: 1.2,
                       fontWeight: FontWeight.w600,

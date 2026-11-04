@@ -463,7 +463,7 @@ class FeatureBillboard extends ConsumerWidget {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    const Color(0xFF071B38),
+                    AppPalette.of(context).canvas,
                     const Color(0xF0071B38),
                     const Color(0x50071B38),
                   ],
@@ -496,7 +496,7 @@ class FeatureBillboard extends ConsumerWidget {
                           Container(
                             width: 23,
                             height: 2,
-                            color: AppColors.accent,
+                            color: AppPalette.of(context).accent,
                           ),
                           const SizedBox(width: 10),
                           const Eyebrow('IN THE SPOTLIGHT'),

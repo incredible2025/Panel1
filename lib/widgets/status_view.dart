@@ -36,12 +36,16 @@ class StatusView extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.accent.withValues(alpha: .055),
+                  color: AppPalette.of(context).accent.withValues(alpha: .055),
                   border: Border.all(
-                    color: AppColors.accent.withValues(alpha: .13),
+                    color: AppPalette.of(context).accent.withValues(alpha: .13),
                   ),
                 ),
-                child: Icon(icon, color: AppColors.accent, size: 32),
+                child: Icon(
+                  icon,
+                  color: AppPalette.of(context).accent,
+                  size: 32,
+                ),
               ),
             const SizedBox(height: 18),
             Text(

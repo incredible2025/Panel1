@@ -382,7 +382,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             }
           },
           child: Scaffold(
-            backgroundColor: TvGlass.canvas,
+            backgroundColor: AppPalette.of(context).canvas,
             body: SafeArea(
               child: LayoutBuilder(
                 builder: (context, box) {
@@ -1616,16 +1616,16 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: TvGlass.panel,
+                color: AppPalette.of(context).surface,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.account_circle_outlined,
                     size: 30,
-                    color: TvGlass.accent,
+                    color: AppPalette.of(context).accent,
                   ),
                   const SizedBox(height: 10),
                   Text(

@@ -7,6 +7,7 @@ import '../core/app_brand.dart';
 import 'connection_diagnosis_screen.dart';
 import 'app_updates_screen.dart';
 import 'speed_test_screen.dart';
+import 'appearance_screen.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
@@ -355,10 +356,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
       _group('Appearance', Icons.palette_outlined, [
-        _choice('Theme', s.theme, {
-          'midnight': 'Glass · Blue & cyan',
-          'cinema': 'Glass · Midnight',
-        }, (v) => _save({'theme': v})),
+        _action(
+          'Theme · ${AppAppearance.parse(s.theme).label}',
+          'Preview Glass, Midnight, Cyberpunk, Aurora, Emerald and Sunset. Choose a theme to apply across the app.',
+          Icons.palette_outlined,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const AppearanceScreen()),
+          ),
+        ),
         _toggle(
           'Larger posters',
           'Fewer titles per row with larger artwork.',
@@ -599,7 +605,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   padding: const EdgeInsets.only(top: 16),
                   child: Text(
                     _notice!,
-                    style: const TextStyle(color: AppColors.accent),
+                    style: TextStyle(color: AppPalette.of(context).accent),
                   ),
                 ),
               const SizedBox(height: 28),
@@ -656,7 +662,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           margin: const EdgeInsets.only(bottom: 24),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: AppPalette.of(context).border),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Column(
@@ -666,7 +672,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    Icon(icon, color: AppColors.accent, size: 22),
+                    Icon(icon, color: AppPalette.of(context).accent, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -756,7 +762,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           children: [
                             Expanded(child: Text(option.value)),
                             if (value == option.key)
-                              const Icon(Icons.check, color: AppColors.accent),
+                              Icon(
+                                Icons.check,
+                                color: AppPalette.of(context).accent,
+                              ),
                           ],
                         ),
                       ),

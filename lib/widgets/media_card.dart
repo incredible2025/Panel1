@@ -25,7 +25,10 @@ class Artwork extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = CustomPaint(
-      painter: _CoverPainter(title.isEmpty ? icon.codePoint.toString() : title),
+      painter: _CoverPainter(
+        title.isEmpty ? icon.codePoint.toString() : title,
+        AppPalette.of(context),
+      ),
       child: const SizedBox.expand(),
     );
     final uri = Uri.tryParse(url);
@@ -57,7 +60,8 @@ class Artwork extends StatelessWidget {
 
 /// A title-seeded cover treatment when the provider supplies no artwork.
 class _CoverPainter extends CustomPainter {
-  const _CoverPainter(this.title);
+  const _CoverPainter(this.title, this.palette);
+  final AppPalette palette;
   final String title;
   @override
   void paint(Canvas canvas, Size size) {
@@ -65,15 +69,11 @@ class _CoverPainter extends CustomPainter {
       0,
       (a, b) => (a * 31 + b) & 0x7fffffff,
     );
-    const colors = [
-      Color(0xFF254C79),
-      Color(0xFF15586A),
-      Color(0xFF344C83),
-      Color(0xFF246478),
-      Color(0xFF3B4779),
-      Color(0xFF28576C),
-    ];
-    final color = colors[seed % colors.length];
+    final color = Color.lerp(
+      palette.glow,
+      palette.gradientStart,
+      (seed % 6) / 5,
+    )!;
     final rect = Offset.zero & size;
     canvas.drawRect(
       rect,
@@ -81,10 +81,7 @@ class _CoverPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color.lerp(const Color(0xFF122F56), color, .3)!,
-            const Color(0xFF071B38),
-          ],
+          colors: [Color.lerp(palette.surface, color, .3)!, palette.canvas],
         ).createShader(rect),
     );
     final center = Offset(size.width * .8, size.height * .22);
@@ -95,7 +92,7 @@ class _CoverPainter extends CustomPainter {
         ..shader =
             RadialGradient(
               colors: [
-                AppColors.accent.withValues(alpha: .055),
+                palette.accent.withValues(alpha: .055),
                 Colors.transparent,
               ],
             ).createShader(
@@ -131,7 +128,7 @@ class _CoverPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CoverPainter oldDelegate) =>
-      oldDelegate.title != title;
+      oldDelegate.title != title || oldDelegate.palette != palette;
 }
 
 class MediaCard extends StatelessWidget {
@@ -203,10 +200,10 @@ class MediaCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.star_rounded,
                             size: 12,
-                            color: AppColors.accent,
+                            color: AppPalette.of(context).accent,
                           ),
                           const SizedBox(width: 3),
                           Text(
@@ -232,7 +229,7 @@ class MediaCard extends StatelessWidget {
                         value: progress!.clamp(0, 1),
                         minHeight: 2,
                         backgroundColor: Colors.white.withValues(alpha: .2),
-                        color: AppColors.accent,
+                        color: AppPalette.of(context).accent,
                       ),
                     ),
                   ),

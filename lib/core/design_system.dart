@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_brand.dart';
+import 'app_palette.dart';
+export 'app_palette.dart';
 
 /// Shared visual tokens for the mobile and ten-foot interfaces.
 abstract final class AppColors {
@@ -18,13 +20,15 @@ abstract final class AppColors {
 }
 
 abstract final class StreamlineTheme {
-  static ThemeData get dark => _create(false);
-  static ThemeData get cinema => _create(true);
-  static ThemeData _create(bool cinema) {
-    final accent = cinema ? Color(0xFFCFEDFF) : AppColors.accent;
-    final canvas = cinema ? Color(0xFF0B1422) : AppColors.canvas;
-    final surface = cinema ? Color(0xFF151E2E) : AppColors.surface;
+  static ThemeData get dark => forAppearance(AppAppearance.midnight);
+  static ThemeData get cinema => forAppearance(AppAppearance.cinema);
+  static ThemeData forAppearance(AppAppearance appearance) {
+    final palette = AppPalette.forAppearance(appearance);
+    final accent = palette.accent;
+    final canvas = palette.canvas;
+    final surface = palette.surface;
     final base = ThemeData(
+      extensions: [palette],
       useMaterial3: true,
       brightness: Brightness.dark,
       fontFamily: 'Glass Sans',
@@ -37,7 +41,7 @@ abstract final class StreamlineTheme {
         surface: surface,
         onSurface: AppColors.text,
         error: AppColors.danger,
-        outline: AppColors.border,
+        outline: palette.border,
       ),
     );
     final text = base.textTheme.apply(
@@ -91,11 +95,11 @@ abstract final class StreamlineTheme {
         contentPadding: EdgeInsets.symmetric(horizontal: 18, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: palette.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
+          borderSide: BorderSide(color: palette.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -109,7 +113,7 @@ abstract final class StreamlineTheme {
             EdgeInsets.symmetric(horizontal: 24, vertical: 15),
           ),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.disabled)) return AppColors.border;
+            if (states.contains(WidgetState.disabled)) return palette.border;
             if (states.contains(WidgetState.focused) ||
                 states.contains(WidgetState.hovered)) {
               return AppColors.text;
@@ -132,7 +136,7 @@ abstract final class StreamlineTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.text,
-          side: BorderSide(color: AppColors.border),
+          side: BorderSide(color: palette.border),
           minimumSize: Size(48, 50),
           padding: EdgeInsets.symmetric(horizontal: 22, vertical: 14),
           shape: RoundedRectangleBorder(
@@ -175,11 +179,11 @@ abstract final class StreamlineTheme {
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: AppColors.surfaceRaised,
+        backgroundColor: palette.surfaceRaised,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: AppColors.border),
+          side: BorderSide(color: palette.border),
         ),
       ),
       sliderTheme: base.sliderTheme.copyWith(
@@ -192,9 +196,9 @@ abstract final class StreamlineTheme {
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
         color: accent,
-        linearTrackColor: AppColors.border,
+        linearTrackColor: palette.border,
       ),
-      dividerColor: AppColors.border,
+      dividerColor: palette.border,
       focusColor: accent.withValues(alpha: .16),
       hoverColor: Colors.white.withValues(alpha: .04),
       splashFactory: InkSparkle.splashFactory,
@@ -204,18 +208,19 @@ abstract final class StreamlineTheme {
 
 /// Shared branded background for every route, including startup and failures.
 class AppBackdrop extends StatelessWidget {
-  const AppBackdrop({super.key, required this.child, this.cinema = false});
+  const AppBackdrop({super.key, required this.child});
   final Widget child;
-  final bool cinema;
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: cinema
-            ? const [Color(0xFF151E2E), Color(0xFF0B1422), Color(0xFF050A12)]
-            : const [Color(0xFF253A7B), Color(0xFF123951), AppColors.canvas],
+        colors: [
+          AppPalette.of(context).gradientStart,
+          AppPalette.of(context).gradientMiddle,
+          AppPalette.of(context).canvas,
+        ],
         stops: const [0, .5, 1],
       ),
     ),
@@ -303,7 +308,7 @@ class Eyebrow extends StatelessWidget {
   Widget build(BuildContext context) => Text(
     text.toUpperCase(),
     style: TextStyle(
-      color: color ?? AppColors.accent,
+      color: color ?? AppPalette.of(context).accent,
       fontSize: 10,
       letterSpacing: 2.2,
       fontWeight: FontWeight.w700,
@@ -327,7 +332,7 @@ class MetaPill extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 13, color: AppColors.accent),
+          Icon(icon, size: 13, color: AppPalette.of(context).accent),
           const SizedBox(width: 5),
         ],
         Flexible(

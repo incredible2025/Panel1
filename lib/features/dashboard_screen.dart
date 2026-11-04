@@ -353,8 +353,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       bottomNavigationBar: isTv
           ? null
           : DecoratedBox(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.border)),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: AppPalette.of(context).border),
+                ),
               ),
               child: NavigationBar(
                 height: 72,
@@ -710,7 +712,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       width: _navExpanded ? 208 : 84,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface.withValues(alpha: .68),
-        border: const Border(right: BorderSide(color: AppColors.border)),
+        border: Border(right: BorderSide(color: AppPalette.of(context).border)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -912,7 +914,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 : Icons.star_outline_rounded,
                             size: 17,
                             color: _favoritesOnly
-                                ? AppColors.accent
+                                ? AppPalette.of(context).accent
                                 : AppColors.muted,
                           ),
                           const SizedBox(width: 7),
@@ -921,7 +923,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             style: TextStyle(
                               fontSize: 12,
                               color: _favoritesOnly
-                                  ? AppColors.accent
+                                  ? AppPalette.of(context).accent
                                   : AppColors.muted,
                             ),
                           ),
@@ -996,7 +998,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: AppPalette.of(context).border),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -1097,7 +1099,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               child: Text(
                 list ? 'My List' : category?.name ?? 'All',
                 style: TextStyle(
-                  color: selected ? AppColors.accent : AppColors.muted,
+                  color: selected
+                      ? AppPalette.of(context).accent
+                      : AppColors.muted,
                   fontSize: 12,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
@@ -1292,10 +1296,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         const SizedBox(height: 14),
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 18),
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             border: Border(
-                              top: BorderSide(color: AppColors.border),
-                              bottom: BorderSide(color: AppColors.border),
+                              top: BorderSide(
+                                color: AppPalette.of(context).border,
+                              ),
+                              bottom: BorderSide(
+                                color: AppPalette.of(context).border,
+                              ),
                             ),
                           ),
                           child: const Row(
@@ -1573,8 +1581,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       LinearProgressIndicator(
                         value: entry.progress,
                         minHeight: 2,
-                        color: AppColors.accent,
-                        backgroundColor: AppColors.border,
+                        color: AppPalette.of(context).accent,
+                        backgroundColor: AppPalette.of(context).border,
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
@@ -1843,10 +1851,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ),
                         ),
                         const SizedBox(width: 9),
-                        const Icon(
+                        Icon(
                           Icons.play_arrow_rounded,
                           size: 22,
-                          color: AppColors.accent,
+                          color: AppPalette.of(context).accent,
                         ),
                       ],
                     ),
@@ -1918,7 +1926,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             height: 36,
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              color: AppColors.canvas,
+              color: AppPalette.of(context).canvas,
               borderRadius: BorderRadius.circular(4),
             ),
             child: Artwork(
@@ -1955,7 +1963,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ? Icons.graphic_eq_rounded
                 : Icons.chevron_right_rounded,
             color: item.id == selected.id
-                ? AppColors.accent
+                ? AppPalette.of(context).accent
                 : AppColors.subdued,
             size: 18,
           ),
@@ -1998,7 +2006,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       icon: Icon(
         favorite ? Icons.star_rounded : Icons.star_outline_rounded,
         size: 21,
-        color: favorite ? AppColors.accent : AppColors.subdued,
+        color: favorite ? AppPalette.of(context).accent : AppColors.subdued,
       ),
     );
   }
@@ -2019,16 +2027,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             return Container(
               width: 235,
               padding: const EdgeInsets.only(left: 16),
-              decoration: const BoxDecoration(
-                border: Border(left: BorderSide(color: AppColors.border)),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: AppPalette.of(context).border),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '${_clock(entry.start)} — ${_clock(entry.end)}',
-                    style: const TextStyle(
-                      color: AppColors.accent,
+                    style: TextStyle(
+                      color: AppPalette.of(context).accent,
                       fontSize: 10,
                     ),
                   ),

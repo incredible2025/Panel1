@@ -178,7 +178,9 @@ class TvGlassGuideState extends State<TvGlassGuide> {
                     label,
                     style: TextStyle(
                       fontSize: 10,
-                      color: label == 'On now' ? TvGlass.accent : TvGlass.muted,
+                      color: label == 'On now'
+                          ? AppPalette.of(context).accent
+                          : TvGlass.muted,
                     ),
                   ),
                 ),

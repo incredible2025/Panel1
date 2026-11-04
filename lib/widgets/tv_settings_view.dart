@@ -162,9 +162,9 @@ class _TvSettingsViewState extends State<TvSettingsView> {
                   if (selected.value.isNotEmpty)
                     Text(
                       selected.value,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
-                        color: TvGlass.accent,
+                        color: AppPalette.of(context).accent,
                       ),
                     ),
                   const SizedBox(height: 12),

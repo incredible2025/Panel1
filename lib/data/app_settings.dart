@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'appearance.dart';
 import 'subscription_expiry.dart';
 
 enum PlayerEngine { native, compatibility }
@@ -112,7 +113,7 @@ class AppSettings {
       stereo: json['stereo'] == true,
       subtitleSize: size.isFinite ? size.clamp(16, 40) : 22,
       subtitleBackground: json['subtitleBackground'] != false,
-      theme: json['theme'] == 'cinema' ? 'cinema' : 'midnight',
+      theme: AppAppearance.parse(textValue(json['theme'])).name,
       largePosters: json['largePosters'] == true,
       compact: json['compact'] == true,
       reducedMotion: json['reducedMotion'] == true,

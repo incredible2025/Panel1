@@ -171,16 +171,16 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
                         )
                       : const SizedBox.shrink(),
                 ),
-              const IgnorePointer(
+              IgnorePointer(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Color(0xA0071B38),
-                        Color(0x35071B38),
-                        Color(0xFF071B38),
+                        AppPalette.of(context).canvas.withValues(alpha: .63),
+                        AppPalette.of(context).canvas.withValues(alpha: .21),
+                        AppPalette.of(context).canvas,
                       ],
                       stops: [0, .35, 1],
                     ),

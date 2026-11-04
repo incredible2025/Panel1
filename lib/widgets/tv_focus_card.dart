@@ -113,10 +113,10 @@ class _TvFocusCardState extends State<TvFocusCard> {
                           ? const Color(0x1FFFFFFF)
                           : Colors.transparent
                     : _focused || widget.selected
-                    ? AppColors.accent.withValues(alpha: .075)
+                    ? AppPalette.of(context).accent.withValues(alpha: .075)
                     : widget.transparent
                     ? Colors.transparent
-                    : AppColors.surface,
+                    : AppPalette.of(context).surface,
                 borderRadius: BorderRadius.circular(
                   glass ? 3 : widget.borderRadius,
                 ),
@@ -124,16 +124,18 @@ class _TvFocusCardState extends State<TvFocusCard> {
                   color: _focused
                       ? AppColors.text
                       : widget.selected
-                      ? AppColors.accent.withValues(alpha: .65)
+                      ? AppPalette.of(context).accent.withValues(alpha: .65)
                       : widget.transparent
                       ? Colors.transparent
-                      : AppColors.border,
+                      : AppPalette.of(context).border,
                   width: glass ? 1 : 1.5,
                 ),
                 boxShadow: _focused && !glass
                     ? [
                         BoxShadow(
-                          color: AppColors.accent.withValues(alpha: .15),
+                          color: AppPalette.of(
+                            context,
+                          ).accent.withValues(alpha: .15),
                           blurRadius: 24,
                           spreadRadius: 1,
                         ),

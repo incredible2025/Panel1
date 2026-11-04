@@ -135,30 +135,36 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
                           const SizedBox(height: 14),
                           _text(
                             '${details.status.name.toUpperCase()} · ${details.code} · ${selected.elapsedMs} ms',
-                            color: TvGlass.accent,
+                            color: AppPalette.of(context).accent,
                           ),
                           _text(details.summary),
                           _text(details.description),
                           if (details.evidence.isNotEmpty) ...[
                             _text(
                               'Observed on this device',
-                              color: TvGlass.accent,
+                              color: AppPalette.of(context).accent,
                             ),
                             for (final e in details.evidence) _text('• $e'),
                           ],
                           if (details.causes.isNotEmpty) ...[
-                            _text('Possible causes', color: TvGlass.accent),
+                            _text(
+                              'Possible causes',
+                              color: AppPalette.of(context).accent,
+                            ),
                             for (final e in details.causes) _text('• $e'),
                           ],
                           if (details.steps.isNotEmpty) ...[
-                            _text('What to try', color: TvGlass.accent),
+                            _text(
+                              'What to try',
+                              color: AppPalette.of(context).accent,
+                            ),
                             for (var i = 0; i < details.steps.length; i++)
                               _text('${i + 1}. ${details.steps[i]}'),
                           ],
                         ] else ...[
                           _text(
                             'Your current connection',
-                            color: TvGlass.accent,
+                            color: AppPalette.of(context).accent,
                           ),
                           _text(
                             'Checks run on this device using its active Wi-Fi, Ethernet or VPN and system DNS resolver. They contact your configured provider; they do not use an external diagnosis service.',
@@ -174,7 +180,7 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
                         const Divider(),
                         _text(
                           'What these checks cannot prove',
-                          color: TvGlass.accent,
+                          color: AppPalette.of(context).accent,
                         ),
                         _text(
                           'A timeout does not prove ISP blocking. Network, VPN and Private DNS indicators are a snapshot and do not verify a tunnel or DNS provider. Secure DNS does not hide the stream server IP. Successful API or sample tests do not guarantee codecs, audio or uninterrupted playback. This screen does not change Secure DNS.',

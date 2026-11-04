@@ -186,7 +186,7 @@ class TvCategoryStripState extends State<TvCategoryStrip> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: choice.selected
-                          ? AppColors.accent
+                          ? AppPalette.of(context).accent
                           : AppColors.muted,
                       fontSize: 12,
                       fontWeight: choice.selected

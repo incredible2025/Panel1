@@ -306,7 +306,7 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
       child: Theme(
         data: TvGlass.theme(Theme.of(context)),
         child: Dialog(
-          backgroundColor: TvGlass.canvas,
+          backgroundColor: AppPalette.of(context).canvas,
           insetPadding: const EdgeInsets.all(20),
           child: SizedBox(
             width: 760 * scale,
@@ -334,7 +334,7 @@ class _TvTextEntryDialogState extends State<TvTextEntryDialog> {
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           alignment: Alignment.centerLeft,
                           decoration: BoxDecoration(
-                            color: TvGlass.panel,
+                            color: AppPalette.of(context).surface,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Semantics(

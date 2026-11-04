@@ -1539,7 +1539,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                       ),
                                     ),
                                   if (_saveFailed)
-                                    const Padding(
+                                    Padding(
                                       padding: EdgeInsets.symmetric(
                                         vertical: 12,
                                       ),
@@ -1549,7 +1549,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                         children: [
                                           Icon(
                                             Icons.info_outline_rounded,
-                                            color: AppColors.accent,
+                                            color: AppPalette.of(
+                                              context,
+                                            ).accent,
                                             size: 16,
                                           ),
                                           SizedBox(width: 8),
@@ -1557,7 +1559,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                             child: Text(
                                               'Playback progress could not be saved.',
                                               style: TextStyle(
-                                                color: AppColors.accent,
+                                                color: AppPalette.of(
+                                                  context,
+                                                ).accent,
                                                 fontSize: 12,
                                               ),
                                             ),
@@ -1661,7 +1665,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         ? 'MOVIE'
                         : 'SERIES',
                     style: TextStyle(
-                      color: _isLive ? AppColors.live : AppColors.accent,
+                      color: _isLive
+                          ? AppColors.live
+                          : AppPalette.of(context).accent,
                       letterSpacing: 2.2,
                       fontSize: compact ? 9 : 10,
                       fontWeight: FontWeight.w700,
@@ -1715,14 +1721,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           SizedBox.square(
             dimension: 32,
             child: MediaQuery.disableAnimationsOf(context)
-                ? const Icon(
+                ? Icon(
                     Icons.hourglass_empty_rounded,
-                    color: AppColors.accent,
+                    color: AppPalette.of(context).accent,
                     size: 28,
                   )
-                : const CircularProgressIndicator(
+                : CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: AppColors.accent,
+                    color: AppPalette.of(context).accent,
                   ),
           ),
           const SizedBox(height: 18),
@@ -1748,9 +1754,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.videocam_off_outlined,
-                color: AppColors.accent,
+                color: AppPalette.of(context).accent,
                 size: 34,
               ),
               const SizedBox(height: 20),
@@ -1809,13 +1815,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       ),
       backgroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.focused)
-            ? AppColors.accent.withValues(alpha: .2)
-            : AppColors.surface.withValues(alpha: .45),
+            ? AppPalette.of(context).accent.withValues(alpha: .2)
+            : AppPalette.of(context).surface.withValues(alpha: .45),
       ),
       side: WidgetStateProperty.resolveWith(
         (states) => BorderSide(
           color: states.contains(WidgetState.focused)
-              ? AppColors.accent
+              ? AppPalette.of(context).accent
               : AppColors.text.withValues(alpha: .12),
           width: states.contains(WidgetState.focused) ? 2 : 1,
         ),
@@ -1910,10 +1916,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 3,
-                  activeTrackColor: AppColors.accent,
+                  activeTrackColor: AppPalette.of(context).accent,
                   inactiveTrackColor: AppColors.text.withValues(alpha: .18),
                   thumbColor: AppColors.text,
-                  overlayColor: AppColors.accent.withValues(alpha: .15),
+                  overlayColor: AppPalette.of(
+                    context,
+                  ).accent.withValues(alpha: .15),
                   thumbShape: const RoundSliderThumbShape(
                     enabledThumbRadius: 5,
                   ),
@@ -1975,13 +1983,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ),
                     ),
                     shape: const WidgetStatePropertyAll(StadiumBorder()),
-                    foregroundColor: const WidgetStatePropertyAll(
-                      AppColors.canvas,
+                    foregroundColor: WidgetStatePropertyAll(
+                      AppPalette.of(context).canvas,
                     ),
                     backgroundColor: WidgetStateProperty.resolveWith(
                       (states) => states.contains(WidgetState.focused)
                           ? AppColors.text
-                          : AppColors.accent,
+                          : AppPalette.of(context).accent,
                     ),
                     side: WidgetStateProperty.resolveWith(
                       (states) => BorderSide(

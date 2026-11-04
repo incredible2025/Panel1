@@ -203,9 +203,9 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       'Version ${update.version} · ${(update.bytes / 1048576).toStringAsFixed(1)} MB',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        color: TvGlass.accent,
+                        color: AppPalette.of(context).accent,
                       ),
                     ),
                   ),

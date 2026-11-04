@@ -71,7 +71,7 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: AppPalette.of(context).canvas,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
@@ -142,7 +142,10 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                                 ],
                               ),
                               const SizedBox(height: 28),
-                              const Divider(color: AppColors.border, height: 1),
+                              Divider(
+                                color: AppPalette.of(context).border,
+                                height: 1,
+                              ),
                               const SizedBox(height: 28),
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -205,7 +208,9 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.w600,
                                                 color: seasons[index] == season
-                                                    ? AppColors.accent
+                                                    ? AppPalette.of(
+                                                        context,
+                                                      ).accent
                                                     : AppColors.muted,
                                               ),
                                             ),
@@ -267,8 +272,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                const Divider(
-                                  color: AppColors.border,
+                                Divider(
+                                  color: AppPalette.of(context).border,
                                   height: 1,
                                 ),
                                 const SizedBox(height: 24),
@@ -319,7 +324,9 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
         : widget.item.rating;
     return Stack(
       children: [
-        const Positioned.fill(child: ColoredBox(color: AppColors.canvas)),
+        Positioned.fill(
+          child: ColoredBox(color: AppPalette.of(context).canvas),
+        ),
         Positioned(
           top: 0,
           left: 0,
@@ -340,10 +347,10 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                 end: Alignment.bottomCenter,
                 stops: const [0, .25, .65, 1],
                 colors: [
-                  AppColors.canvas.withValues(alpha: .08),
-                  AppColors.canvas.withValues(alpha: .34),
-                  AppColors.canvas.withValues(alpha: .92),
-                  AppColors.canvas,
+                  AppPalette.of(context).canvas.withValues(alpha: .08),
+                  AppPalette.of(context).canvas.withValues(alpha: .34),
+                  AppPalette.of(context).canvas.withValues(alpha: .92),
+                  AppPalette.of(context).canvas,
                 ],
               ),
             ),
@@ -357,8 +364,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    AppColors.canvas.withValues(alpha: .78),
-                    AppColors.canvas.withValues(alpha: .12),
+                    AppPalette.of(context).canvas.withValues(alpha: .78),
+                    AppPalette.of(context).canvas.withValues(alpha: .12),
                   ],
                 ),
               ),
@@ -604,8 +611,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
                 children: [
                   Text(
                     'EPISODE ${episode.episodeNumber.toString().padLeft(2, '0')}',
-                    style: const TextStyle(
-                      color: AppColors.accent,
+                    style: TextStyle(
+                      color: AppPalette.of(context).accent,
                       letterSpacing: 1.5,
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
@@ -663,14 +670,14 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
               height: wide ? 44 : 32,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: AppPalette.of(context).border),
               ),
               child: Icon(
                 saved?.watched == true
                     ? Icons.check_rounded
                     : Icons.play_arrow_rounded,
                 size: wide ? 26 : 21,
-                color: AppColors.accent,
+                color: AppPalette.of(context).accent,
               ),
             ),
             if (wide) const SizedBox(width: 14),
@@ -690,8 +697,8 @@ class _SeriesDetailScreenState extends ConsumerState<SeriesDetailScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.canvas.withValues(alpha: .88),
-            AppColors.canvas.withValues(alpha: 0),
+            AppPalette.of(context).canvas.withValues(alpha: .88),
+            AppPalette.of(context).canvas.withValues(alpha: 0),
           ],
         ),
       ),

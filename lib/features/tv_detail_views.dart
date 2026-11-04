@@ -131,9 +131,9 @@ class _TvMovieViewState extends State<TvMovieView> {
                   const SizedBox(height: 10),
                   Text(
                     'Continue from ${formatPlaybackTime(saved.positionMs)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.accent,
+                      color: AppPalette.of(context).accent,
                     ),
                   ),
                   const SizedBox(height: 6),

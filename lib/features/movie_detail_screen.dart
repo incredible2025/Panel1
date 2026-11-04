@@ -74,7 +74,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
         final answer = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            icon: const Icon(Icons.history_rounded, color: AppColors.accent),
+            icon: Icon(
+              Icons.history_rounded,
+              color: AppPalette.of(context).accent,
+            ),
             title: const Text('Pick up where you left off?'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -88,8 +91,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                 LinearProgressIndicator(
                   value: progress.progress,
                   minHeight: 3,
-                  color: AppColors.accent,
-                  backgroundColor: AppColors.border,
+                  color: AppPalette.of(context).accent,
+                  backgroundColor: AppPalette.of(context).border,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -167,7 +170,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
       );
     }
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: AppPalette.of(context).canvas,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 760;
@@ -204,11 +207,11 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 1180),
                             child: detail.when(
-                              loading: () => const Padding(
+                              loading: () => Padding(
                                 padding: EdgeInsets.symmetric(vertical: 36),
                                 child: LinearProgressIndicator(
                                   minHeight: 2,
-                                  color: AppColors.accent,
+                                  color: AppPalette.of(context).accent,
                                 ),
                               ),
                               error: (_, __) => StatusView(
@@ -253,7 +256,9 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     final posterWidth = wide ? (compact ? 146.0 : 210.0) : 98.0;
     return Stack(
       children: [
-        Positioned.fill(child: ColoredBox(color: AppColors.canvas)),
+        Positioned.fill(
+          child: ColoredBox(color: AppPalette.of(context).canvas),
+        ),
         Positioned(
           top: 0,
           left: 0,
@@ -273,10 +278,10 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                 end: Alignment.bottomCenter,
                 stops: const [0, .22, .62, 1],
                 colors: [
-                  AppColors.canvas.withValues(alpha: .1),
-                  AppColors.canvas.withValues(alpha: .36),
-                  AppColors.canvas.withValues(alpha: .91),
-                  AppColors.canvas,
+                  AppPalette.of(context).canvas.withValues(alpha: .1),
+                  AppPalette.of(context).canvas.withValues(alpha: .36),
+                  AppPalette.of(context).canvas.withValues(alpha: .91),
+                  AppPalette.of(context).canvas,
                 ],
               ),
             ),
@@ -290,8 +295,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    AppColors.canvas.withValues(alpha: .78),
-                    AppColors.canvas.withValues(alpha: .12),
+                    AppPalette.of(context).canvas.withValues(alpha: .78),
+                    AppPalette.of(context).canvas.withValues(alpha: .12),
                   ],
                 ),
               ),
@@ -451,13 +456,17 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: wide ? 24 : 18, vertical: 19),
       decoration: BoxDecoration(
-        color: AppColors.surface.withValues(alpha: .7),
-        border: Border.all(color: AppColors.border),
+        color: AppPalette.of(context).surface.withValues(alpha: .7),
+        border: Border.all(color: AppPalette.of(context).border),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         children: [
-          const Icon(Icons.history_rounded, color: AppColors.accent, size: 27),
+          Icon(
+            Icons.history_rounded,
+            color: AppPalette.of(context).accent,
+            size: 27,
+          ),
           const SizedBox(width: 17),
           Expanded(
             child: Column(
@@ -491,8 +500,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
                   child: LinearProgressIndicator(
                     value: saved.progress,
                     minHeight: 3,
-                    color: AppColors.accent,
-                    backgroundColor: AppColors.border,
+                    color: AppPalette.of(context).accent,
+                    backgroundColor: AppPalette.of(context).border,
                   ),
                 ),
                 const SizedBox(height: 9),
@@ -544,7 +553,7 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Divider(color: AppColors.border, height: 1),
+        Divider(color: AppPalette.of(context).border, height: 1),
         const SizedBox(height: 30),
         if (wide && movie.cast.trim().isNotEmpty)
           Row(
@@ -576,8 +585,8 @@ class _MovieDetailScreenState extends ConsumerState<MovieDetailScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.canvas.withValues(alpha: .88),
-            AppColors.canvas.withValues(alpha: 0),
+            AppPalette.of(context).canvas.withValues(alpha: .88),
+            AppPalette.of(context).canvas.withValues(alpha: 0),
           ],
         ),
       ),

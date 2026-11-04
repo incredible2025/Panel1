@@ -116,7 +116,7 @@ class _TvSystemTextEntryDialogState extends State<TvSystemTextEntryDialog> {
   Widget build(BuildContext context) => Theme(
     data: TvGlass.theme(Theme.of(context)),
     child: AlertDialog(
-      backgroundColor: TvGlass.canvas,
+      backgroundColor: AppPalette.of(context).canvas,
       scrollable: true,
       insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
       title: Text(

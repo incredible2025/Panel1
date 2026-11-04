@@ -536,8 +536,10 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   ) {
     final schedule = ref.watch(guideScheduleProvider(channel.id));
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: AppPalette.of(context).border),
+        ),
       ),
       child: schedule.when(
         loading: () => _guideStatus(

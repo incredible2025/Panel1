@@ -45,6 +45,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
   final _preview = GlobalKey<LiveChannelPreviewState>();
   final _watch = FocusNode(debugLabel: 'Watch now');
   final _options = FocusNode(debugLabel: 'Live options');
+  final _favourite = FocusNode(debugLabel: 'Channel favourite');
+  final _savingFavorites = <String>{};
   final _hero = FocusNode(debugLabel: 'Featured title');
   final _searchFocus = FocusNode(debugLabel: 'Search');
   final _top = <String, FocusNode>{};
@@ -106,6 +108,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     _channelFocusTimer?.cancel();
     _watch.dispose();
     _options.dispose();
+    _favourite.dispose();
     _hero.dispose();
     _searchFocus.dispose();
     for (final n in _top.values) {
@@ -250,21 +253,37 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
 
   Future<void> _favorite(MediaItem item) async {
     final account = ref.read(sessionProvider)?.accountId;
-    if (account == null) return;
+    if (account == null || _savingFavorites.contains(item.id)) return;
+    setState(() => _savingFavorites.add(item.id));
     try {
-      final saved =
-          ref.read(favoritesProvider).asData?.value.any((e) => e == item) ??
-          false;
+      final favorites = await ref.read(favoritesProvider.future);
+      if (!mounted) return;
+      final saved = favorites.any(
+        (e) => e.id == item.id && e.kind == item.kind,
+      );
       await ref.read(storeProvider).setFavorite(account, item, !saved);
-      if (mounted) ref.invalidate(favoritesProvider);
+      if (mounted) {
+        ref.invalidate(favoritesProvider);
+        final updated = await ref.read(favoritesProvider.future);
+        if (mounted &&
+            _section == 'live' &&
+            _liveFilter == 'favorites' &&
+            !updated.any((e) => e.kind == MediaKind.live)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _categories.currentState?.focusSelected();
+          });
+        }
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not save this channel. Please retry.'),
+            content: Text('Could not update favourites. Please retry.'),
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _savingFavorites.remove(item.id));
     }
   }
 
@@ -663,7 +682,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       if (_kind == MediaKind.live) ...[
         TvListEntry(
           id: 'favorites',
-          title: 'Favorites',
+          title: 'Favourites',
           selected: _liveFilter == 'favorites',
           trailing:
               '${favorites.where((e) => e.kind == MediaKind.live).length}',
@@ -694,7 +713,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final filterName =
         supplied.where((c) => c.id == _category[_kind]).firstOrNull?.name ??
         (_liveFilter == 'favorites'
-            ? 'Favorites'
+            ? 'Favourites'
             : _liveFilter == 'recent'
             ? 'Recently viewed'
             : 'All categories');
@@ -822,6 +841,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final epg = selected == null ? null : ref.watch(epgProvider(selected.id));
     final slots = glassGuideSlots(epg?.asData?.value ?? [], DateTime.now());
     final entry = slots[_programmeColumn];
+    final favorites = ref.watch(favoritesProvider);
+    final saved =
+        favorites.asData?.value.any(
+          (e) => e.id == selected?.id && e.kind == MediaKind.live,
+        ) ??
+        false;
+    final saving = selected != null && _savingFavorites.contains(selected.id);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -856,13 +882,17 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                       if (_watch.hasFocus) {
                         _options.requestFocus();
+                      } else if (_options.hasFocus) {
+                        _favourite.requestFocus();
                       } else {
                         _guide.currentState?.focusSelected(remember: true);
                       }
                       return KeyEventResult.handled;
                     }
                     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                      if (_options.hasFocus) {
+                      if (_favourite.hasFocus) {
+                        _options.requestFocus();
+                      } else if (_options.hasFocus) {
                         _watch.requestFocus();
                       }
                       return KeyEventResult.handled;
@@ -880,6 +910,39 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      TvControl(
+                        focusNode: _favourite,
+                        label: saved
+                            ? 'Remove from favourites'
+                            : 'Add to favourites',
+                        selected: saved,
+                        onPressed: () => _favorite(selected),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              saved
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              size: 15,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              saving
+                                  ? 'Saving…'
+                                  : saved
+                                  ? 'Remove favourite'
+                                  : 'Add to favourites',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
                       TvControl(
                         focusNode: _options,
                         onPressed: () => _liveOptions(selected, channels),
@@ -954,8 +1017,24 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                         )
                       : state.hasError
                       ? _state('Channels unavailable', retry: _refresh)
+                      : _liveFilter == 'favorites' && favorites.isLoading
+                      ? const StatusView(
+                          title: 'Loading favourites',
+                          loading: true,
+                        )
+                      : _liveFilter == 'favorites' && favorites.hasError
+                      ? _state(
+                          'Favourites unavailable',
+                          retry: () => ref.invalidate(favoritesProvider),
+                        )
                       : selected == null
-                      ? _state('No matches found')
+                      ? _liveFilter == 'favorites'
+                            ? const StatusView(
+                                title: 'No favourite channels yet',
+                                message:
+                                    'Choose All channels, select a channel and choose Add to favourites.',
+                              )
+                            : _state('No matches found')
                       : TvGlassGuide(
                           key: _guide,
                           channels: channels,
@@ -963,7 +1042,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                           onLeft: () => _categories.currentState?.focusSelected(
                             remember: true,
                           ),
-                          onRight: _options.requestFocus,
+                          onRight: _favourite.requestFocus,
                           onTop: _searchFocus.requestFocus,
                           onOpen: (item) => _open(item, channels: channels),
                           onProgramme: (item, programme) =>

@@ -17,11 +17,13 @@ class LiveChannelPreview extends ConsumerStatefulWidget {
     required this.programme,
     required this.onWatch,
     this.compact = false,
+    this.favouriteButton,
   });
   final MediaItem item;
   final EpgEntry? programme;
   final VoidCallback onWatch;
   final bool compact;
+  final Widget? favouriteButton;
   @override
   ConsumerState<LiveChannelPreview> createState() => LiveChannelPreviewState();
 }
@@ -242,6 +244,8 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
                       spacing: 12,
                       runSpacing: 10,
                       children: [
+                        if (widget.favouriteButton != null)
+                          widget.favouriteButton!,
                         FilledButton.icon(
                           onPressed: widget.onWatch,
                           icon: const Icon(Icons.play_arrow),

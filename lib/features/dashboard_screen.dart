@@ -10,6 +10,7 @@ import '../data/app_settings.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/library_shelves.dart';
 import '../widgets/live_channel_preview.dart';
+import '../widgets/live_programme_summary.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
 import '../data/models.dart';
@@ -575,7 +576,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           message:
                                               _kind == MediaKind.live &&
                                                   _favoritesOnly
-                                              ? 'Turn off Favorites and use the star beside a channel to save it.'
+                                              ? 'Turn off Favorites, select a channel and choose Add to favourites.'
                                               : _myListOnly.contains(_kind)
                                               ? 'Open a movie or series and choose My List to save it here.'
                                               : 'Try another search or category.',
@@ -890,7 +891,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     label: 'Favorites only',
                     borderRadius: 30,
                     onPressed: () {
-                      setState(() => _favoritesOnly = !_favoritesOnly);
+                      setState(() {
+                        _favoritesOnly = !_favoritesOnly;
+                        if (_favoritesOnly) _category[MediaKind.live] = null;
+                      });
                       _scrollToTop();
                     },
                     child: Padding(
@@ -1861,6 +1865,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     item: item,
     programme: programme,
     onWatch: () => _open(item, channels: channels),
+    favouriteButton: _favoriteButton(item, labelled: true),
   );
 
   Widget _channelRow(
@@ -1919,19 +1924,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           const SizedBox(width: 13),
           Expanded(
-            child: Text(
-              item.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: item.id == selected.id
-                    ? FontWeight.w600
-                    : FontWeight.w400,
-                fontSize: 13,
-                color: item.id == selected.id
-                    ? AppColors.text
-                    : AppColors.muted,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: item.id == selected.id
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                LiveProgrammeSummary(channelId: item.id),
+              ],
             ),
           ),
           const SizedBox(width: 9),
@@ -1950,7 +1959,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     ),
   );
 
-  Widget _favoriteButton(MediaItem item) {
+  Widget _favoriteButton(MediaItem item, {bool labelled = false}) {
     final favorite =
         ref
             .watch(favoritesProvider)
@@ -1958,6 +1967,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ?.value
             .any((entry) => entry.id == item.id && entry.kind == item.kind) ??
         false;
+    if (labelled) {
+      return OutlinedButton.icon(
+        onPressed: _savingFavorites.contains(item.id)
+            ? null
+            : () => _toggleFavorite(item),
+        icon: Icon(favorite ? Icons.star_rounded : Icons.star_outline_rounded),
+        label: Text(
+          _savingFavorites.contains(item.id)
+              ? 'Saving…'
+              : favorite
+              ? 'Remove favourite'
+              : 'Add to favourites',
+        ),
+      );
+    }
     return IconButton(
       onPressed: _savingFavorites.contains(item.id)
           ? null

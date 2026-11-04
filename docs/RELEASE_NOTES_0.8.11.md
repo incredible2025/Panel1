@@ -1,0 +1,3 @@
+- Improved playback cleanup and recovery.
+- Improved programme guide refresh and favourite channel handling.
+- Improved update checks and watch history reliability.

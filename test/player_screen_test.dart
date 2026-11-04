@@ -137,6 +137,8 @@ class _VideoPlatform extends VideoPlayerPlatform {
   final calls = <String>[];
   final disposed = <int>[];
   Completer<void>? creationGate;
+  Completer<void>? pauseGate;
+  Completer<void>? disposalGate;
   int _nextId = 0;
 
   @override
@@ -189,6 +191,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   @override
   Future<void> dispose(int playerId) async {
     disposed.add(playerId);
+    await disposalGate?.future;
     await events[playerId]?.close();
   }
 
@@ -196,7 +199,10 @@ class _VideoPlatform extends VideoPlayerPlatform {
   Future<void> play(int playerId) async => calls.add('play:$playerId');
 
   @override
-  Future<void> pause(int playerId) async => calls.add('pause:$playerId');
+  Future<void> pause(int playerId) async {
+    calls.add('pause:$playerId');
+    await pauseGate?.future;
+  }
 
   @override
   Future<void> seekTo(int playerId, Duration position) async {
@@ -227,6 +233,10 @@ class _VideoPlatform extends VideoPlayerPlatform {
   Future<void> setAllowBackgroundPlayback(bool allowBackgroundPlayback) async {}
 
   Future<void> close() async {
+    if (pauseGate != null && !pauseGate!.isCompleted) pauseGate!.complete();
+    if (disposalGate != null && !disposalGate!.isCompleted) {
+      disposalGate!.complete();
+    }
     for (final controller in events.values) {
       if (!controller.isClosed) await controller.close();
     }
@@ -938,6 +948,134 @@ void main() {
     );
   });
 
+  testWidgets('exit disposal is not blocked by a pending pause command', (
+    tester,
+  ) async {
+    await _mountPlayer(tester, store);
+    await _finishInitialization(tester, platform);
+    platform.pauseGate = Completer<void>();
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(platform.disposed, [1]);
+    expect(find.byType(PlayerScreen), findsNothing);
+    platform.pauseGate!.complete();
+  });
+
+  testWidgets(
+    'rapid zapping waits for old disposal and opens only the latest channel',
+    (tester) async {
+      await _mountPlayer(
+        tester,
+        store,
+        item: _firstChannel,
+        channels: const [_firstChannel, _secondChannel, _thirdChannel],
+      );
+      await _finishInitialization(tester, platform);
+      platform.disposalGate = Completer<void>();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(platform.disposed, [1]);
+      expect(platform.sources, hasLength(1));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 275)),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(platform.sources, hasLength(1));
+      platform.disposalGate!.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(platform.sources, hasLength(2));
+      expect(
+        platform.sources.values.last.uri,
+        contains('/${_thirdChannel.id}.'),
+      );
+      await _finishInitialization(tester, platform);
+      expect(store.channelPlays, [_firstChannel, _thirdChannel]);
+    },
+  );
+
+  testWidgets(
+    'background releases a movie before slow history writes and resumes its position on Play',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      platform.positions[1] = const Duration(minutes: 3);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump();
+      store.saveGate = Completer<void>();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(platform.disposed, contains(1));
+      expect(store.saved.last.positionMs, 180000);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(platform.sources, hasLength(1));
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pump();
+      await _finishInitialization(tester, platform);
+      expect(platform.calls, contains('seek:2:180000'));
+      expect(
+        platform.calls.indexOf('seek:2:180000'),
+        lessThan(platform.calls.indexOf('play:2')),
+      );
+      store.saveGate!.complete();
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'Back exits after bounded wait when history storage never finishes',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      store.saveGate = Completer<void>();
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pump();
+      expect(platform.disposed, contains(1));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.byType(PlayerScreen), findsNothing);
+      store.saveGate!.complete();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'runtime errors release the failed player even with reconnect disabled',
+    (tester) async {
+      store.preferences = const AppSettings(reconnect: false);
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      platform.failInitialization(1);
+      await tester.pump();
+      await tester.pump();
+      expect(platform.disposed, contains(1));
+      await tester.pump(const Duration(seconds: 20));
+      expect(platform.sources, hasLength(1));
+      expect(find.text('Try again'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a stalled history write does not block all later save attempts',
+    (tester) async {
+      await _mountPlayer(tester, store);
+      await _finishInitialization(tester, platform);
+      store.saveGate = Completer<void>();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(store.saved, isNotEmpty);
+      final attempts = store.saved.length;
+      await tester.pump(const Duration(seconds: 11));
+      await tester.pump();
+      expect(store.saved.length, greaterThan(attempts));
+      store.saveGate!.complete();
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('resumes before playing and saves progress when paused', (
     tester,
   ) async {
@@ -966,6 +1104,7 @@ void main() {
     expect(store.saved.last.item, _movie);
     expect(store.saved.last.positionMs, 180000);
     expect(store.saved.last.durationMs, _duration.inMilliseconds);
+    expect(platform.disposed, isEmpty);
   });
 
   testWidgets('pauses and flushes progress when the application is paused', (
@@ -988,6 +1127,7 @@ void main() {
       platform.calls.where((call) => call == 'pause:$id').length,
       greaterThan(previousPauses),
     );
+    expect(platform.disposed, contains(id));
     expect(store.saved.last.positionMs, 120000);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
@@ -1008,6 +1148,8 @@ void main() {
       await tester.pump();
 
       expect(store.saved.last.positionMs, 240000);
+      // A slow disk write must not retain the stream while Back is pending.
+      expect(platform.disposed, contains(id));
       expect(find.byType(PlayerScreen), findsOneWidget);
       store.saveGate!.complete();
       await tester.pump();
@@ -1159,6 +1301,8 @@ void main() {
     await tester.pump();
     await tester.tap(find.byIcon(Icons.play_arrow));
     await tester.pump();
+    expect(platform.sources, hasLength(2));
+    await _finishInitialization(tester, platform);
     expect(store.channelPlays, [_firstChannel]);
   });
 

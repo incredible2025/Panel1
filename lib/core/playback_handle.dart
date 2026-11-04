@@ -451,11 +451,14 @@ class CompatibilityPlayback extends PlaybackHandle {
       _mediaReady.completeError(StateError('Playback closed'));
     }
     _bridge = null;
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
-    }
+    // Request the native stop/dispose before waiting for event subscriptions.
+    // media_kit stops the media before its deferred native object destruction.
+    final closing = _created ? _player.dispose() : Future<void>.value();
+    final cancellations = [
+      for (final subscription in _subscriptions) subscription.cancel(),
+    ];
     try {
-      if (_created) await _player.dispose();
+      await Future.wait([closing, ...cancellations]);
     } finally {
       /* Notifier teardown is owned by dispose(). */
     }

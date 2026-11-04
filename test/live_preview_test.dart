@@ -9,6 +9,7 @@ import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/widgets/live_channel_preview.dart';
 
 class _Store implements LocalStore {
@@ -24,10 +25,12 @@ class _Store implements LocalStore {
 class _PreviewHandle extends PlaybackHandle {
   final events = <String>[];
   Completer<void>? opening, closing;
+  bool failOpening = false;
   bool dead = false;
   @override
   Future<void> initialize() async {
     await opening?.future;
+    if (failOpening) throw StateError('Preview unavailable');
     if (!dead) {
       value = const VideoPlayerValue(
         duration: Duration.zero,
@@ -70,6 +73,19 @@ class _PreviewHandle extends PlaybackHandle {
   }
 }
 
+class _PreparedPreviewApi extends XtreamApi {
+  int preparations = 0;
+  @override
+  Future<Uri> prepareStreamUri(
+    Session session,
+    MediaItem item, {
+    Episode? episode,
+  }) async {
+    preparations++;
+    return Uri.parse('https://playback.example/prepared.ts');
+  }
+}
+
 void main() {
   const session = Session(
     credentials: Credentials(
@@ -85,12 +101,14 @@ void main() {
     WidgetTester tester,
     _PreviewHandle handle,
     GlobalKey<LiveChannelPreviewState> key,
-    VoidCallback watch,
-  ) async {
+    VoidCallback watch, {
+    XtreamApi? api,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           storeProvider.overrideWithValue(_Store()),
+          if (api != null) apiProvider.overrideWithValue(api),
           sessionProvider.overrideWith((ref) => session),
           playbackFactoryProvider.overrideWithValue((uri, engine) => handle),
         ],
@@ -153,6 +171,63 @@ void main() {
       await tester.pumpAndSettle();
       expect(handle.events, isNot(contains('play')));
       expect(handle.dead, true);
+    },
+  );
+  testWidgets(
+    'failed preview starts disposal without waiting for its closing future',
+    (tester) async {
+      final handle = _PreviewHandle()
+        ..failOpening = true
+        ..closing = Completer<void>();
+      final key = GlobalKey<LiveChannelPreviewState>();
+      await mount(tester, handle, key, () {});
+      await tester.tap(find.text('Preview'));
+      await tester.pump();
+      expect(handle.events, ['closing']);
+      expect(handle.dead, isTrue);
+      expect(
+        find.text('Preview unavailable. You can still open the channel.'),
+        findsOneWidget,
+      );
+      handle.closing!.complete();
+      await tester.pumpAndSettle();
+      expect(handle.events.last, 'closed');
+    },
+  );
+  testWidgets('preview uses shared connection preparation', (tester) async {
+    final api = _PreparedPreviewApi();
+    addTearDown(api.dispose);
+    final handle = _PreviewHandle();
+    await mount(
+      tester,
+      handle,
+      GlobalKey<LiveChannelPreviewState>(),
+      () {},
+      api: api,
+    );
+    await tester.tap(find.text('Preview'));
+    await tester.pumpAndSettle();
+    expect(api.preparations, 1);
+    expect(handle.events, contains('play'));
+  });
+
+  testWidgets(
+    'stuck preview times out, releases and cannot play after late initialization',
+    (tester) async {
+      final handle = _PreviewHandle()..opening = Completer<void>();
+      await mount(tester, handle, GlobalKey<LiveChannelPreviewState>(), () {});
+      await tester.tap(find.text('Preview'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 26));
+      await tester.pumpAndSettle();
+      expect(handle.dead, isTrue);
+      expect(
+        find.text('Preview unavailable. You can still open the channel.'),
+        findsOneWidget,
+      );
+      handle.opening!.complete();
+      await tester.pumpAndSettle();
+      expect(handle.events, isNot(contains('play')));
     },
   );
 }

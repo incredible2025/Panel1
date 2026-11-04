@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -45,6 +46,11 @@ final guideScheduleProvider = FutureProvider.autoDispose
     .family<GuideSchedule, String>((ref, id) async {
       final session = ref.watch(sessionProvider);
       if (session == null) return const GuideSchedule([]);
+      final refreshTimer = Timer(
+        const Duration(minutes: 5),
+        ref.invalidateSelf,
+      );
+      ref.onDispose(refreshTimer.cancel);
       final refresh = ref.watch(guideRefreshProvider);
       final store = ref.watch(storeProvider);
       final key = 'guide:$id';
@@ -145,6 +151,14 @@ final seriesDetailProvider = FutureProvider.autoDispose
       return ref.watch(apiProvider).seriesInfo(session, item);
     });
 
+// Shared minute ticks update labels without refetching every channel each minute.
+final programmeClockProvider = StreamProvider.autoDispose<DateTime>((
+  ref,
+) async* {
+  yield DateTime.now();
+  yield* Stream.periodic(const Duration(minutes: 1), (_) => DateTime.now());
+});
+
 final epgProvider = FutureProvider.autoDispose.family<List<EpgEntry>, String>((
   ref,
   id,
@@ -153,34 +167,54 @@ final epgProvider = FutureProvider.autoDispose.family<List<EpgEntry>, String>((
   if (session == null) return [];
   final store = ref.watch(storeProvider);
   final key = 'epg:$id';
+  final refresh = Timer(const Duration(minutes: 5), ref.invalidateSelf);
+  ref.onDispose(refresh.cancel);
   try {
     final entries = await ref.watch(apiProvider).shortEpg(session, id);
-    await store.cacheJson(session.accountId, key, [
-      for (final entry in entries)
-        {
-          'title': entry.title,
-          'description': entry.description,
-          'start': entry.start.toIso8601String(),
-          'end': entry.end.toIso8601String(),
-        },
-    ]);
+    try {
+      await store
+          .cacheJson(session.accountId, key, [
+            for (final entry in entries)
+              {
+                'title': entry.title,
+                'description': entry.description,
+                'start': entry.start.toIso8601String(),
+                'end': entry.end.toIso8601String(),
+              },
+          ])
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      /* Never discard live EPG because caching failed. */
+    }
     return entries;
   } catch (_) {
-    final cached = await store.cachedJson(
-      session.accountId,
-      key,
-      maxAge: const Duration(hours: 2),
-    );
-    if (cached is List) {
-      return cached.map((entry) {
-        final value = Map<String, dynamic>.from(entry as Map);
-        return EpgEntry(
-          title: value['title'] as String,
-          description: value['description'] as String,
-          start: DateTime.parse(value['start'] as String),
-          end: DateTime.parse(value['end'] as String),
-        );
-      }).toList();
+    try {
+      final cached = await store.cachedJson(
+        session.accountId,
+        key,
+        maxAge: const Duration(hours: 2),
+      );
+      if (cached is List) {
+        final entries = <EpgEntry>[];
+        for (final entry in cached) {
+          try {
+            final value = Map<String, dynamic>.from(entry as Map);
+            entries.add(
+              EpgEntry(
+                title: value['title'] as String,
+                description: value['description'] as String,
+                start: DateTime.parse(value['start'] as String),
+                end: DateTime.parse(value['end'] as String),
+              ),
+            );
+          } catch (_) {
+            /* Ignore individual corrupt cache entries. */
+          }
+        }
+        if (entries.isNotEmpty || cached.isEmpty) return entries;
+      }
+    } catch (_) {
+      /* Preserve the provider failure when cache access fails. */
     }
     rethrow;
   }

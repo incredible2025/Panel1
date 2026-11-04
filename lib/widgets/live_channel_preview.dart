@@ -56,11 +56,13 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
     final player = _player;
     _player = null;
     if (player != null) {
-      _releases = _releases.then((_) async {
+      // Begin closing now, then retain a barrier before another preview opens.
+      final closing = () async {
         try {
           await player.dispose();
         } catch (_) {}
-      });
+      }();
+      _releases = Future.wait([_releases, closing]);
     }
     return _releases;
   }
@@ -94,27 +96,36 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
       setState(() => _opening = false);
       return;
     }
-    final preferences = ref.read(settingsProvider.notifier).current;
-    final player = ref.read(playbackFactoryProvider)(
-      ref.read(apiProvider).streamUri(session, widget.item),
-      preferences.engineFor(widget.item),
-    );
-    _player = player;
     try {
-      await player.initialize();
-      if (!mounted || generation != _generation) return;
-      await player.setVolume(0);
-      if (!mounted || generation != _generation) return;
-      await player.play();
-      if (mounted && generation == _generation) {
-        setState(() => _opening = false);
-      }
+      await (() async {
+        final uri = await ref
+            .read(apiProvider)
+            .prepareStreamUri(session, widget.item);
+        if (!mounted || generation != _generation) return;
+        final preferences = ref.read(settingsProvider.notifier).current;
+        final player = ref.read(playbackFactoryProvider)(
+          uri,
+          preferences.engineFor(widget.item),
+        );
+        _player = player;
+        await player.initialize();
+        if (!mounted || generation != _generation) return;
+        await player.setVolume(0);
+        if (!mounted || generation != _generation) return;
+        await player.play();
+        if (mounted && generation == _generation) {
+          setState(() => _opening = false);
+        }
+      })().timeout(const Duration(seconds: 25));
     } catch (_) {
       if (mounted && generation == _generation) {
+        _generation++;
+        final closing = _drain();
         setState(() {
           _opening = false;
           _error = 'Preview unavailable. You can still open the channel.';
         });
+        await closing;
       }
     }
   }

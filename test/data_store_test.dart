@@ -29,6 +29,27 @@ void main() {
   tearDown(() => store.close());
 
   test(
+    'concurrent progress saves keep the latest request including a backward seek',
+    () async {
+      await Future.wait([
+        store.saveProgress(
+          'alice',
+          movie,
+          positionMs: 90000,
+          durationMs: 120000,
+        ),
+        store.saveProgress(
+          'alice',
+          movie,
+          positionMs: 30000,
+          durationMs: 120000,
+        ),
+      ]);
+      expect((await store.history('alice')).single.positionMs, 30000);
+    },
+  );
+
+  test(
     'favorites isolate accounts and media kinds even when IDs match',
     () async {
       const channel = MediaItem(id: '1', name: 'Channel', kind: MediaKind.live);

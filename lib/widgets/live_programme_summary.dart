@@ -11,8 +11,10 @@ class LiveProgrammeSummary extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final time =
+        ref.watch(programmeClockProvider).asData?.value ?? DateTime.now();
     final state = ref.watch(epgProvider(channelId));
-    final slots = glassGuideSlots(state.asData?.value ?? [], DateTime.now());
+    final slots = glassGuideSlots(state.asData?.value ?? [], time);
     final now = slots[0];
     final next = slots[1];
     String clock(DateTime time) =>

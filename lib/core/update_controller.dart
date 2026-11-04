@@ -62,7 +62,13 @@ class UpdateController extends ChangeNotifier {
       device = await platform.load();
       lastCheck = device!.url == url ? device!.lastCheck : null;
       if (device!.url != url || !device!.automatic) {
-        await platform.preferences(url, true, lastCheck);
+        try {
+          await platform
+              .preferences(url, true, lastCheck)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {
+          /* Optional preferences must not disable updates. */
+        }
       }
     } catch (_) {
       _loading = null;
@@ -124,9 +130,13 @@ class UpdateController extends ChangeNotifier {
       }
       // Throttle failed automatic attempts too, without claiming they succeeded.
       lastCheck = DateTime.now();
-      await platform
-          .preferences(url, true, lastCheck)
-          .timeout(const Duration(seconds: 3));
+      try {
+        await platform
+            .preferences(url, true, lastCheck)
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        /* A valid update remains available without saved preferences. */
+      }
       update = candidate.code > device!.code ? candidate : null;
       _path = null;
       stage = update == null ? UpdateStage.current : UpdateStage.available;

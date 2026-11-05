@@ -1,0 +1,2 @@
+- Added a Catch-up filter in the TV guide to find channels that offer replays.
+- Choose a date and watch available past programmes from the beginning.

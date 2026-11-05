@@ -19,6 +19,62 @@ void main() {
   );
 
   test(
+    'catch-up honours archive flags and keeps the provider start in cache',
+    () async {
+      final channel = MediaItem.fromJson({
+        'stream_id': 42,
+        'tv_archive': '1',
+        'tv_archive_duration': '7',
+      }, kind: MediaKind.live);
+      final now = DateTime.now();
+      final start = now.subtract(const Duration(days: 2));
+      final end = start.add(const Duration(minutes: 30));
+      final programme = EpgEntry.fromJson({
+        'title': 'Replay',
+        'start': '2026-10-30 23:05:00',
+        'start_timestamp': start.millisecondsSinceEpoch ~/ 1000,
+        'stop_timestamp': end.millisecondsSinceEpoch ~/ 1000,
+        'has_archive': '1',
+      })!;
+      final cached = EpgEntry.fromJson(programme.toJson())!;
+      final saved = MediaItem.fromJson(channel.toJson());
+      expect(saved.supportsCatchup, isTrue);
+      expect(cached.canReplayOn(saved, now), isTrue);
+      expect(cached.canReplayOn(saved, start), isFalse);
+      expect(
+        cached.canReplayOn(saved, now.add(const Duration(days: 7))),
+        isFalse,
+      );
+      expect(
+        EpgEntry.fromJson({
+          ...programme.toJson(),
+          'has_archive': false,
+        })!.canReplayOn(saved, now),
+        isFalse,
+      );
+      expect(
+        MediaItem.fromJson({
+          ...channel.toJson(),
+          'tv_archive': false,
+        }).supportsCatchup,
+        isFalse,
+      );
+      final api = XtreamApi();
+      addTearDown(api.dispose);
+      final uri = await api.prepareCatchupUri(session, saved, cached);
+      expect(uri.pathSegments, [
+        'portal',
+        'timeshift',
+        credentials.username,
+        credentials.password,
+        startsWith('3'),
+        '2026-10-30:23-05',
+        '42.m3u8',
+      ]);
+    },
+  );
+
+  test(
     'full guide uses provider schedule, sorts and removes duplicate or invalid intervals',
     () async {
       final api = XtreamApi(

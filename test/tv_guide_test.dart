@@ -11,6 +11,7 @@ import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/features/tv_guide_screen.dart';
+import 'package:streamline_iptv/features/player_screen.dart';
 import 'package:streamline_iptv/widgets/tv_focus_card.dart';
 
 class _GuidePreferencesStore implements LocalStore {
@@ -22,6 +23,70 @@ class _GuidePreferencesStore implements LocalStore {
 }
 
 void main() {
+  testWidgets('TV guide filters archive channels and opens a dated replay', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day - 2, 0, 5);
+    final replay = EpgEntry(
+      title: 'Archived report',
+      description: '',
+      start: start,
+      end: start.add(const Duration(hours: 1)),
+      hasArchive: true,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          storeProvider.overrideWithValue(_GuidePreferencesStore()),
+          isTvProvider.overrideWithValue(true),
+          itemsProvider.overrideWith(
+            (ref, kind) async => const [
+              MediaItem(
+                id: 'archive',
+                name: 'Replay News',
+                kind: MediaKind.live,
+                archiveDays: 7,
+              ),
+              MediaItem(id: 'live', name: 'Live Only', kind: MediaKind.live),
+            ],
+          ),
+          guideScheduleProvider.overrideWith(
+            (ref, id) async => GuideSchedule([replay]),
+          ),
+        ],
+        child: MaterialApp(
+          theme: StreamlineTheme.dark,
+          home: const TvGuideScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Live Only'), findsOneWidget);
+    await tester.tap(find.text('Catch-up'));
+    await tester.pumpAndSettle();
+    expect(find.text('Live Only'), findsNothing);
+    await tester.tap(find.textContaining('Replay date'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Archived report'), findsOneWidget);
+    await tester.tap(find.text('Archived report'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<PlayerScreen>(find.byType(PlayerScreen)).catchupProgramme,
+      same(replay),
+    );
+  });
+
   testWidgets(
     'TV audit guide scrolls to distant channels without assigning focus',
     (tester) async {

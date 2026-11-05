@@ -45,6 +45,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     super.key,
     required this.item,
     this.episode,
+    this.catchupProgramme,
     this.startPosition = Duration.zero,
     this.channels = const [],
     this.episodes = const [],
@@ -52,6 +53,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
   final MediaItem item;
   final Episode? episode;
+  final EpgEntry? catchupProgramme;
   final Duration startPosition;
   final List<MediaItem> channels;
   final List<Episode> episodes;
@@ -166,7 +168,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   double? _dragPosition;
   DateTime? _lastZap;
 
-  bool get _isLive => _item.kind == MediaKind.live;
+  bool get _isLive =>
+      _item.kind == MediaKind.live && widget.catchupProgramme == null;
   bool get _tracksHistory =>
       _item.kind == MediaKind.movie ||
       (_item.kind == MediaKind.series && _episode != null);
@@ -287,7 +290,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         !_exiting &&
         generation == _generation &&
         identical(controller, _controller) &&
-        item.kind == MediaKind.live &&
+        _isLive &&
         _item == item &&
         ref.read(sessionProvider)?.accountId == session.accountId;
   }
@@ -436,9 +439,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         });
         return;
       }
-      final uri = await ref
-          .read(apiProvider)
-          .prepareStreamUri(session, item, episode: _episode);
+      final api = ref.read(apiProvider);
+      final programme = widget.catchupProgramme;
+      final uri = programme == null
+          ? await api.prepareStreamUri(session, item, episode: _episode)
+          : await api.prepareCatchupUri(session, item, programme);
       if (!mounted || generation != _generation || _exiting) return;
       controller = ref.read(playbackFactoryProvider)(uri, _engine);
       _controller = controller;
@@ -474,6 +479,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           _loading = false;
           _playbackError = isCertificateFailure(error)
               ? 'The secure connection could not be verified. Check your device date and time or run Connection diagnosis.'
+              : widget.catchupProgramme != null
+              ? 'This replay could not be played. It may have expired or be unavailable from your provider.'
               : 'This stream could not be played. Check your connection or try again.';
         });
       }
@@ -1355,7 +1362,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             : null);
     final ready = value?.isInitialized ?? false;
     final error = _playbackError;
-    final title = _episode?.title ?? _item.name;
+    final title =
+        widget.catchupProgramme?.title ?? _episode?.title ?? _item.name;
     final compact =
         MediaQuery.sizeOf(context).height < 460 || _settings.compact;
     final preferences = ref.watch(settingsProvider).asData?.value ?? _settings;
@@ -1661,6 +1669,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   Text(
                     _isLive
                         ? 'LIVE TELEVISION'
+                        : widget.catchupProgramme != null
+                        ? 'CATCH-UP'
                         : _episode == null
                         ? 'MOVIE'
                         : 'SERIES',

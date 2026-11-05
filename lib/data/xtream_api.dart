@@ -237,19 +237,58 @@ class XtreamApi {
     );
   }
 
+  Future<Uri> prepareCatchupUri(
+    Session session,
+    MediaItem channel,
+    EpgEntry programme,
+  ) {
+    if (!programme.canReplayOn(channel, DateTime.now())) {
+      throw const XtreamApiException(
+        'This programme is no longer available for catch-up.',
+      );
+    }
+    final live = streamUri(session, channel);
+    // The archive route expects the panel's wall clock, not the device's.
+    final providerTime = RegExp(
+      r'^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})',
+    ).firstMatch(programme.providerStart ?? '');
+    final utc = programme.start.toUtc().toIso8601String();
+    final start = providerTime == null
+        ? '${utc.substring(0, 10)}:${utc.substring(11, 13)}-${utc.substring(14, 16)}'
+        : '${providerTime[1]}:${providerTime[2]}-${providerTime[3]}';
+    final endMs = programme.end.millisecondsSinceEpoch;
+    final startMinuteMs =
+        programme.start.millisecondsSinceEpoch ~/ 60000 * 60000;
+    final minutes = (endMs - startMinuteMs + 59999) ~/ 60000;
+    final prefix = live.pathSegments.length - 4;
+    final replay = live.replace(
+      pathSegments: [
+        ...live.pathSegments.take(prefix),
+        'timeshift',
+        session.credentials.username,
+        session.credentials.password,
+        minutes.toString(),
+        start,
+        live.pathSegments.last,
+      ],
+    );
+    return _preparePlayback(session, replay);
+  }
+
   /// Playback uses its own reachability check, without changing a healthy API
   /// selection or persisting a weaker transport as the account's identity.
   Future<Uri> prepareStreamUri(
     Session session,
     MediaItem item, {
     Episode? episode,
-  }) async {
+  }) async =>
+      _preparePlayback(session, streamUri(session, item, episode: episode));
+
+  Future<Uri> _preparePlayback(Session session, Uri stream) async {
     final supplied = normalizeServerUri(session.credentials.serverUrl);
-    if (!connections.manages(supplied)) {
-      return streamUri(session, item, episode: episode);
-    }
+    if (!connections.manages(supplied)) return stream;
     return connections.run(supplied, ProviderRoute.playback, (base) async {
-      final uri = streamUri(session, item, episode: episode).replace(
+      final uri = stream.replace(
         scheme: base.scheme,
         host: base.host,
         port: base.hasPort ? base.port : null,

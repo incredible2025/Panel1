@@ -154,6 +154,13 @@ class Category {
   Map<String, dynamic> toJson() => {'category_id': id, 'category_name': name};
 }
 
+bool? _archiveFlag(Object? value) =>
+    switch (value?.toString().trim().toLowerCase()) {
+      '1' || 'true' => true,
+      '0' || 'false' => false,
+      _ => null,
+    };
+
 class MediaItem {
   const MediaItem({
     required this.id,
@@ -164,6 +171,8 @@ class MediaItem {
     this.containerExtension = 'mp4',
     this.rating = '',
     this.addedAt,
+    this.archiveEnabled,
+    this.archiveDays = 0,
   });
 
   final String id;
@@ -174,6 +183,11 @@ class MediaItem {
   final String containerExtension;
   final String rating;
   final DateTime? addedAt;
+  final bool? archiveEnabled;
+  final int archiveDays;
+
+  bool get supportsCatchup =>
+      kind == MediaKind.live && (archiveEnabled ?? archiveDays > 0);
 
   factory MediaItem.fromJson(Map<String, dynamic> json, {MediaKind? kind}) {
     final savedKind = textValue(json['kind']);
@@ -195,6 +209,8 @@ class MediaItem {
         json['containerExtension'] ?? json['container_extension'],
         parsedKind == MediaKind.live ? 'm3u8' : 'mp4',
       ),
+      archiveEnabled: _archiveFlag(json['tv_archive']),
+      archiveDays: intValue(json['tv_archive_duration']).clamp(0, 365),
       rating: textValue(json['rating'] ?? json['rating_5based']),
       addedAt:
           _catalogDate(json['addedAt']) ??
@@ -212,6 +228,8 @@ class MediaItem {
     'containerExtension': containerExtension,
     'rating': rating,
     'addedAt': addedAt?.toUtc().toIso8601String(),
+    if (archiveEnabled != null) 'tv_archive': archiveEnabled,
+    if (archiveDays > 0) 'tv_archive_duration': archiveDays,
   };
 
   @override
@@ -435,12 +453,33 @@ class EpgEntry {
     required this.description,
     required this.start,
     required this.end,
+    this.hasArchive,
+    this.providerStart,
   });
 
   final String title;
   final String description;
   final DateTime start;
   final DateTime end;
+
+  final bool? hasArchive;
+  final String? providerStart;
+
+  bool canReplayOn(MediaItem channel, DateTime now) {
+    if (channel.kind != MediaKind.live ||
+        channel.archiveEnabled == false ||
+        hasArchive == false ||
+        end.isAfter(now) ||
+        !end.isAfter(start)) {
+      return false;
+    }
+    if (channel.archiveDays > 0 &&
+        start.isBefore(now.subtract(Duration(days: channel.archiveDays)))) {
+      return false;
+    }
+    return hasArchive == true ||
+        (channel.supportsCatchup && channel.archiveDays > 0);
+  }
 
   /// Timestamps avoid timezone ambiguity in provider-formatted date strings.
   static EpgEntry? fromJson(Map<String, dynamic> json) {
@@ -454,6 +493,8 @@ class EpgEntry {
       description: _decodeEpgText(textValue(json['description'])),
       start: start,
       end: end,
+      hasArchive: _archiveFlag(json['has_archive']),
+      providerStart: json['start'] is String ? json['start'] as String : null,
     );
   }
 
@@ -463,6 +504,8 @@ class EpgEntry {
     'description': base64Encode(utf8.encode(description)),
     'start_timestamp': start.millisecondsSinceEpoch ~/ 1000,
     'stop_timestamp': end.millisecondsSinceEpoch ~/ 1000,
+    if (hasArchive != null) 'has_archive': hasArchive,
+    if (providerStart != null) 'start': providerStart,
   };
 }
 

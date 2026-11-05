@@ -15,6 +15,7 @@ import '../widgets/tv_controls.dart';
 import '../widgets/tv_utility_scaffold.dart';
 import '../widgets/tv_text_entry_dialog.dart';
 import '../widgets/tv_reading_dialog.dart';
+import '../widgets/tv_page_navigation.dart';
 import 'player_screen.dart';
 
 String guideClock(DateTime value) {
@@ -53,6 +54,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
   bool _syncing = false;
   bool _jumpPending = true;
   int _dayOffset = 0;
+  bool _catchupOnly = false;
   double get _rowHeight => ref.read(isLargeScreenProvider) ? 56.0 : 90.0;
   double _hourWidth = 170;
 
@@ -84,7 +86,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_timeline.hasClients) return;
       _jumpPending = false;
-      final minutes = _dayOffset == 0
+      final minutes = _dayOffset == 0 && !_catchupOnly
           ? DateTime.now().difference(_day).inMinutes - 30
           : 0;
       _timeline.jumpTo(
@@ -101,16 +103,70 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
     _jumpToTime();
   }
 
+  void _toggleCatchup() {
+    setState(() {
+      _catchupOnly = !_catchupOnly;
+      _dayOffset = 0;
+    });
+    if (_names.hasClients) _names.jumpTo(0);
+    _jumpToTime();
+  }
+
+  void _refreshGuide() {
+    ref.invalidate(itemsProvider(MediaKind.live));
+    ref.read(guideRefreshProvider.notifier).state++;
+  }
+
+  Future<void> _chooseReplayDay(int days) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (ref.read(isLargeScreenProvider)) {
+      final format = MaterialLocalizations.of(context);
+      final selected = await showTvMenu(context, 'Choose replay date', {
+        for (var offset = 0; offset >= -days; offset--)
+          '$offset': format.formatFullDate(
+            DateTime(today.year, today.month, today.day + offset),
+          ),
+      }, selected: '$_dayOffset');
+      if (mounted && _catchupOnly && selected != null) {
+        _selectDay(int.parse(selected));
+      }
+      return;
+    }
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _day,
+      firstDate: DateTime(today.year, today.month, today.day - days),
+      lastDate: today,
+      helpText: 'Choose replay date',
+    );
+    if (mounted && _catchupOnly && selected != null) {
+      _selectDay(
+        DateTime.utc(
+          selected.year,
+          selected.month,
+          selected.day,
+        ).difference(DateTime.utc(today.year, today.month, today.day)).inDays,
+      );
+    }
+  }
+
   Future<void> _showProgramme(
     MediaItem channel,
     EpgEntry entry,
     List<MediaItem> channels,
   ) async {
     final now = DateTime.now();
+    final replay = entry.canReplayOn(channel, now);
+    final action = replay ? 'Watch replay' : 'Watch channel';
+    final detail = replay
+        ? 'Watch this programme from the beginning.'
+        : 'Watch channel opens its live broadcast.';
     final state = now.isBefore(entry.start)
         ? 'UPCOMING'
         : now.isBefore(entry.end)
         ? 'ON NOW'
+        : replay
+        ? 'CATCH-UP'
         : 'EARLIER';
     final play = await (ref.read(isLargeScreenProvider)
         ? showTvReadingDialog(
@@ -131,10 +187,10 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       : entry.description,
                 ),
                 const SizedBox(height: 18),
-                const Text('Watch channel opens its live broadcast.'),
+                Text(detail),
               ],
             ),
-            actionLabel: 'Watch channel',
+            actionLabel: action,
           )
         : showDialog<bool>(
             context: context,
@@ -160,9 +216,9 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       ),
                       if (state != 'ON NOW') ...[
                         const SizedBox(height: 18),
-                        const Text(
-                          'Watch channel opens its live broadcast.',
-                          style: TextStyle(
+                        Text(
+                          detail,
+                          style: const TextStyle(
                             color: AppColors.muted,
                             fontSize: 12,
                           ),
@@ -180,19 +236,28 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                 FilledButton.icon(
                   onPressed: () => Navigator.pop(context, true),
                   icon: const Icon(Icons.play_arrow),
-                  label: const Text('Watch channel'),
+                  label: Text(action),
                 ),
               ],
             ),
           ));
-    if (play == true && mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => PlayerScreen(item: channel, channels: channels),
-        ),
-      );
-      if (mounted) ref.invalidate(recentChannelsProvider);
+    if (play != true || !mounted) return;
+    final settings = ref.read(settingsProvider).asData?.value;
+    if (settings == null ||
+        settings.hidden(channel) ||
+        (settings.locked(channel) && !ref.read(parentalSessionProvider))) {
+      return;
     }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlayerScreen(
+          item: channel,
+          channels: replay ? const [] : channels,
+          catchupProgramme: replay ? entry : null,
+        ),
+      ),
+    );
+    if (mounted && !replay) ref.invalidate(recentChannelsProvider);
   }
 
   Future<void> _editSearch() async {
@@ -239,6 +304,18 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
     }
     final settings = preferences.asData?.value ?? const AppSettings();
     final channels = ref.watch(itemsProvider(MediaKind.live));
+    final replayDays = (channels.asData?.value ?? const <MediaItem>[])
+        .where(
+          (channel) =>
+              channel.supportsCatchup &&
+              !settings.hidden(channel) &&
+              (unlocked || !settings.locked(channel)),
+        )
+        .fold<int>(
+          0,
+          (days, channel) =>
+              math.max(days, channel.archiveDays > 0 ? channel.archiveDays : 7),
+        );
     final day = _day;
     final end = DateTime(day.year, day.month, day.day + 1);
     _hourWidth = tv ? 190 : 150;
@@ -287,67 +364,105 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       ),
                       const SizedBox(width: 10),
                       TvControl(
+                        selected: _catchupOnly,
+                        onPressed: _toggleCatchup,
+                        child: const Text('Catch-up'),
+                      ),
+                      const SizedBox(width: 10),
+                      TvControl(
                         label: 'Refresh TV guide',
-                        onPressed: () =>
-                            ref.read(guideRefreshProvider.notifier).state++,
+                        onPressed: _refreshGuide,
                         child: const Icon(Icons.refresh, size: 18),
                       ),
                     ],
                   )
-                : TextField(
-                    controller: _search,
-                    onChanged: (_) {
-                      setState(() {});
-                      if (_names.hasClients) _names.jumpTo(0);
-                    },
-                    decoration: const InputDecoration(
-                      hintText: 'Filter channels',
-                      prefixIcon: Icon(Icons.search),
-                      isDense: true,
-                    ),
+                : Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _search,
+                          onChanged: (_) {
+                            setState(() {});
+                            if (_names.hasClients) _names.jumpTo(0);
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Filter channels',
+                            prefixIcon: Icon(Icons.search),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('Catch-up'),
+                        selected: _catchupOnly,
+                        onSelected: (_) => _toggleCatchup(),
+                      ),
+                    ],
                   ),
           ),
-          SizedBox(
-            height: tv ? 36 : 50,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              scrollDirection: Axis.horizontal,
-              itemCount: 8,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final offset = index - 1;
-                final today = DateTime.now();
-                final date = DateTime(
-                  today.year,
-                  today.month,
-                  today.day + offset,
-                );
-                final label = offset == 0
-                    ? 'Today'
-                    : offset == 1
-                    ? 'Tomorrow'
-                    : offset == -1
-                    ? 'Yesterday'
-                    : '${const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1]} ${date.day}/${date.month}';
-                if (tv) {
-                  return TvControl(
-                    selected: _dayOffset == offset,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+          if (_catchupOnly)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: tv
+                  ? TvControl(
+                      onPressed: () =>
+                          _chooseReplayDay(math.max(replayDays, -_dayOffset)),
+                      child: Text(
+                        'Replay date · ${MaterialLocalizations.of(context).formatMediumDate(day)}',
+                      ),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: () =>
+                          _chooseReplayDay(math.max(replayDays, -_dayOffset)),
+                      icon: const Icon(Icons.calendar_today, size: 16),
+                      label: Text(
+                        'Replay date · ${MaterialLocalizations.of(context).formatMediumDate(day)}',
+                      ),
                     ),
-                    onPressed: () => _selectDay(offset),
-                    child: Text(label, style: const TextStyle(fontSize: 13)),
+            )
+          else
+            SizedBox(
+              height: tv ? 36 : 50,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                scrollDirection: Axis.horizontal,
+                itemCount: 8,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final offset = index - 1;
+                  final today = DateTime.now();
+                  final date = DateTime(
+                    today.year,
+                    today.month,
+                    today.day + offset,
                   );
-                }
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: _dayOffset == offset,
-                  onSelected: (_) => _selectDay(offset),
-                );
-              },
+                  final label = offset == 0
+                      ? 'Today'
+                      : offset == 1
+                      ? 'Tomorrow'
+                      : offset == -1
+                      ? 'Yesterday'
+                      : '${const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][date.weekday - 1]} ${date.day}/${date.month}';
+                  if (tv) {
+                    return TvControl(
+                      selected: _dayOffset == offset,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      onPressed: () => _selectDay(offset),
+                      child: Text(label, style: const TextStyle(fontSize: 13)),
+                    );
+                  }
+                  return ChoiceChip(
+                    label: Text(label),
+                    selected: _dayOffset == offset,
+                    onSelected: (_) => _selectDay(offset),
+                  );
+                },
+              ),
             ),
-          ),
           Expanded(
             child: channels.when(
               loading: () =>
@@ -360,6 +475,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                 final filtered = all
                     .where(
                       (channel) =>
+                          (!_catchupOnly || channel.supportsCatchup) &&
                           !settings.hidden(channel) &&
                           (unlocked || !settings.locked(channel)) &&
                           channel.name.toLowerCase().contains(
@@ -368,7 +484,11 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                     )
                     .toList();
                 if (filtered.isEmpty) {
-                  return const StatusView(title: 'No matching channels');
+                  return StatusView(
+                    title: _catchupOnly && _search.text.trim().isEmpty
+                        ? 'No catch-up channels reported'
+                        : 'No matching channels',
+                  );
                 }
                 if (_jumpPending) _jumpToTime();
                 return Row(
@@ -403,13 +523,31 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                                     padding: const EdgeInsets.all(12),
                                     child: Align(
                                       alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        filtered[index].name,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: tv ? 15 : 12,
-                                        ),
+                                      child: Row(
+                                        children: [
+                                          if (filtered[index]
+                                              .supportsCatchup) ...[
+                                            Icon(
+                                              Icons.history,
+                                              size: 15,
+                                              color: AppPalette.of(
+                                                context,
+                                              ).accent,
+                                              semanticLabel: 'Catch-up channel',
+                                            ),
+                                            const SizedBox(width: 5),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              filtered[index].name,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: tv ? 15 : 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
@@ -505,7 +643,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
           TextButton(onPressed: () => _selectDay(0), child: const Text('Now')),
           IconButton(
             tooltip: 'Refresh TV guide',
-            onPressed: () => ref.read(guideRefreshProvider.notifier).state++,
+            onPressed: _refreshGuide,
             icon: const Icon(Icons.refresh),
           ),
         ],
@@ -556,20 +694,26 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
           ),
         ),
         data: (value) {
+          final now = DateTime.now();
           final entries = value.entries
-              .where((entry) => guideInterval(entry, day, end) != null)
+              .where(
+                (entry) =>
+                    guideInterval(entry, day, end) != null &&
+                    (!_catchupOnly || entry.canReplayOn(channel, now)),
+              )
               .toList();
           if (entries.isEmpty) {
             return _guideStatus(
               Text(
                 value.limited
                     ? 'Limited EPG · No programmes for this day'
+                    : _catchupOnly
+                    ? 'No replays supplied for this day'
                     : 'No programme data supplied for this day',
                 style: const TextStyle(color: AppColors.muted, fontSize: 12),
               ),
             );
           }
-          final now = DateTime.now();
           final nowX =
               now.difference(day).inMilliseconds / 3600000 * _hourWidth;
           return Stack(
@@ -578,6 +722,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                 Builder(
                   builder: (context) {
                     final span = guideInterval(entry, day, end)!;
+                    final replay = entry.canReplayOn(channel, now);
                     final onNow =
                         !now.isBefore(entry.start) && now.isBefore(entry.end);
                     return Positioned(
@@ -587,7 +732,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                       bottom: 5,
                       child: TvFocusCard(
                         label:
-                            '${channel.name}, ${entry.title}, ${guideClock(entry.start)}',
+                            '${channel.name}, ${entry.title}, ${guideClock(entry.start)}${replay ? ', replay available' : ''}',
                         selected: onNow,
                         onPressed: () =>
                             _showProgramme(channel, entry, channels),
@@ -612,7 +757,7 @@ class _TvGuideScreenState extends ConsumerState<TvGuideScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${guideClock(entry.start)}–${guideClock(entry.end)}${value.cached ? ' · cached' : ''}',
+                                  '${guideClock(entry.start)}–${guideClock(entry.end)}${replay ? ' · Replay' : ''}${value.cached ? ' · cached' : ''}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(

@@ -1,5 +1,16 @@
 Streamline compatibility player
 
+Android VLC playback uses org.videolan.android:libvlc-all:3.6.3.
+Copyright VLC authors, VideoLAN and VideoLabs.
+LibVLC is distributed under the GNU Lesser General Public License version 2.1 or later.
+The licence text is included in the app's open-source licences.
+
+LibVLC upstream source and build scripts:
+https://code.videolan.org/videolan/libvlcjni
+https://code.videolan.org/videolan/vlc
+The exact Android Java wrapper sources for this dependency:
+https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.6.3/libvlc-all-3.6.3-sources.jar
+
 media_kit 1.2.6, media_kit_video 2.0.1 and media_kit_libs_video 1.0.7 are published by media-kit.dev. Their package licences are included in Flutter's open-source licence registry.
 
 Android native libraries are supplied by media_kit_libs_android_video 1.3.8 using the default flavour of libmpv-android-video-build v1.1.7.

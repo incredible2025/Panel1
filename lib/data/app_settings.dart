@@ -2,12 +2,17 @@ import 'models.dart';
 import 'appearance.dart';
 import 'subscription_expiry.dart';
 
-enum PlayerEngine { native, compatibility }
+enum PlayerEngine { native, compatibility, vlc }
+
+enum DecodingMode { automatic, hardware, software }
 
 class AppSettings {
   const AppSettings({
     this.engine = PlayerEngine.native,
     this.controlsSeconds = 5,
+    this.decoding = DecodingMode.automatic,
+    this.automaticPlayerFallback = true,
+    this.successfulPlayers = const {},
     this.picture = 'fit',
     this.reconnect = true,
     this.autoNext = true,
@@ -33,6 +38,9 @@ class AppSettings {
     this.lastItems = const {},
   });
   final PlayerEngine engine;
+  final DecodingMode decoding;
+  final bool automaticPlayerFallback;
+  final Map<String, String> successfulPlayers;
   final int controlsSeconds;
   final String picture;
   final bool reconnect, autoNext, subtitles, stereo, subtitleBackground;
@@ -56,10 +64,14 @@ class AppSettings {
       switch (playerOverrides[mediaKey(item)]) {
         'compatibility' => PlayerEngine.compatibility,
         'native' => PlayerEngine.native,
+        'vlc' => PlayerEngine.vlc,
         _ => engine,
       };
   Map<String, dynamic> toJson() => {
     'engine': engine.name,
+    'decoding': decoding.name,
+    'automaticPlayerFallback': automaticPlayerFallback,
+    'successfulPlayers': successfulPlayers,
     'controlsSeconds': controlsSeconds,
     'picture': picture,
     'reconnect': reconnect,
@@ -98,9 +110,16 @@ class AppSettings {
     final size =
         num.tryParse(textValue(json['subtitleSize']))?.toDouble() ?? 22;
     return AppSettings(
-      engine: json['engine'] == 'compatibility'
-          ? PlayerEngine.compatibility
-          : PlayerEngine.native,
+      engine: PlayerEngine.values.firstWhere(
+        (value) => value.name == json['engine'],
+        orElse: () => PlayerEngine.native,
+      ),
+      decoding: DecodingMode.values.firstWhere(
+        (value) => value.name == json['decoding'],
+        orElse: () => DecodingMode.automatic,
+      ),
+      automaticPlayerFallback: json['automaticPlayerFallback'] != false,
+      successfulPlayers: map(json['successfulPlayers']),
       controlsSeconds: {0, 3, 5, 8}.contains(seconds) ? seconds : 5,
       picture: {'fit', 'fill', 'stretch'}.contains(json['picture'])
           ? json['picture'] as String

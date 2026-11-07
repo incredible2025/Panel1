@@ -31,6 +31,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/licenses/native-player.txt
+    - assets/licenses/libvlc-LGPL-2.1.txt
     - assets/fonts/Inter-OFL.txt
     - assets/branding/
   fonts:

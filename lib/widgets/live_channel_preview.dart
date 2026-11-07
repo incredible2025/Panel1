@@ -5,6 +5,7 @@ import '../core/design_system.dart';
 import '../core/playback_handle.dart';
 import '../core/providers.dart';
 import '../core/settings_controller.dart';
+import '../core/playback_profile.dart';
 import '../data/models.dart';
 import 'media_card.dart';
 import 'parental_access.dart';
@@ -103,10 +104,13 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
             .prepareStreamUri(session, widget.item);
         if (!mounted || generation != _generation) return;
         final preferences = ref.read(settingsProvider.notifier).current;
-        final player = ref.read(playbackFactoryProvider)(
-          uri,
-          preferences.engineFor(widget.item),
-        );
+        final profile = PlaybackProfile.plan(
+          preferences,
+          widget.item,
+          desktop: ref.read(isDesktopProvider),
+        ).first;
+        final player = ref.read(playbackFactoryProvider)(uri, profile.engine);
+        player.configure(profile.decoding, settings: preferences);
         _player = player;
         await player.initialize();
         if (!mounted || generation != _generation) return;

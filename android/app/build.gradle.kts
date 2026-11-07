@@ -59,6 +59,7 @@ kotlin {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("org.videolan.android:libvlc-all:3.6.3")
 }
 
 flutter {

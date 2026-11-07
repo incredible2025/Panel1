@@ -278,9 +278,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             'compatibility': ref.watch(isDesktopProvider)
                 ? 'Windows · media_kit'
                 : 'Compatibility · media_kit',
+            if (!ref.watch(isDesktopProvider)) 'vlc': 'VLC · Alternative',
           },
           (v) => _save({'engine': v}),
         ),
+        _toggle(
+          'Automatic player recovery',
+          'Try another player or decoding mode after playback fails. Successful channel settings are remembered.',
+          s.automaticPlayerFallback,
+          (v) => _save({'automaticPlayerFallback': v}),
+        ),
+        _choice('Video decoding', s.decoding.name, {
+          'automatic': 'Automatic',
+          'hardware': 'Prefer hardware',
+          'software': 'Software · CPU',
+        }, (v) => _save({'decoding': v})),
         _choice(
           'Hide player controls',
           s.controlsSeconds.toString(),
@@ -728,7 +740,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           value: options[value] ?? value,
           description: 'Choose your preferred ${title.toLowerCase()}.',
           onPressed: () async {
-            final selected = await showTvMenu(context, title, options);
+            final selected = await showTvMenu(
+              context,
+              title,
+              options,
+              selected: value,
+            );
             if (selected != null) change(selected);
           },
         )

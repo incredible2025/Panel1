@@ -1024,6 +1024,11 @@ void main() {
     await remote(tester, LogicalKeyboardKey.select);
     expect(store.preferences.engine, PlayerEngine.compatibility);
     expect(focused(find.text('Default player')), isTrue);
+    await remote(tester, LogicalKeyboardKey.select);
+    await remote(tester, LogicalKeyboardKey.arrowDown);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(store.preferences.engine, PlayerEngine.vlc);
+    expect(focused(find.text('Default player')), isTrue);
     expect(tester.takeException(), isNull);
   });
   _uiTest(
@@ -2581,7 +2586,7 @@ void main() {
           await remote(tester, LogicalKeyboardKey.arrowDown);
           expect(tester.getRect(canvas), before);
         }
-        expect(visited.length, [5, 6, 5, 3, 7, 9][group]);
+        expect(visited.length, [7, 6, 5, 3, 7, 9][group]);
         await _screenshot(
           tester,
           'tv-redesign-settings-$group-bottom-${size.width.toInt()}',

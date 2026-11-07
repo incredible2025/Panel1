@@ -9,17 +9,31 @@ import 'app_brand.dart';
 import 'player_tracks.dart';
 import 'providers.dart';
 import 'native_playback_recovery.dart';
+import 'playback_profile.dart';
+import 'vlc_playback.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
 final playbackFactoryProvider = Provider<PlaybackFactory>((ref) {
   final desktop = ref.watch(isDesktopProvider);
-  return (uri, engine) => desktop || engine == PlayerEngine.compatibility
-      ? CompatibilityPlayback(uri)
-      : NativePlayback(uri);
+  return (uri, engine) {
+    if (desktop || engine == PlayerEngine.compatibility) {
+      return CompatibilityPlayback(uri);
+    }
+    if (engine == PlayerEngine.vlc) return VlcPlayback(uri);
+    return NativePlayback(uri);
+  };
 });
 
 abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   PlaybackHandle() : super(const VideoPlayerValue(duration: Duration.zero));
+  DecodingMode decoding = DecodingMode.automatic;
+  AppSettings preferences = const AppSettings();
+  void configure(DecodingMode mode, {AppSettings? settings}) {
+    decoding = mode;
+    preferences = settings ?? const AppSettings();
+  }
+
+  String get failureSummary => playbackFailure(value.errorDescription);
   Future<void> initialize();
   Future<void> play();
   Future<void> pause();
@@ -107,6 +121,9 @@ class CompatibilityPlayback extends PlaybackHandle {
   final Uri uri;
   final String? audioOutput;
   final void Function(String)? onDiagnostic;
+  String _failure = 'Playback error';
+  @override
+  String get failureSummary => _failure;
   String _initializationStage = 'created';
   Map<String, Object?> get debugState => {
     'initialization': _initializationStage,
@@ -165,7 +182,13 @@ class CompatibilityPlayback extends PlaybackHandle {
         audioOutput!,
       );
     }
-    _video = mkv.VideoController(_player);
+    _video = mkv.VideoController(
+      _player,
+      configuration: mkv.VideoControllerConfiguration(
+        hwdec: decoding == DecodingMode.software ? 'no' : null,
+        enableHardwareAcceleration: decoding != DecodingMode.software,
+      ),
+    );
     _videoCreated = true;
     _video.rect.addListener(_sync);
     // media_kit initializes its renderer in a post-frame callback. A static or
@@ -196,6 +219,7 @@ class CompatibilityPlayback extends PlaybackHandle {
       _player.stream.error.listen((message) {
         if (!_dead) {
           onDiagnostic?.call(message);
+          _failure = playbackFailure(message);
           _recovery.signal(_player.state.position);
         }
       }),

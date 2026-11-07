@@ -283,6 +283,28 @@ class _FakeCompatibility extends PlaybackHandle {
   Widget buildView() => const ColoredBox(color: Colors.black);
 }
 
+class _FallbackHandle extends _FakeCompatibility {
+  _FallbackHandle({this.failure});
+  final String? failure;
+  Completer<void>? releaseGate;
+  bool closed = false;
+  @override
+  Future<void> initialize() async {
+    if (failure != null) {
+      value = VideoPlayerValue.erroneous(failure!);
+      throw StateError('Playback initialization failed');
+    }
+    await super.initialize();
+  }
+
+  @override
+  Future<void> dispose() async {
+    closed = true;
+    await releaseGate?.future;
+    await super.dispose();
+  }
+}
+
 Future<void> _mountPlayer(
   WidgetTester tester,
   _HistoryStore store, {
@@ -295,7 +317,12 @@ Future<void> _mountPlayer(
   bool tv = false,
   Session session = _session,
   XtreamApi? api,
+  bool automaticRecovery = false,
 }) async {
+  // Existing native reconnect tests select a fixed engine. Recovery tests opt in.
+  store.preferences = store.preferences.patch({
+    'automaticPlayerFallback': automaticRecovery,
+  });
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   addTearDown(() async {
     // Cancel player timers before the fake platform is restored.
@@ -403,6 +430,92 @@ void main() {
     expect(opened.single.scheme, 'http');
     expect(player.calls, contains('seek:120000'));
   });
+  testWidgets(
+    'decoder recovery waits for disposal, preserves position and uses software after hardware fails',
+    (tester) async {
+      final store = _HistoryStore();
+      final first = _FallbackHandle(
+        failure:
+            'DecoderInitializationException https://hidden.example/private',
+      );
+      first.releaseGate = Completer<void>();
+      final second = _FallbackHandle(failure: 'unsupported codec');
+      final third = _FallbackHandle();
+      final handles = [first, second, third];
+      final engines = <PlayerEngine>[];
+      await _mountPlayer(
+        tester,
+        store,
+        automaticRecovery: true,
+        startPosition: const Duration(minutes: 2),
+        factory: (uri, engine) {
+          engines.add(engine);
+          return handles[engines.length - 1];
+        },
+      );
+      await tester.pump();
+      expect(engines, [PlayerEngine.native]);
+      expect(first.closed, true);
+      first.releaseGate!.complete();
+      await tester.pumpAndSettle();
+      expect(engines, [
+        PlayerEngine.native,
+        PlayerEngine.compatibility,
+        PlayerEngine.compatibility,
+      ]);
+      expect(second.closed, true);
+      expect(third.decoding, DecodingMode.software);
+      expect(third.calls, contains('seek:120000'));
+      expect(find.textContaining('hidden.example'), findsNothing);
+    },
+  );
+
+  testWidgets('service rejection does not switch playback engines', (
+    tester,
+  ) async {
+    final store = _HistoryStore()
+      ..preferences = const AppSettings(reconnect: false);
+    var created = 0;
+    await _mountPlayer(
+      tester,
+      store,
+      automaticRecovery: true,
+      factory: (uri, engine) {
+        created++;
+        return _FallbackHandle(failure: 'HTTP 403');
+      },
+    );
+    await tester.pumpAndSettle();
+    expect(created, 1);
+  });
+
+  testWidgets('working fallback is remembered after stable live playback', (
+    tester,
+  ) async {
+    final store = _HistoryStore();
+    final native = _FallbackHandle(failure: 'unsupported codec');
+    final compatible = _FallbackHandle();
+    var created = 0;
+    await _mountPlayer(
+      tester,
+      store,
+      item: _firstChannel,
+      automaticRecovery: true,
+      factory: (uri, engine) => created++ == 0 ? native : compatible,
+    );
+    await tester.pumpAndSettle();
+    expect(store.preferences.successfulPlayers, isEmpty);
+    await tester.pump(const Duration(seconds: 31));
+    compatible.value = compatible.value.copyWith(
+      position: const Duration(seconds: 31),
+    );
+    await tester.pump();
+    expect(
+      store.preferences.successfulPlayers[AppSettings.mediaKey(_firstChannel)],
+      'native/automatic/compatibility:automatic',
+    );
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
   late VideoPlayerPlatform originalPlatform;
   late _VideoPlatform platform;
@@ -515,8 +628,9 @@ void main() {
       expect(find.text('Player for this title'), findsOneWidget);
       await press(LogicalKeyboardKey.arrowDown);
       await press(LogicalKeyboardKey.arrowDown);
-      await press(LogicalKeyboardKey.arrowDown);
       expect(focused('Compatibility · media_kit'), isTrue);
+      await press(LogicalKeyboardKey.arrowDown);
+      expect(focused('VLC'), isTrue);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.byType(PlayerScreen), findsOneWidget);

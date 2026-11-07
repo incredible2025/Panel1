@@ -24,6 +24,9 @@ Future<void> main(List<String> args) async {
     yield LicenseEntryWithLineBreaks([
       'ULTRAVPN PLAYER native compatibility player',
     ], await rootBundle.loadString('assets/licenses/native-player.txt'));
+    yield LicenseEntryWithLineBreaks([
+      'LibVLC for Android',
+    ], await rootBundle.loadString('assets/licenses/libvlc-LGPL-2.1.txt'));
   });
   try {
     final store = await LocalStore.open();

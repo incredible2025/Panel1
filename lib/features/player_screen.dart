@@ -9,6 +9,7 @@ import '../core/design_system.dart';
 import '../core/providers.dart';
 import '../core/player_tracks.dart';
 import '../core/playback_handle.dart';
+import '../core/playback_profile.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
 import '../widgets/parental_access.dart';
@@ -149,6 +150,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Episode? _episode;
   BoxFit _pictureFit = BoxFit.contain;
   int _retryCount = 0;
+  PlaybackProfile _activeProfile = const PlaybackProfile(
+    PlayerEngine.native,
+    DecodingMode.automatic,
+  );
+  final _triedPlayers = <String>{};
+  final _playerAttempts = <String>[];
+  String _lastPlayerFailure = 'None';
+  bool _fallbackPending = false;
+  bool _rememberedPlayer = false;
   int? _nextSeconds;
   bool _completionHandled = false;
   bool _advancing = false;
@@ -156,6 +166,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Duration _resumePosition = Duration.zero;
   DateTime? _bufferingSince;
   DateTime? _healthySince;
+  Duration? _healthyPosition;
   Future<void> _historyWrites = Future<void>.value();
   Future<void> _channelHistoryWrites = Future<void>.value();
   int _generation = 0;
@@ -352,12 +363,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     MediaItem item, {
     Duration startPosition = Duration.zero,
     Episode? episode,
+    PlaybackProfile? profile,
+    bool preservePlayer = false,
   }) async {
+    if (profile == null && !preservePlayer) {
+      _triedPlayers.clear();
+      _playerAttempts.clear();
+      _lastPlayerFailure = 'None';
+      _rememberedPlayer = false;
+    }
     _retryTimer?.cancel();
     _cancelInitialization();
     _cancelNext();
     _bufferingSince = null;
     _healthySince = null;
+    _healthyPosition = null;
     final generation = ++_generation;
     final previous = _controller;
     _controller = null;
@@ -419,9 +439,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           .indexWhere((channel) => channel.id == item.id)
           .clamp(0, _channels.isNotEmpty ? _channels.length - 1 : 0);
     }
-    _engine = ref.read(isDesktopProvider)
-        ? PlayerEngine.compatibility
-        : _settings.engineFor(item);
+    _activeProfile =
+        profile ??
+        (preservePlayer
+            ? _activeProfile
+            : PlaybackProfile.plan(
+                _settings,
+                item,
+                desktop: ref.read(isDesktopProvider),
+              ).first);
+    _engine = _activeProfile.engine;
+    _triedPlayers.add(_activeProfile.key);
     if (!_movieOpened && item.kind == MediaKind.movie && _session != null) {
       _movieOpened = true;
       unawaited(
@@ -446,6 +474,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : await api.prepareCatchupUri(session, item, programme);
       if (!mounted || generation != _generation || _exiting) return;
       controller = ref.read(playbackFactoryProvider)(uri, _engine);
+      controller.configure(_activeProfile.decoding, settings: _settings);
       _controller = controller;
       controller.addListener(_onControllerChanged);
       await _initialize(controller);
@@ -484,11 +513,99 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               : 'This stream could not be played. Check your connection or try again.';
         });
       }
+      if (controller != null &&
+          await _tryNextPlayer(
+            controller,
+            generation,
+            startPosition,
+            error: error,
+          )) {
+        return;
+      }
       if (controller != null) await _release(controller);
       if (mounted && generation == _generation && !_exiting) {
         _scheduleReconnect();
       }
     }
+  }
+
+  Future<bool> _tryNextPlayer(
+    PlaybackHandle failed,
+    int generation,
+    Duration position, {
+    Object? error,
+  }) async {
+    final reason = failed.value.hasError
+        ? failed.failureSummary
+        : playbackFailure(error?.toString());
+    _lastPlayerFailure = reason;
+    if (!mounted ||
+        generation != _generation ||
+        _exiting ||
+        !_appActive ||
+        !_wantsPlayback ||
+        _fallbackPending ||
+        !_settings.automaticPlayerFallback ||
+        reason == 'Connection or service error' ||
+        (error != null && isCertificateFailure(error))) {
+      return false;
+    }
+    final next = PlaybackProfile.plan(
+      _settings,
+      _item,
+      desktop: ref.read(isDesktopProvider),
+    ).where((candidate) => !_triedPlayers.contains(candidate.key)).firstOrNull;
+    if (next == null) return false;
+    _fallbackPending = true;
+    _playerAttempts.add(
+      '${_activeProfile.label} (${_activeProfile.decoding.name}) · $reason',
+    );
+    _controller = null;
+    try {
+      await _release(failed);
+      if (!mounted ||
+          generation != _generation ||
+          _exiting ||
+          !_appActive ||
+          !_wantsPlayback) {
+        return true;
+      }
+      // _open may itself need another fallback after its own initialization.
+      _fallbackPending = false;
+      _rememberedPlayer = false;
+      await _open(_item, startPosition: position, profile: next);
+      return true;
+    } finally {
+      _fallbackPending = false;
+    }
+  }
+
+  void _rememberWorkingPlayer() {
+    if (_rememberedPlayer ||
+        (_controller?.value.position.inSeconds ?? 0) < 10 ||
+        !_isLive ||
+        _session == null ||
+        !_settings.automaticPlayerFallback ||
+        _settings.playerOverrides.containsKey(AppSettings.mediaKey(_item)) ||
+        ref.read(sessionProvider)?.accountId != _session.accountId) {
+      return;
+    }
+    _rememberedPlayer = true;
+    final key = AppSettings.mediaKey(_item);
+    final saved = _activeProfile.savedKey(_settings);
+    if (_settings.successfulPlayers[key] == saved) return;
+    unawaited(
+      ref.read(settingsProvider.notifier).update((settings) {
+        final players = {...settings.successfulPlayers};
+        players.remove(key);
+        players[key] = saved;
+        // Keep the per-account cache bounded on very large channel catalogues.
+        while (players.length > 500) {
+          players.remove(players.keys.first);
+        }
+        return settings.patch({'successfulPlayers': players});
+      }),
+    );
   }
 
   void _onControllerChanged() {
@@ -510,11 +627,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _resumePosition = clampPlaybackPosition(value.position, value.duration);
       if (value.isPlaying && !value.isBuffering) {
         _healthySince ??= DateTime.now();
+        _healthyPosition ??= value.position;
+        if (value.position - _healthyPosition! >= const Duration(seconds: 30)) {
+          _rememberWorkingPlayer();
+        }
         if (DateTime.now().difference(_healthySince!).inSeconds >= 30) {
           _retryCount = 0;
         }
       } else {
         _healthySince = null;
+        _healthyPosition = null;
       }
     }
     if (value.isCompleted &&
@@ -530,8 +652,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final failed = _controller;
       unawaited(_persistProgress());
       _controller = null;
-      if (failed != null) unawaited(_release(failed));
-      _scheduleReconnect();
+      if (failed != null) {
+        final generation = _generation;
+        final position = _resumePosition;
+        unawaited(() async {
+          if (await _tryNextPlayer(failed, generation, position)) return;
+          await _release(failed);
+          if (mounted && generation == _generation && !_exiting) {
+            _scheduleReconnect();
+          }
+        }());
+      }
     }
     setState(() {
       if (value.hasError) {
@@ -618,6 +749,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await _open(
         _item,
         startPosition: completed ? Duration.zero : _resumePosition,
+        preservePlayer: true,
       );
       return;
     }
@@ -699,7 +831,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final position = value != null && value.isInitialized
         ? clampPlaybackPosition(value.position, value.duration)
         : _resumePosition;
-    unawaited(_open(_item, startPosition: position));
+    unawaited(_open(_item, startPosition: position, preservePlayer: true));
   }
 
   void _cancelInitialization() {
@@ -907,6 +1039,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               ? 'Windows'
               : _engine == PlayerEngine.native
               ? 'ExoPlayer'
+              : _engine == PlayerEngine.vlc
+              ? 'VLC'
               : 'Compatibility'}',
       if (_isLive) 'channels': 'Switch channel',
       'info': 'Playback diagnostics',
@@ -940,6 +1074,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           'compatibility': ref.read(isDesktopProvider)
               ? 'Windows · media_kit'
               : 'Compatibility · media_kit',
+          if (!ref.read(isDesktopProvider)) 'vlc': 'VLC',
         }.entries)
           entry.key: entry.value,
       },
@@ -1047,7 +1182,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ? 'Windows · media_kit'
                 : _engine == PlayerEngine.native
                 ? 'ExoPlayer'
+                : _engine == PlayerEngine.vlc
+                ? 'VLC'
                 : 'Compatibility · media_kit',
+            'Decoding preference': _activeProfile.decoding.name,
+            'Last playback error': _lastPlayerFailure,
+            if (_playerAttempts.isNotEmpty)
+              'Player recovery': _playerAttempts.join('\n'),
             'Connection': state,
             'Resolution': value != null && value.size.width > 0
                 ? '${value.size.width.round()} × ${value.size.height.round()}'

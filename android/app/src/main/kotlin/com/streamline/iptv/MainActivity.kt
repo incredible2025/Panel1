@@ -18,8 +18,11 @@ class MainActivity : FlutterActivity() {
     private var dnsDiagnostics: NetworkDnsDiagnostics? = null
     private var platformChannel: MethodChannel? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var vlcPlayback: VlcPlaybackBridge? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        vlcPlayback?.close()
+        vlcPlayback = null
         networkCallback?.let { callback ->
             try {
                 (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(callback)
@@ -37,6 +40,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        vlcPlayback = VlcPlaybackBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer)
         updater = AppUpdater(this, flutterEngine.dartExecutor.binaryMessenger)
         dnsDiagnostics = NetworkDnsDiagnostics(this)
         platformChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "streamline/platform")

@@ -1,0 +1,3 @@
+- Added VLC as an alternative player on Android.
+- Added automatic player recovery and hardware or software decoding choices.
+- Improved saved channel preferences and playback diagnostics.

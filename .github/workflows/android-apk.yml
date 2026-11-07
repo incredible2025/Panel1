@@ -168,7 +168,24 @@ jobs:
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Build signed APK
-        run: flutter build apk --release
+        run: flutter build apk --release --target-platform android-arm,android-arm64
+      - name: Verify combined ARM package
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('build/app/outputs/flutter-apk/app-release.apk') as apk:
+              names = set(apk.namelist())
+              abis = {name.split('/')[1] for name in names if name.startswith('lib/')}
+              expected = {'armeabi-v7a', 'arm64-v8a'}
+              if abis != expected:
+                  raise SystemExit('APK architectures do not match the combined ARM release.')
+              for abi in expected:
+                  for library in ['libapp.so', 'libflutter.so', 'libmpv.so', 'libvlc.so', 'libvlcjni.so']:
+                      if f'lib/{abi}/{library}' not in names:
+                          raise SystemExit('An ARM playback library is missing.')
+          print('Combined ARM package verified.')
+          PY
       - name: Verify signing certificate and name APK
         shell: bash
         run: |

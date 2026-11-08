@@ -172,26 +172,26 @@ jobs:
       - name: Build signed APK
         run: |
           python3 scripts/prepare_android_ci.py
-          flutter build apk --release --target-platform android-arm
-      - name: Verify 32-bit ARM package
+          flutter build apk --release --target-platform android-arm,android-arm64
+      - name: Verify combined ARM package
         shell: bash
         run: |
           python3 - <<'PY'
           import zipfile
           from pathlib import Path
-          if Path('build/app/outputs/flutter-apk/app-release.apk').stat().st_size >= 100_000_000:
-              raise SystemExit('APK exceeds the 100 MB download-size target.')
+          if Path('build/app/outputs/flutter-apk/app-release.apk').stat().st_size >= 200_000_000:
+              raise SystemExit('APK exceeds the combined ARM download-size target.')
           with zipfile.ZipFile('build/app/outputs/flutter-apk/app-release.apk') as apk:
               names = set(apk.namelist())
               abis = {name.split('/')[1] for name in names if name.startswith('lib/')}
-              expected = {'armeabi-v7a'}
+              expected = {'armeabi-v7a', 'arm64-v8a'}
               if abis != expected:
-                  raise SystemExit('APK architectures do not match the 32-bit ARM release.')
+                  raise SystemExit('APK architectures do not match the combined ARM release.')
               for abi in expected:
                   for library in ['libapp.so', 'libflutter.so', 'libmpv.so', 'libvlc.so', 'libvlcjni.so']:
                       if f'lib/{abi}/{library}' not in names:
                           raise SystemExit('An ARM playback library is missing.')
-          print('32-bit ARM package verified below 100 MB.')
+          print('Combined 32-bit and 64-bit ARM package verified.')
           PY
       - name: Verify signing certificate and name APK
         shell: bash

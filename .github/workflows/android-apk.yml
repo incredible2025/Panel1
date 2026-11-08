@@ -143,7 +143,7 @@ jobs:
           retention-days: 30
 
   release:
-    needs: [validate, windows-build]
+    needs: validate
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -231,11 +231,6 @@ jobs:
             build/remote-update/update.json
           if-no-files-found: error
           retention-days: 30
-      - name: Download verified Windows distribution
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-distribution
-          path: build/windows-distribution
       - name: Publish direct APK download
         env:
           GH_TOKEN: ${{ github.token }}
@@ -245,7 +240,7 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
           tag="v$version"
-          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip build/Ultravpn-player-*-remote-update.zip build/remote-update/update.json build/windows-distribution/*)
+          assets=(build/Ultravpn-player.apk build/Ultravpn-player.apk.sha256 build/remote-update.zip build/Ultravpn-player-*-remote-update.zip build/remote-update/update.json)
           if gh release view "$tag" >/dev/null 2>&1; then
             existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
             if [ "$existing" != "$GITHUB_SHA" ]; then
@@ -279,3 +274,31 @@ jobs:
         shell: bash
         run: |
           rm -f android/key.properties android/signing/streamline-release.p12
+
+  windows-publish:
+    needs: [release, windows-build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-distribution
+          path: build/windows-distribution
+      - name: Publish verified Windows distribution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          tag="v$version"
+          existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+          if [ "$existing" != "$GITHUB_SHA" ]; then
+            echo "::error::The release version belongs to another commit."
+            exit 1
+          fi
+          gh release upload "$tag" build/windows-distribution/* --clobber

@@ -1,0 +1,2 @@
+- Corrected VLC picture rendering at full video resolution.
+- Improved video sizing for live channels and movies.

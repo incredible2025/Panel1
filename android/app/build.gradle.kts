@@ -64,6 +64,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("org.videolan.android:libvlc-all:3.6.3")
 }

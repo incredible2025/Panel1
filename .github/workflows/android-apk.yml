@@ -90,6 +90,8 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Prepare verified Android build tooling
+        run: python3 scripts/prepare_android_ci.py
       - name: Compile Android app
         run: flutter build apk --debug
 
@@ -168,7 +170,9 @@ jobs:
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Build signed APK
-        run: flutter build apk --release --target-platform android-arm
+        run: |
+          python3 scripts/prepare_android_ci.py
+          flutter build apk --release --target-platform android-arm
       - name: Verify 32-bit ARM package
         shell: bash
         run: |

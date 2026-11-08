@@ -1,0 +1,2 @@
+- Streamlined VLC startup for live channels and movies.
+- Improved playback responsiveness while preserving pause and resume controls.

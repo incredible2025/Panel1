@@ -66,6 +66,66 @@ void main() {
     },
   );
   test(
+    'live startup continues muted without a pause and accepts readiness before track metadata',
+    () async {
+      messenger.setMockMethodCallHandler(methods, (call) async {
+        calls.add(call);
+        if (call.method == 'create') return 7;
+        if (call.method == 'load') {
+          await send({'id': 7, 'ready': true, 'playing': true});
+        }
+        return null;
+      });
+      final handle = VlcPlayback(Uri.parse('https://example.invalid/live'));
+      handle.configure(
+        DecodingMode.automatic,
+        live: true,
+        pauseAfterLoading: false,
+      );
+      await handle.initialize();
+      expect(calls.first.arguments['live'], true);
+      expect(handle.value.isInitialized, true);
+      expect(calls.map((call) => call.method), ['create', 'load']);
+      // Preview playback must stay silent even though its input keeps running.
+      await handle.setVolume(0);
+      await handle.play();
+      expect(
+        calls.where((call) => call.method == 'volume').last.arguments['volume'],
+        0,
+      );
+      await handle.pause();
+      expect(calls.last.method, 'pause');
+      await handle.dispose();
+    },
+  );
+  test('a new movie can load continuously while remaining muted', () async {
+    final handle = VlcPlayback(Uri.parse('https://example.invalid/movie'));
+    handle.configure(DecodingMode.automatic, pauseAfterLoading: false);
+    await handle.initialize();
+    expect(calls.first.arguments['live'], false);
+    expect(calls.map((call) => call.method), ['create', 'load']);
+    await handle.dispose();
+  });
+  test(
+    'on-demand resume seeks while paused before playback is enabled',
+    () async {
+      final handle = VlcPlayback(Uri.parse('https://example.invalid/movie'));
+      await handle.initialize();
+      expect(calls.first.arguments['live'], false);
+      await handle.seekTo(const Duration(seconds: 25));
+      await handle.play();
+      expect(
+        calls.map((call) => call.method),
+        containsAllInOrder(['load', 'pause', 'seek', 'volume', 'play']),
+      );
+      expect(
+        calls.firstWhere((call) => call.method == 'seek').arguments['position'],
+        25000,
+      );
+      await handle.dispose();
+    },
+  );
+  test(
     'a late creation after disposal is closed without loading media',
     () async {
       final gate = Completer<int>();

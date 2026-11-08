@@ -1,0 +1,2 @@
+- Reduced the Android download size with a 32-bit ARM package.
+- Includes ExoPlayer, MPV and VLC playback options.

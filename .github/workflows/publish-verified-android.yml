@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_URL: ${{ inputs.bundle_url || 'https://sphere-findings-logic-reliability.trycloudflare.com/Ultravpn-player-0.8.17-remote-update.zip' }}
-      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || '67a0c0559c8663e8b181c37173057d629cf039999401f9dbada9fcafb433771c' }}
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://faculty-presents-eggs-attended.trycloudflare.com/Ultravpn-player-0.8.18-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || '05f0743f53b1c7b810ff8445733eaba8ab8705d7755c9a01f2b4d13c9b1c227d' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -84,6 +84,7 @@ jobs:
           aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
           "$apksigner" verify --verbose --print-certs "$root/Ultravpn-player.apk" > build/verified-android-signature.txt
           python3 scripts/verify_signing_certificate.py build/verified-android-signature.txt android/release-certificate.sha256
+          python3 scripts/verify_vlc_jni.py "$root/Ultravpn-player.apk"
           python3 scripts/public_release_notes.py --input "docs/RELEASE_NOTES_$version.md" --output "$root/public-release-notes.txt"
           python3 scripts/create_update_manifest.py --apk "$root/Ultravpn-player.apk" --aapt "$aapt" \
             --apk-url "ultravpn-player-$version.apk" --notes "$root/public-release-notes.txt" --output "$root/checked-update.json"

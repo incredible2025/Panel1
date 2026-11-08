@@ -1,0 +1,2 @@
+- Improved VLC startup reliability on Android.
+- Supports both 32-bit and 64-bit Android devices.

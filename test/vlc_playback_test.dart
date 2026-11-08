@@ -126,6 +126,36 @@ void main() {
     },
   );
   test(
+    'video resolution updates reach the view without recreating playback',
+    () async {
+      final handle = VlcPlayback(Uri.parse('https://example.invalid/live'));
+      await handle.initialize();
+      expect(handle.value.size.width, 1920);
+      expect(handle.value.size.height, 1080);
+      await send({
+        'id': 7,
+        'ready': true,
+        'playing': true,
+        'width': 1280,
+        'height': 720,
+      });
+      expect(handle.value.size.width, 1280);
+      expect(handle.value.size.height, 720);
+      await send({
+        'id': 7,
+        'ready': true,
+        'playing': true,
+        'width': 3840,
+        'height': 2160,
+      });
+      expect(handle.value.size.width, 3840);
+      expect(handle.value.size.height, 2160);
+      expect(calls.where((call) => call.method == 'create').length, 1);
+      expect(calls.where((call) => call.method == 'dispose'), isEmpty);
+      await handle.dispose();
+    },
+  );
+  test(
     'a late creation after disposal is closed without loading media',
     () async {
       final gate = Completer<int>();

@@ -104,8 +104,10 @@ class VlcPlaybackBridge(
         private var failed = false
         private var buffering = false
         private var completed = false
-        private var width = 0
-        private var height = 0
+        private val videoOutput = VlcVideoOutput { width, height ->
+            texture.surfaceTexture().setDefaultBufferSize(width, height)
+            player.vlcVout.setWindowSize(width, height)
+        }
         private var preferences: Map<String, Any?>? = null
         private var preferencesApplied = false
         private var tracksDirty = true
@@ -127,19 +129,13 @@ class VlcPlaybackBridge(
                     "--freetype-background-opacity=" + if (subtitleBackground) "166" else "0",
                 ))
                 player = MediaPlayer(library)
-                texture.surfaceTexture().setDefaultBufferSize(16, 9)
+                // A texture needs pixel dimensions, not an aspect-ratio placeholder.
+                // OpenGL output does not promise an onNewVideoLayout callback.
+                videoOutput.initialise()
                 player.vlcVout.setVideoSurface(surface, null)
-                player.vlcVout.setWindowSize(16, 9)
-                player.vlcVout.attachViews { _, w, h, _, _, _, _ ->
-                    if (!dead && w > 0 && h > 0) {
-                        width = w
-                        height = h
-                        texture.surfaceTexture().setDefaultBufferSize(w, h)
-                        player.vlcVout.setWindowSize(w, h)
-                        ready = true
-                        emit()
-                    }
-                }
+                // Use one GL rendering path for hardware and software decoding;
+                // Flutter owns placement, and the selected video track owns size.
+                player.vlcVout.attachViews(null)
                 player.setEventListener { event ->
                     if (!dead) {
                         when (event.type) {
@@ -283,12 +279,21 @@ class VlcPlaybackBridge(
 
         fun emit() {
             if (dead) return
+            if (ready) {
+                player.currentVideoTrack?.let { track ->
+                    videoOutput.update(track.width, track.height, track.sarNum, track.sarDen,
+                        track.orientation == IMedia.VideoTrack.Orientation.LeftBottom ||
+                            track.orientation == IMedia.VideoTrack.Orientation.RightTop)
+                }
+            }
             val info = tracks()
             sink?.success(mapOf(
                 "id" to id, "ready" to ready, "error" to failed,
                 "playing" to player.isPlaying, "buffering" to buffering,
                 "completed" to completed, "duration" to player.length.coerceAtLeast(0),
-                "position" to player.time.coerceAtLeast(0), "width" to width, "height" to height,
+                "position" to player.time.coerceAtLeast(0),
+                "width" to (videoOutput.sourceSize?.width ?: 0),
+                "height" to (videoOutput.sourceSize?.height ?: 0),
                 "tracks" to info,
             ))
         }

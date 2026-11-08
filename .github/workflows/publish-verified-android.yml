@@ -1,0 +1,119 @@
+name: Publish verified Android package
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-verified-android.yml']
+  workflow_dispatch:
+    inputs:
+      bundle_url:
+        description: HTTPS address of the verified remote-update ZIP
+        required: true
+      bundle_sha256:
+        description: SHA-256 of the verified remote-update ZIP
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-verified-android
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://polymer-concentrations-rebel-somebody.trycloudflare.com/Ultravpn-player-0.8.16-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'e59934267a26da336b487afe279fb3f857793b6d66eb936635504d6603da7f48' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Retrieve and verify package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/verified-android
+          curl --fail --location --retry 3 --max-time 180 "$BUNDLE_URL" -o build/verified-android/remote-update.zip
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          root = Path('build/verified-android')
+          bundle = root / 'remote-update.zip'
+          if hashlib.sha256(bundle.read_bytes()).hexdigest() != os.environ['BUNDLE_SHA256']:
+              raise SystemExit('Package checksum verification failed.')
+          version = next(line.split(':', 1)[1].strip() for line in Path('pubspec.yaml').read_text().splitlines() if line.startswith('version:'))
+          name, code = version.split('+')
+          with zipfile.ZipFile(bundle) as archive:
+              expected = {'update.json', 'Ultravpn-player.apk', f'ultravpn-player-{name}.apk'}
+              if set(archive.namelist()) != expected or len(archive.infolist()) != len(expected):
+                  raise SystemExit('Unexpected package contents.')
+              manifest = json.loads(archive.read('update.json'))
+              if manifest['versionName'] != name or manifest['versionCode'] != int(code):
+                  raise SystemExit('Package version does not match the source.')
+              if manifest['applicationId'] != 'com.streamline.iptv' or manifest['sizeBytes'] >= 100_000_000:
+                  raise SystemExit('Unexpected Android package identity or size.')
+              for filename in ['Ultravpn-player.apk', f'ultravpn-player-{name}.apk']:
+                  apk = archive.read(filename)
+                  if len(apk) != manifest['sizeBytes'] or hashlib.sha256(apk).hexdigest() != manifest['sha256']:
+                      raise SystemExit('APK integrity verification failed.')
+              archive.extractall(root)
+          with zipfile.ZipFile(root / 'Ultravpn-player.apk') as apk:
+              names = set(apk.namelist())
+              if {n.split('/')[1] for n in names if n.startswith('lib/')} != {'armeabi-v7a'}:
+                  raise SystemExit('Unexpected APK architectures.')
+              for library in ['libapp.so', 'libflutter.so', 'libmpv.so', 'libvlc.so', 'libvlcjni.so']:
+                  if f'lib/armeabi-v7a/{library}' not in names:
+                      raise SystemExit('A playback library is missing.')
+          (root / 'Ultravpn-player.apk.sha256').write_text(manifest['sha256'] + '  Ultravpn-player.apk\n')
+          (root / f'Ultravpn-player-{name}-remote-update.zip').write_bytes(bundle.read_bytes())
+          print('Package contents and APK checksums verified.')
+          PY
+      - name: Verify APK identity and permanent certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=build/verified-android
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose --print-certs "$root/Ultravpn-player.apk" > build/verified-android-signature.txt
+          python3 scripts/verify_signing_certificate.py build/verified-android-signature.txt android/release-certificate.sha256
+          python3 scripts/public_release_notes.py --input "docs/RELEASE_NOTES_$version.md" --output "$root/public-release-notes.txt"
+          python3 scripts/create_update_manifest.py --apk "$root/Ultravpn-player.apk" --aapt "$aapt" \
+            --apk-url "ultravpn-player-$version.apk" --notes "$root/public-release-notes.txt" --output "$root/checked-update.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('build/verified-android')
+          if json.loads((root / 'update.json').read_text()) != json.loads((root / 'checked-update.json').read_text()):
+              raise SystemExit('Update manifest does not match the actual APK and validated public notes.')
+          print('APK metadata and update manifest match.')
+          PY
+      - name: Publish installable APK and update bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=build/verified-android
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          tag="v$version"
+          assets=("$root/Ultravpn-player.apk" "$root/Ultravpn-player.apk.sha256" "$root/remote-update.zip" "$root/Ultravpn-player-$version-remote-update.zip" "$root/update.json")
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::This version already belongs to another commit."
+              exit 1
+            fi
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --notes-file "$root/public-release-notes.txt"
+          else
+            gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" \
+              --title "Ultravpn-player $version" --notes-file "$root/public-release-notes.txt" --latest
+          fi

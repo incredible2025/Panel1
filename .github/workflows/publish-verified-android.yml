@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_URL: ${{ inputs.bundle_url || 'https://polymer-concentrations-rebel-somebody.trycloudflare.com/Ultravpn-player-0.8.16-remote-update.zip' }}
-      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'e59934267a26da336b487afe279fb3f857793b6d66eb936635504d6603da7f48' }}
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://sphere-findings-logic-reliability.trycloudflare.com/Ultravpn-player-0.8.17-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || '67a0c0559c8663e8b181c37173057d629cf039999401f9dbada9fcafb433771c' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -55,7 +55,7 @@ jobs:
               manifest = json.loads(archive.read('update.json'))
               if manifest['versionName'] != name or manifest['versionCode'] != int(code):
                   raise SystemExit('Package version does not match the source.')
-              if manifest['applicationId'] != 'com.streamline.iptv' or manifest['sizeBytes'] >= 100_000_000:
+              if manifest['applicationId'] != 'com.streamline.iptv' or manifest['sizeBytes'] >= 200_000_000:
                   raise SystemExit('Unexpected Android package identity or size.')
               for filename in ['Ultravpn-player.apk', f'ultravpn-player-{name}.apk']:
                   apk = archive.read(filename)
@@ -64,11 +64,12 @@ jobs:
               archive.extractall(root)
           with zipfile.ZipFile(root / 'Ultravpn-player.apk') as apk:
               names = set(apk.namelist())
-              if {n.split('/')[1] for n in names if n.startswith('lib/')} != {'armeabi-v7a'}:
+              if {n.split('/')[1] for n in names if n.startswith('lib/')} != {'armeabi-v7a', 'arm64-v8a'}:
                   raise SystemExit('Unexpected APK architectures.')
-              for library in ['libapp.so', 'libflutter.so', 'libmpv.so', 'libvlc.so', 'libvlcjni.so']:
-                  if f'lib/armeabi-v7a/{library}' not in names:
-                      raise SystemExit('A playback library is missing.')
+              for abi in ['armeabi-v7a', 'arm64-v8a']:
+                  for library in ['libapp.so', 'libflutter.so', 'libmpv.so', 'libvlc.so', 'libvlcjni.so']:
+                      if f'lib/{abi}/{library}' not in names:
+                          raise SystemExit('A playback library is missing.')
           (root / 'Ultravpn-player.apk.sha256').write_text(manifest['sha256'] + '  Ultravpn-player.apk\n')
           (root / f'Ultravpn-player-{name}-remote-update.zip').write_bytes(bundle.read_bytes())
           print('Package contents and APK checksums verified.')

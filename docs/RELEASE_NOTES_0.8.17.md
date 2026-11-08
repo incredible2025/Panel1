@@ -1,0 +1,2 @@
+- Restored support for both 32-bit and 64-bit Android devices.
+- Includes ExoPlayer, MPV and VLC playback options.

@@ -48,6 +48,7 @@ android {
             ndk {
                 abiFilters.clear()
                 abiFilters.add("armeabi-v7a")
+                abiFilters.add("arm64-v8a")
             }
             // Sideload testing works without a configured permanent release key.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")

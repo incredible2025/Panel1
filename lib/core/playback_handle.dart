@@ -28,9 +28,18 @@ abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   PlaybackHandle() : super(const VideoPlayerValue(duration: Duration.zero));
   DecodingMode decoding = DecodingMode.automatic;
   AppSettings preferences = const AppSettings();
-  void configure(DecodingMode mode, {AppSettings? settings}) {
+  bool isLive = false;
+  bool pauseAfterLoading = true;
+  void configure(
+    DecodingMode mode, {
+    AppSettings? settings,
+    bool live = false,
+    bool pauseAfterLoading = true,
+  }) {
     decoding = mode;
     preferences = settings ?? const AppSettings();
+    isLive = live;
+    this.pauseAfterLoading = pauseAfterLoading;
   }
 
   String get failureSummary => playbackFailure(value.errorDescription);

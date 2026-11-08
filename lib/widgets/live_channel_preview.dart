@@ -110,7 +110,12 @@ class LiveChannelPreviewState extends ConsumerState<LiveChannelPreview>
           desktop: ref.read(isDesktopProvider),
         ).first;
         final player = ref.read(playbackFactoryProvider)(uri, profile.engine);
-        player.configure(profile.decoding, settings: preferences);
+        player.configure(
+          profile.decoding,
+          settings: preferences,
+          live: true,
+          pauseAfterLoading: false,
+        );
         _player = player;
         await player.initialize();
         if (!mounted || generation != _generation) return;

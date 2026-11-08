@@ -29,6 +29,7 @@ class VlcPlayback extends PlaybackHandle {
     final id = await _methods.invokeMethod<int>('create', {
       'uri': uri.toString(),
       'decoding': decoding.name,
+      'live': isLive,
       'subtitleSize': preferences.subtitleSize.round(),
       'subtitleBackground': preferences.subtitleBackground,
     });
@@ -77,11 +78,11 @@ class VlcPlayback extends PlaybackHandle {
         }
       },
     );
-    // Paused metadata probing is inconsistent for live streams. LibVLC starts
-    // loading muted; the screen owns when audible playback may begin.
+    // Keep initial playback continuous when the caller will autoplay. All
+    // probing stays muted; saved-position playback pauses before resume seeking.
     await _command('load');
     await _ready.future;
-    await pause();
+    if (pauseAfterLoading) await pause();
   }
 
   Future<void> _command(

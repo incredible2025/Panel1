@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Surface
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -51,7 +52,8 @@ class VlcPlaybackBridge(
                         require(uri.scheme in listOf("http", "https") && !uri.host.isNullOrEmpty())
                         val session = Session(uri, call.argument<String>("decoding") ?: "automatic",
                             call.argument<Number>("subtitleSize")?.toInt() ?: 22,
-                            call.argument<Boolean>("subtitleBackground") != false)
+                            call.argument<Boolean>("subtitleBackground") != false,
+                            call.argument<Boolean>("live") == true)
                         players[session.id] = session
                         result.success(session.id)
                     }
@@ -91,7 +93,7 @@ class VlcPlaybackBridge(
         closing.shutdown()
     }
 
-    private inner class Session(uri: Uri, private val decoding: String, subtitleSize: Int, subtitleBackground: Boolean) {
+    private inner class Session(uri: Uri, private val decoding: String, subtitleSize: Int, subtitleBackground: Boolean, live: Boolean) {
         private val texture = textures.createSurfaceTexture()
         val id = texture.id()
         private val surface = Surface(texture.surfaceTexture())
@@ -106,6 +108,9 @@ class VlcPlaybackBridge(
         private var height = 0
         private var preferences: Map<String, Any?>? = null
         private var preferencesApplied = false
+        private var tracksDirty = true
+        private var trackSnapshot: Map<String, Any?> = emptyMap()
+        private var lastTrackRefresh = 0L
         private val tick = object : Runnable {
             override fun run() {
                 if (dead) return
@@ -139,17 +144,23 @@ class VlcPlaybackBridge(
                     if (!dead) {
                         when (event.type) {
                             MediaPlayer.Event.Buffering -> buffering = event.buffering < 100
-                            MediaPlayer.Event.Playing -> { buffering = false; completed = false }
+                            // Input readiness must not wait on a delayed video-layout callback.
+                            MediaPlayer.Event.Playing -> { ready = true; buffering = false; completed = false; tracksDirty = true }
                             MediaPlayer.Event.EndReached -> completed = true
                             MediaPlayer.Event.EncounteredError -> failed = true
+                            MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESDeleted,
+                            MediaPlayer.Event.ESSelected -> tracksDirty = true
                         }
-                        emit()
+                        // Progress is already sampled by tick. Avoid re-reading native
+                        // metadata for every high-frequency position notification.
+                        if (event.type != MediaPlayer.Event.TimeChanged &&
+                            event.type != MediaPlayer.Event.PositionChanged) emit()
                     }
                 }
                 val media = Media(library, uri)
                 try {
                     media.setHWDecoderEnabled(decoding != "software", decoding == "hardware")
-                    media.addOption(":network-caching=1000")
+                    media.addOption(":network-caching=" + if (live) "500" else "1000")
                     // Blend subtitles into the video texture.
                     media.addOption(":avcodec-hw=" + if (decoding == "software") "none" else "any")
                     player.media = media
@@ -196,11 +207,15 @@ class VlcPlaybackBridge(
                             else requireNotNull(key?.toIntOrNull())
                         check(player.setAudioTrack(track))
                     }
+                    tracksDirty = true
+                    lastTrackRefresh = 0L
                 }
                 "preferences" -> {
                     @Suppress("UNCHECKED_CAST")
                     preferences = call.arguments as? Map<String, Any?>
                     preferencesApplied = false
+                    tracksDirty = true
+                    lastTrackRefresh = 0L
                 }
                 else -> error("Unknown player command")
             }
@@ -208,6 +223,11 @@ class VlcPlaybackBridge(
         }
 
         private fun tracks(): Map<String, Any?> {
+            val now = SystemClock.elapsedRealtime()
+            if (!ready || now - lastTrackRefresh < 250 ||
+                (!tracksDirty && now - lastTrackRefresh < 2000)) return trackSnapshot
+            lastTrackRefresh = now
+            tracksDirty = false
             if (!player.hasMedia()) return emptyMap()
             val media = player.media
             val metadata = try {
@@ -224,15 +244,16 @@ class VlcPlaybackBridge(
                     (language.isEmpty() || language(it.language) == language(language)) &&
                         (!stereo || it.channels <= 2)
                 }?.let {
-                    if (language.isNotEmpty() || stereo) player.setAudioTrack(it.id)
+                    if ((language.isNotEmpty() || stereo) && player.audioTrack != it.id) player.setAudioTrack(it.id)
                 }
                 val subtitleLanguage = options["subtitleLanguage"] as? String ?: ""
                 val subtitle = metadata.firstOrNull {
                     it.type == IMedia.Track.Type.Text &&
                         (subtitleLanguage.isEmpty() || language(it.language) == language(subtitleLanguage))
                 }
-                if (options["subtitles"] != true) player.setSpuTrack(-1)
-                else if (subtitle != null) player.setSpuTrack(subtitle.id)
+                if (options["subtitles"] != true) {
+                    if (player.spuTrack != -1) player.setSpuTrack(-1)
+                } else if (subtitle != null && player.spuTrack != subtitle.id) player.setSpuTrack(subtitle.id)
                 preferencesApplied = true
             }
             if (video == null && audio.isNotEmpty()) ready = true
@@ -251,12 +272,13 @@ class VlcPlaybackBridge(
             add("audio", player.audioTracks, player.audioTrack)
             add("text", player.spuTracks, player.spuTrack)
             val currentAudio = audio.firstOrNull { it.id == player.audioTrack }
-            return mapOf(
+            trackSnapshot = mapOf(
                 "available" to true, "tracks" to entries, "textOff" to (player.spuTrack < 0),
                 "audioAuto" to false, "videoCodec" to (video?.codec ?: ""),
                 "audioCodec" to (currentAudio?.codec ?: ""),
                 "audioChannels" to (currentAudio?.channels ?: 0),
             )
+            return trackSnapshot
         }
 
         fun emit() {

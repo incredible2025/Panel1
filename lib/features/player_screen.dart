@@ -474,7 +474,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           : await api.prepareCatchupUri(session, item, programme);
       if (!mounted || generation != _generation || _exiting) return;
       controller = ref.read(playbackFactoryProvider)(uri, _engine);
-      controller.configure(_activeProfile.decoding, settings: _settings);
+      controller.configure(
+        _activeProfile.decoding,
+        settings: _settings,
+        live: _isLive,
+        pauseAfterLoading:
+            !_appActive ||
+            !_wantsPlayback ||
+            (!_isLive && startPosition > Duration.zero),
+      );
       _controller = controller;
       controller.addListener(_onControllerChanged);
       await _initialize(controller);
@@ -495,7 +503,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted || generation != _generation || _exiting) return;
       await controller.attachTracks(_tracks, _settings);
       if (!mounted || generation != _generation || _exiting) return;
-      if (_appActive && _wantsPlayback) await controller.play();
+      if (_appActive && _wantsPlayback) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
       if (!mounted || generation != _generation || _exiting) return;
       _recordLivePlayback(controller, generation, item);
       setState(() => _loading = false);

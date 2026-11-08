@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_URL: ${{ inputs.bundle_url || 'https://faculty-presents-eggs-attended.trycloudflare.com/Ultravpn-player-0.8.18-remote-update.zip' }}
-      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || '05f0743f53b1c7b810ff8445733eaba8ab8705d7755c9a01f2b4d13c9b1c227d' }}
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://learned-pixels-married-bedford.trycloudflare.com/Ultravpn-player-0.8.19-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'bd7040bc0da91c03b91f45879148cd82e72caa81cb605fa61e7725197a9e24d5' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5

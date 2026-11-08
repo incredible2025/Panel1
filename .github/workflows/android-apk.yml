@@ -193,6 +193,8 @@ jobs:
                           raise SystemExit('An ARM playback library is missing.')
           print('Combined 32-bit and 64-bit ARM package verified.')
           PY
+      - name: Verify VLC native entry points
+        run: python3 scripts/verify_vlc_jni.py build/app/outputs/flutter-apk/app-release.apk
       - name: Verify signing certificate and name APK
         shell: bash
         run: |

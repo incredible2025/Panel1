@@ -45,6 +45,7 @@ android {
 
     buildTypes {
         release {
+            proguardFiles("proguard-rules.pro")
             ndk {
                 abiFilters.clear()
                 abiFilters.add("armeabi-v7a")

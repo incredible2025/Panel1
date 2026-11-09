@@ -1,3 +1,4 @@
+import 'core/app_brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -23,7 +24,7 @@ Future<void> main(List<String> args) async {
       'Inter typeface',
     ], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
     yield LicenseEntryWithLineBreaks([
-      'ULTRAVPN PLAYER native compatibility player',
+      '$appBrandName native compatibility player',
     ], await rootBundle.loadString('assets/licenses/native-player.txt'));
     yield LicenseEntryWithLineBreaks([
       'LibVLC for Android',
@@ -95,7 +96,7 @@ class _StartupError extends StatelessWidget {
             children: [
               const StreamlineMark(size: 64, wordmark: true),
               const SizedBox(height: 24),
-              const Text('ULTRAVPN PLAYER could not open its local storage.'),
+              const Text('$appBrandName could not open its local storage.'),
               const SizedBox(height: 12),
               const Text('Check available device storage, then try again.'),
               const SizedBox(height: 24),

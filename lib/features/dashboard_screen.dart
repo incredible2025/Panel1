@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -336,7 +337,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
     if (_restoring || settings.isLoading) {
       return const Scaffold(
-        body: StatusView(title: 'Preparing ULTRAVPN PLAYER', loading: true),
+        body: StatusView(title: 'Preparing $appBrandWordmark', loading: true),
       );
     }
     final categories = ref.watch(categoriesProvider(_kind));

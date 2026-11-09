@@ -1,0 +1,12 @@
+{
+  "appId": "nova-player-test",
+  "packageId": "com.streamline.novaplayertest",
+  "name": "Nova Player Test",
+  "title": "NOVA",
+  "subtitle": "PLAYER TEST",
+  "wordmark": "NOVA PLAYER TEST",
+  "versionName": "0.9.0",
+  "versionCode": 43,
+  "stableApkName": "Nova-player-test.apk",
+  "logo": "logo.png"
+}

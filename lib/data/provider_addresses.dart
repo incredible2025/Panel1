@@ -3,8 +3,14 @@ import 'package:crypto/crypto.dart';
 
 /// Legacy bootstrap destinations. Managed builds use only signed configurations
 /// verified against the public key and app identity embedded at build time.
-const providerPortalUrl = 'https://liquidmetal.vip';
-const providerFallbackUrl = 'http://liquidmetal.vip';
+const providerPortalUrl = String.fromEnvironment(
+  'BRAND_LEGACY_PRIMARY',
+  defaultValue: 'https://liquidmetal.vip',
+);
+const providerFallbackUrl = String.fromEnvironment(
+  'BRAND_LEGACY_FALLBACK',
+  defaultValue: 'http://liquidmetal.vip',
+);
 
 /// Permanent local storage identity; changing transport must not change accounts.
 const previousProviderPortalUrl = providerFallbackUrl;

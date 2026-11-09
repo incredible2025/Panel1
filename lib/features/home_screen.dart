@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/design_system.dart';
@@ -570,7 +571,7 @@ class FeatureBillboard extends ConsumerWidget {
                   border: Border.all(color: Colors.white24),
                 ),
                 child: const Text(
-                  'ULTRAVPN PLAYER',
+                  appBrandWordmark,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,

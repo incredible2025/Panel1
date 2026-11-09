@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -507,7 +508,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: Row(
                               children: [
                                 Text(
-                                  'Ultravpn-player does not supply channels or content.',
+                                  '$appBrandName does not supply channels or content.',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: TvGlass.muted,
@@ -886,7 +887,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               : CrossAxisAlignment.start,
           children: [
             Text(
-              'Ultravpn-player does not supply channels or content.',
+              '$appBrandName does not supply channels or content.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.subdued,
                 fontSize: 11,

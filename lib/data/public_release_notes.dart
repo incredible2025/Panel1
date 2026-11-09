@@ -1,5 +1,7 @@
+import '../core/app_brand.dart';
+
 /// Customer-facing copy only. Unsafe legacy feeds must not block an update.
-const defaultReleaseNotes = 'Improvements and fixes for Ultravpn-player.';
+const defaultReleaseNotes = 'Improvements and fixes for $appBrandName.';
 
 String publicReleaseNotes(String source) {
   final notes = source.trim();

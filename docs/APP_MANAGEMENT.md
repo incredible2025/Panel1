@@ -29,7 +29,7 @@ Use publish history to restore previous settings. A restore creates a higher con
 
 The owner registers its name, a permanent app identifier, a unique Android package identifier, service addresses and an HTTPS update manifest address. Publish the first configuration, then choose **Download build profile**.
 
-The developer uses the same codebase, the exported profile and the brand’s own assets and Android release key to build that app. `scripts/prepare_managed_profile.py` prepares private Flutter defines. `scripts/build_managed_android.ps1` sets the matching native package identifier and builds the combined ARM APK. Reseller builds disable legacy primary-account migration by default. Keep build profiles outside public release assets.
+The developer uses the same codebase, the exported profile and the brand’s own assets and Android release key to build that app. `scripts/prepare_managed_profile.py` prepares private Flutter defines. `scripts/build_branded_android.ps1` combines that profile with a branding manifest and private release credentials. It stages an isolated workspace, renders launcher artwork, and builds the combined ARM APK without changing the primary app. `scripts/package_branded_android.py` verifies the actual native identity and produces the three-file update ZIP. Reseller builds disable legacy primary-account migration by default. Keep build profiles outside public release assets.
 
 Portal settings cannot overwrite compiled branding. Each branded APK must retain its own application identity and release key across later updates. Shared code improvements still need a new APK for each branded variant; this version of the portal does not build or upload APKs.
 
@@ -44,3 +44,9 @@ Public registration is disabled. The owner registers apps and manages staff. Sta
 Save private portal backups off-server as well as locally. Configure outgoing email before relying on password-reset or email-verification messages. Public configuration is signed for authenticity; addresses supplied to an installed client cannot be made impossible to extract.
 
 Windows management is not enabled in this release. Its existing updater and installer identity remain separate.
+
+## Repeat a branded build
+
+Keep the non-secret branding manifest and source logo under `brands/<app-id>/`. Keep exported portal profiles and release credentials in ignored private storage. Increase that brand’s versionCode before publishing another release, keeping its package identifier and stable APK filename unchanged. The build script sets the Flutter display version and Android version together. The test brand starts at version 0.9.0, build 43.
+
+Primary publication runs only when the primary version has a new release tag to create. Building a test brand does not replace the primary APK or its update feed. Branded packages are hosted in their own folders and do not become the primary GitHub release.

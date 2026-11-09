@@ -1,0 +1,2 @@
+- Initial test release.
+- Mobile and TV playback support.

@@ -9,7 +9,11 @@ plugins {
 }
 
 val releaseKeyProperties = Properties()
-val releaseKeyFile = rootProject.file("key.properties")
+val alternateSigningFile = System.getenv("MANAGED_ANDROID_SIGNING_PROPERTIES")
+val releaseKeyFile = alternateSigningFile?.let { file(it) } ?: rootProject.file("key.properties")
+if (alternateSigningFile != null && !releaseKeyFile.isFile) {
+    throw GradleException("The selected brand release credentials are unavailable.")
+}
 if (releaseKeyFile.isFile) {
     releaseKeyFile.inputStream().use { releaseKeyProperties.load(it) }
 }
@@ -26,6 +30,7 @@ android {
 
     defaultConfig {
         applicationId = System.getenv("MANAGED_ANDROID_APPLICATION_ID") ?: "com.streamline.iptv"
+        manifestPlaceholders["appDisplayName"] = System.getenv("MANAGED_ANDROID_APP_NAME") ?: "Ultravpn-player"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

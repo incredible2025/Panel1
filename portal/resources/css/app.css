@@ -47,6 +47,19 @@
     }
 }
 
+/* Surfaces follow the same appearance setting as Flux form controls. */
+.portal-card {
+    @apply rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm dark:border-white/10 dark:bg-slate-900 dark:text-slate-100;
+}
+
+.portal-muted {
+    @apply text-slate-600 dark:text-slate-400;
+}
+
+.portal-danger {
+    @apply bg-red-700 text-white hover:bg-red-800 dark:bg-red-600 dark:hover:bg-red-700;
+}
+
 [data-flux-field]:not(ui-radio, ui-checkbox) {
     @apply grid gap-2;
 }

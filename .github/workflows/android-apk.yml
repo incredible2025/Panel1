@@ -3,8 +3,28 @@ name: Ultravpn-player Android and Windows release
 on:
   push:
     branches: [main]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'windows/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'pubspec.*'
+      - 'analysis_options.yaml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'windows/**'
+      - 'packages/**'
+      - 'assets/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'pubspec.*'
+      - 'analysis_options.yaml'
   workflow_dispatch:
 
 permissions:

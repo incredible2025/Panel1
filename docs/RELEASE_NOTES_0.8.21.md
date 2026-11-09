@@ -1,0 +1,2 @@
+- Movie recommendations now match the genres of films you watch.
+- Find similar titles across catalogue folders with clearer recommendation labels.

@@ -10,6 +10,7 @@ import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
 import '../data/models.dart';
 import '../data/recommendations.dart';
+import '../core/recommendation_providers.dart';
 import '../widgets/live_channel_preview.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
@@ -1208,7 +1209,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
         ? ref.watch(movieDetailProvider(featured!)).asData?.value
         : null;
     final recommendations = _settings.recommendations
-        ? recommendMovies(movies, history)
+        ? (ref.watch(movieRecommendationsProvider).asData?.value ??
+              <RecommendationShelf>[])
         : <RecommendationShelf>[];
     final shelves = <TvHomeShelf>[
       if (continuing.isNotEmpty)
@@ -1393,7 +1395,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     final recent = items.where((e) => e.addedAt != null).toList();
     final recommendations =
         _kind == MediaKind.movie && _settings.recommendations
-        ? recommendMovies(items, history)
+        ? (ref.watch(movieRecommendationsProvider).asData?.value ??
+              <RecommendationShelf>[])
         : <RecommendationShelf>[];
     final name = _kind == MediaKind.series ? 'Series' : 'Movies';
     return SingleChildScrollView(

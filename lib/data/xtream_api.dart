@@ -128,6 +128,7 @@ class XtreamApi {
       containerExtension: extension,
       addedAt: item.addedAt,
       rating: item.rating,
+      genre: item.genre,
     );
     return MovieDetail.fromJson(enrichedItem, payload);
   }

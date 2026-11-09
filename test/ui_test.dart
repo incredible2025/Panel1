@@ -71,6 +71,7 @@ final _film = MediaItem(
   name: 'Zephyr',
   kind: MediaKind.movie,
   categoryId: 'drama',
+  genre: 'Drama',
   rating: '8.2',
   imageUrl: _qaArtwork,
   addedAt: DateTime.utc(2026, 10, 18),
@@ -80,6 +81,7 @@ final _otherFilm = MediaItem(
   name: 'Night Shift',
   kind: MediaKind.movie,
   categoryId: 'action',
+  genre: 'Action',
   rating: '7.6',
   imageUrl: _qaArtwork,
   addedAt: DateTime.utc(2026, 10, 22),
@@ -89,6 +91,7 @@ const _undatedFilm = MediaItem(
   name: 'Amber Road',
   kind: MediaKind.movie,
   categoryId: 'action',
+  genre: 'Action',
   imageUrl: _qaArtwork,
 );
 const _channel = MediaItem(id: '1', name: 'World News', kind: MediaKind.live);
@@ -1494,6 +1497,7 @@ void main() {
           name: 'Quiet Harbour',
           kind: MediaKind.movie,
           categoryId: 'drama',
+          genre: 'Drama',
           rating: '8.6',
           imageUrl: _qaArtwork,
         );

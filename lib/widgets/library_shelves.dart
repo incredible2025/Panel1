@@ -5,7 +5,7 @@ import '../core/providers.dart';
 import '../core/settings_controller.dart';
 import '../data/app_settings.dart';
 import '../data/models.dart';
-import '../data/recommendations.dart';
+import '../core/recommendation_providers.dart';
 import 'media_card.dart';
 
 class MovieShelf extends ConsumerWidget {
@@ -92,35 +92,18 @@ class MovieRecommendations extends ConsumerWidget {
     final settings =
         ref.watch(settingsProvider).asData?.value ?? const AppSettings();
     if (!settings.recommendations) return const SizedBox.shrink();
-    final unlocked = ref.watch(parentalSessionProvider);
-    final visible = catalog
-        .where(
-          (item) =>
-              !settings.hidden(item) && (unlocked || !settings.locked(item)),
-        )
-        .toList();
     return ref
-        .watch(historyProvider)
+        .watch(movieRecommendationsProvider)
         .when(
           loading: () => const SizedBox.shrink(),
           error: (_, __) => Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
-              onPressed: () => ref.invalidate(historyProvider),
+              onPressed: () => ref.invalidate(movieRecommendationsProvider),
               child: const Text('Reload recommendations'),
             ),
           ),
-          data: (history) {
-            final recommendations = recommendMovies(
-              visible,
-              history
-                  .where(
-                    (entry) =>
-                        !settings.hidden(entry.item) &&
-                        (unlocked || !settings.locked(entry.item)),
-                  )
-                  .toList(),
-            );
+          data: (recommendations) {
             if (recommendations.isEmpty) {
               return Container(
                 margin: const EdgeInsets.only(bottom: 30),
@@ -147,7 +130,7 @@ class MovieRecommendations extends ConsumerWidget {
                           ),
                           SizedBox(height: 6),
                           Text(
-                            'Watch a film to start finding similar titles from your library. Recommendations stay on this device.',
+                            'Watch a film to discover titles with similar genres. Matching titles appear as movie information becomes available. Recommendations stay on this device.',
                             style: TextStyle(
                               color: AppColors.muted,
                               height: 1.5,
@@ -166,7 +149,7 @@ class MovieRecommendations extends ConsumerWidget {
                 for (final shelf in recommendations)
                   MovieShelf(
                     title: shelf.title,
-                    subtitle: 'From categories you watch · On this device',
+                    subtitle: shelf.subtitle,
                     items: shelf.items,
                     onOpen: onOpen,
                   ),

@@ -10,22 +10,28 @@ class Credentials {
     required this.serverUrl,
     required this.username,
     required this.password,
+    this.managedServiceId,
   });
 
   final String serverUrl;
   final String username;
   final String password;
+  final String? managedServiceId;
 
   Map<String, dynamic> toJson() => {
     'serverUrl': serverUrl,
     'username': username,
     'password': password,
+    if (managedServiceId != null) 'managedServiceId': managedServiceId,
   };
 
   factory Credentials.fromJson(Map<String, dynamic> json) => Credentials(
     serverUrl: textValue(json['serverUrl']),
     username: textValue(json['username']),
     password: textValue(json['password']),
+    managedServiceId: json['managedServiceId'] is String
+        ? json['managedServiceId'] as String
+        : null,
   );
 
   @override
@@ -64,19 +70,28 @@ class Session {
     required this.credentials,
     required this.userInfo,
     required this.serverInfo,
+    this.storageAccountId,
   });
 
   final Credentials credentials;
   final Map<String, dynamic> userInfo;
   final Map<String, dynamic> serverInfo;
+  final String? storageAccountId;
 
   /// Keep this operator's storage scope stable across its approved address move.
   /// Different users and unrelated providers retain separate account identities.
-  String get accountId => sha256
-      .convert(
-        utf8.encode(jsonEncode([_accountPortal, credentials.username.trim()])),
-      )
-      .toString();
+  String get accountId =>
+      storageAccountId ??
+      sha256
+          .convert(
+            utf8.encode(
+              jsonEncode([
+                credentials.managedServiceId ?? _accountPortal,
+                credentials.username.trim(),
+              ]),
+            ),
+          )
+          .toString();
 
   String get _accountPortal {
     final address = normalizeServerUri(credentials.serverUrl);
@@ -90,12 +105,20 @@ class Session {
     'credentials': credentials.toJson(),
     'userInfo': userInfo,
     'serverInfo': serverInfo,
+    if (storageAccountId != null) 'storageAccountId': storageAccountId,
   };
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
     credentials: Credentials.fromJson(objectValue(json['credentials'])),
     userInfo: objectValue(json['userInfo']),
     serverInfo: objectValue(json['serverInfo']),
+    storageAccountId:
+        json['storageAccountId'] is String &&
+            RegExp(
+              r'^[a-f0-9]{64}$',
+            ).hasMatch(json['storageAccountId'] as String)
+        ? json['storageAccountId'] as String
+        : null,
   );
 }
 

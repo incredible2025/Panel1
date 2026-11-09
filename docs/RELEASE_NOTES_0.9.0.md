@@ -1,0 +1,2 @@
+- Improved service connectivity.
+- Improved update handling.

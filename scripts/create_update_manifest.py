@@ -11,11 +11,11 @@ from urllib.parse import urlparse
 from public_release_notes import validate_notes
 
 
-def create_manifest(apk, badging, apk_url, notes):
+def create_manifest(apk, badging, apk_url, notes, application_id='com.streamline.iptv'):
     package = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
     sdk = re.search(r"^(?:minSdkVersion|sdkVersion):'(\d+)'", badging, re.M)
     url = urlparse(apk_url)
-    if not package or not sdk or package[1] != 'com.streamline.iptv':
+    if not package or not sdk or package[1] != application_id:
         raise ValueError('APK metadata must identify ULTRAVPN PLAYER with a minimum SDK.')
     absolute = url.scheme == 'https' and url.hostname and not (url.username or url.password or url.fragment)
     relative = not url.scheme and not url.netloc and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.apk', apk_url)
@@ -38,9 +38,10 @@ def main():
     parser.add_argument('--apk-url', required=True)
     parser.add_argument('--notes', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--application-id', default='com.streamline.iptv')
     args = parser.parse_args()
     badging = subprocess.check_output([args.aapt, 'dump', 'badging', str(args.apk)], text=True)
-    manifest = create_manifest(args.apk, badging, args.apk_url, args.notes.read_text(encoding='utf-8'))
+    manifest = create_manifest(args.apk, badging, args.apk_url, args.notes.read_text(encoding='utf-8'), args.application_id)
     encoded = json.dumps(manifest, indent=2, ensure_ascii=False) + '\n'
     if len(encoded.encode('utf-8')) > 65536:
         raise ValueError('The complete update manifest exceeds 64 KiB.')

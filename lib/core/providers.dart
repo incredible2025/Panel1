@@ -7,13 +7,49 @@ import '../data/local_store.dart';
 import '../data/models.dart';
 import '../data/xtream_api.dart';
 import '../data/movie_genre_index.dart';
+import '../data/managed_configuration.dart';
+import '../data/provider_connections.dart';
+import 'provider_config.dart';
+
+final managedConfigurationProvider = Provider<ManagedConfigurationManager?>(
+  (ref) => null,
+);
+
+Credentials loginCredentials(WidgetRef ref, String username, String password) =>
+    ref
+        .read(managedConfigurationProvider)
+        ?.current
+        .credentials(username, password) ??
+    portalCredentials(username, password);
+
+Future<Session> bindSignedInAccount(WidgetRef ref, Session session) {
+  final service = session.credentials.managedServiceId;
+  final legacy = service != null && service == managedLegacyServiceId
+      ? Session(
+          credentials: portalCredentials(
+            session.credentials.username,
+            session.credentials.password,
+          ),
+          userInfo: const {},
+          serverInfo: const {},
+        ).accountId
+      : null;
+  return ref
+      .read(storeProvider)
+      .bindManagedAccount(session, legacyAccountId: legacy);
+}
 
 final storeProvider = Provider<LocalStore>((ref) {
   throw StateError('LocalStore must be initialized before launching the app.');
 });
 
 final apiProvider = Provider<XtreamApi>((ref) {
-  final api = XtreamApi();
+  final manager = ref.read(managedConfigurationProvider);
+  final api = XtreamApi(
+    connections: ProviderConnections(
+      configuration: manager == null ? null : () => manager.current,
+    ),
+  );
   ref.onDispose(api.dispose);
   return api;
 });

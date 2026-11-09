@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_URL: ${{ inputs.bundle_url || 'https://sleeve-ceramic-ran-sheer.trycloudflare.com/Ultravpn-player-0.8.21-remote-update.zip' }}
-      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'f59f4c35350b2c2cec6bcf8e07b3b8b8ddaecc0732a2ec404fd3efc369132ab3' }}
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://185.245.83.92/app-manager/downloads/0.9.0/Ultravpn-player-0.9.0-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'bd34635adf327e0a606d25c203a1ffb3aabe9f53e7298bd1c5f0dc93990be85d' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5

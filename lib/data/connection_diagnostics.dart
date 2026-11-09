@@ -566,10 +566,14 @@ DiagnosticFinding diagnosticFailure(String code, {int? httpStatus}) {
 }
 
 class ConnectionDiagnostics {
-  ConnectionDiagnostics(this.transport, {DateTime Function()? now})
-    : now = now ?? DateTime.now;
+  ConnectionDiagnostics(
+    this.transport, {
+    DateTime Function()? now,
+    this.approvedRoots,
+  }) : now = now ?? DateTime.now;
   final DiagnosticTransport transport;
   final DateTime Function() now;
+  final List<Uri>? approvedRoots;
   bool _cancelled = false, _used = false;
   void cancel() {
     _cancelled = true;
@@ -755,7 +759,8 @@ class ConnectionDiagnostics {
         'socket',
         'http_protocol',
       }.contains(error.code);
-      final configured = isConfiguredProviderUri(base);
+      final configured =
+          approvedRoots?.contains(base) ?? isConfiguredProviderUri(base);
       final tcp = await probe(
         'tcp',
         () async {
@@ -824,24 +829,36 @@ class ConnectionDiagnostics {
       Future<bool> tryFallback() async {
         if (!configured ||
             secureFailure ||
-            base.scheme != 'https' ||
+            (approvedRoots == null && base.scheme != 'https') ||
             fallbackTried ||
             _cancelled) {
           return false;
         }
         fallbackTried = true;
-        final fallback = Uri.parse(providerFallbackUrl);
+        final fallback =
+            (approvedRoots ??
+                    [
+                      Uri.parse(providerPortalUrl),
+                      Uri.parse(providerFallbackUrl),
+                    ])
+                .where((root) => root != base)
+                .firstOrNull;
+        if (fallback == null) return false;
         final reachable = await probe(
           'fallback',
           () async {
             await transport.connect(fallback.host, fallback.port);
             return true;
           },
-          (_) => const DiagnosticFinding(
+          (_) => DiagnosticFinding(
             'HTTP_FALLBACK_REACHABLE',
             'Alternative connection is reachable',
-            'The HTTPS transport could not connect from this device. The configured HTTP fallback accepted a connection. API and account checks below use that fallback. HTTP does not encrypt credentials or requests; server addresses remain omitted.',
-            status: DiagnosticStatus.warning,
+            fallback.scheme == 'http'
+                ? 'The preferred connection could not connect from this device. The configured HTTP fallback accepted a connection. API and account checks below use that fallback. HTTP does not encrypt credentials or requests; server addresses remain omitted.'
+                : 'The preferred connection could not connect from this device. The configured alternative accepted a connection. API and account checks below verify that alternative using normal HTTPS certificate checks.',
+            status: fallback.scheme == 'http'
+                ? DiagnosticStatus.warning
+                : DiagnosticStatus.passed,
           ),
         );
         if (reachable == true) base = fallback;
@@ -1112,7 +1129,13 @@ class ConnectionDiagnostics {
             uri = api
                 .streamUri(
                   Session(
-                    credentials: credentials,
+                    // URI construction only: use the exact route already tested
+                    // by this diagnosis, without consulting another live router.
+                    credentials: Credentials(
+                      serverUrl: base.toString(),
+                      username: credentials.username,
+                      password: credentials.password,
+                    ),
                     userInfo: user,
                     serverInfo: server,
                   ),

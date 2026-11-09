@@ -1,0 +1,10 @@
+{
+    "appId": "fixture-brand",
+    "packageId": "com.example.fixture",
+    "configUrl": "https://manager.example.test/api/v1/apps/fixture-brand/config",
+    "verificationKey": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw",
+    "bootstrap": {
+        "payload": "eyJzY2hlbWFWZXJzaW9uIjoxLCJhcHBJZCI6ImZpeHR1cmUtYnJhbmQiLCJwYWNrYWdlSWQiOiJjb20uZXhhbXBsZS5maXh0dXJlIiwic2VydmljZUlkIjoiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIiwicmV2aXNpb24iOjEsImVuZHBvaW50cyI6WyJodHRwczovL3ByaW1hcnkuZXhhbXBsZS50ZXN0L3NlcnZpY2UiLCJodHRwOi8vYmFja3VwLmV4YW1wbGUudGVzdC9mYWxsYmFjayJdLCJ1cGRhdGVNYW5pZmVzdFVybCI6Imh0dHBzOi8vdXBkYXRlcy5leGFtcGxlLnRlc3QvdXBkYXRlLmpzb24iLCJpc3N1ZWRBdCI6IjIwMjYtMTEtMDlUMDA6MDA6MDArMDA6MDAifQ",
+        "signature": "rywRUzMRUzwwGoBlJ2yA1fuMM9TAhjHpJAHQ164vTran3lvKKCl4NHmSZtMiXChhIbb7uA33cluefIfBgWAiBQ"
+    }
+}

@@ -1,0 +1,43 @@
+name: Management portal checks
+on:
+  push:
+    branches: [main]
+    paths: ['portal/**', '.github/workflows/portal.yml']
+  pull_request:
+    paths: ['portal/**', '.github/workflows/portal.yml']
+permissions:
+  contents: read
+jobs:
+  portal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, pdo_sqlite, sqlite3, mbstring, intl, zip
+          tools: composer:v2
+          coverage: none
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+      - name: Build frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+      - name: Check PHP formatting
+        run: vendor/bin/pint --test
+      - name: Test management and authentication
+        run: php artisan test

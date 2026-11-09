@@ -4,6 +4,13 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'provider_addresses.dart';
+import 'managed_configuration.dart';
+
+class ProviderServiceChanged implements Exception {
+  const ProviderServiceChanged();
+  @override
+  String toString() => 'The service has changed. Please sign in again.';
+}
 
 enum ProviderRoute { api, playback }
 
@@ -74,28 +81,48 @@ class _Selection {
 /// API and media have independent selections; each operation tries at most two
 /// exact approved roots. A short cooldown prevents repeated failed HTTPS probes.
 class ProviderConnections {
-  ProviderConnections({DateTime Function()? clock})
+  ProviderConnections({DateTime Function()? clock, this.configuration})
     : _clock = clock ?? DateTime.now;
   final DateTime Function() _clock;
+  final ManagedConfiguration? Function()? configuration;
+  List<Uri> get roots =>
+      configuration?.call()?.endpoints ??
+      [Uri.parse(providerPortalUrl), Uri.parse(providerFallbackUrl)];
+  void verifyService(String? serviceId) {
+    final current = configuration?.call();
+    if (current != null && current.serviceId != serviceId ||
+        current == null && serviceId != null) {
+      throw const ProviderServiceChanged();
+    }
+  }
+
+  bool approves(Uri base) => roots.contains(base);
+  Uri? alternate(Uri base) => roots.where((root) => root != base).firstOrNull;
   final Map<ProviderRoute, _Selection> _selected = {};
   static const cooldown = Duration(minutes: 5);
   int _revision = 0, _order = 0;
   bool _secureOnly = false;
 
   bool manages(Uri base) =>
-      isConfiguredProviderUri(base) || isRetiredProviderUri(base);
+      approves(base) ||
+      isConfiguredProviderUri(base) ||
+      isRetiredProviderUri(base);
 
   Uri preferred(ProviderRoute route) {
-    if (_secureOnly) return Uri.parse(providerPortalUrl);
+    if (_secureOnly) {
+      return roots.where((root) => root.scheme == 'https').firstOrNull ??
+          roots.first;
+    }
     final selected =
         _selected[route] ??
         (route == ProviderRoute.playback ? _selected[ProviderRoute.api] : null);
     if (selected != null &&
+        roots.contains(selected.base) &&
         !_clock().isBefore(selected.at) &&
         _clock().difference(selected.at) < cooldown) {
       return selected.base;
     }
-    return Uri.parse(providerPortalUrl);
+    return roots.first;
   }
 
   void reset() {
@@ -107,9 +134,13 @@ class ProviderConnections {
   Future<T> run<T>(
     Uri requested,
     ProviderRoute route,
-    Future<T> Function(Uri base) operation,
-  ) async {
-    if (!manages(requested)) return operation(requested);
+    Future<T> Function(Uri base) operation, {
+    String? serviceId,
+  }) async {
+    if (configuration?.call() != null || serviceId != null) {
+      verifyService(serviceId);
+    }
+    if (serviceId == null && !manages(requested)) return operation(requested);
     final revision = _revision;
     final order = ++_order;
     final first = preferred(route);
@@ -125,17 +156,19 @@ class ProviderConnections {
 
     try {
       final value = await operation(first);
+      if (serviceId != null) verifyService(serviceId);
       remember(first);
       return value;
     } catch (error) {
       if (revision != _revision) rethrow;
       if (isCertificateFailure(error)) _secureOnly = true;
       if (_secureOnly || !canSwitchProviderTransport(error)) rethrow;
-      final second = Uri.parse(
-        first.scheme == 'https' ? providerFallbackUrl : providerPortalUrl,
-      );
+      verifyService(serviceId);
+      final second = alternate(first);
+      if (second == null) rethrow;
       try {
         final value = await operation(second);
+        if (serviceId != null) verifyService(serviceId);
         remember(second);
         return value;
       } catch (error) {

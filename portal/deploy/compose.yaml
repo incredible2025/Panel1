@@ -1,0 +1,33 @@
+name: app-manager
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: app-manager:local
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ../data/storage:/app/storage
+      - ../data/cache:/app/bootstrap/cache
+      - ../data/database:/app/database-state
+    networks:
+      default:
+        aliases: [app-manager-app]
+    security_opt: [no-new-privileges:true]
+  web:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    volumes:
+      - ../public:/app/public:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      default: {}
+      edge:
+        aliases: [app-manager-web]
+    depends_on: [app]
+    security_opt: [no-new-privileges:true]
+networks:
+  edge:
+    external: true
+    name: ${EDGE_NETWORK:-streamcore_edge}

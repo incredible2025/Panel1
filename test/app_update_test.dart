@@ -179,6 +179,50 @@ Response bytes(List<int> value, {int length = -1}) =>
     Response(Stream.value(value), contentLength: length);
 
 void main() {
+  test(
+    'a branded manifest must match the compiled Android application identity',
+    () {
+      final branded = jsonEncode({
+        ...manifest(),
+        'applicationId': 'com.example.brand',
+      });
+      expect(() => AppUpdate.parse(branded), throwsA(isA<UpdateFailure>()));
+      expect(
+        AppUpdate.parse(
+          branded,
+          expectedAndroidApplicationId: 'com.example.brand',
+        ).packageId,
+        'com.example.brand',
+      );
+    },
+  );
+
+  test(
+    'changing a signed update source clears the old offer and cancels a pending download',
+    () async {
+      var source = testUpdateUrl;
+      final platform = FakePlatform();
+      final transport = FakeTransport();
+      final controller = UpdateController(
+        platform,
+        transport,
+        manifestUrlProvider: () => source,
+      );
+      addTearDown(controller.dispose);
+      await controller.check();
+      expect(controller.stage, UpdateStage.available);
+      transport.pending = Completer<String>();
+      final download = controller.download();
+      source = 'https://new-updates.example/update.json';
+      controller.sourceChanged();
+      await download;
+      expect(transport.cancelled, true);
+      expect(controller.update, isNull);
+      expect(controller.stage, UpdateStage.idle);
+      await controller.check();
+      expect(transport.checkedUrl, source);
+    },
+  );
   for (final previous in [
     '',
     'https://old.example/update.json',

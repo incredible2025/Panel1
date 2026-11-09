@@ -1,0 +1,8 @@
+<x-layouts::app title="Staff">
+    <div class="mx-auto max-w-4xl space-y-8">
+        <header><flux:heading size="xl">Staff access</flux:heading><flux:text class="mt-2">Staff can edit and publish existing apps. Registering apps, replacing services and managing access are reserved for the owner.</flux:text></header>
+        @include('management.messages')
+        <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-6"><ul class="divide-y divide-zinc-800">@foreach ($staff as $member)<li class="flex flex-wrap items-center justify-between gap-4 py-4"><div><p>{{ $member->name }} <span class="text-xs text-zinc-400">{{ $member->role }}</span></p><p class="text-sm text-zinc-400">{{ $member->email }} · {{ $member->active ? 'Active' : 'Disabled' }}</p></div>@if ($member->role === 'staff')<form method="POST" action="{{ route('staff.toggle', $member) }}">@csrf<flux:button type="submit" size="sm">{{ $member->active ? 'Disable access' : 'Enable access' }}</flux:button></form>@endif</li>@endforeach</ul></div>
+        <form method="POST" action="{{ route('staff.create') }}" class="max-w-xl space-y-5 rounded-2xl border border-zinc-700 bg-zinc-900 p-6">@csrf<flux:heading size="lg">Add staff member</flux:heading><flux:input name="name" label="Name" required /><flux:input name="email" label="Email" type="email" required /><flux:input name="password" label="Initial password" description="At least 14 characters, including letters and numbers." type="password" autocomplete="new-password" required /><flux:input name="password_confirmation" label="Confirm password" type="password" autocomplete="new-password" required /><flux:button type="submit" variant="primary">Create staff account</flux:button></form>
+    </div>
+</x-layouts::app>

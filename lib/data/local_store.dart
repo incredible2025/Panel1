@@ -45,7 +45,7 @@ class LocalStore {
             'streamline.db',
           ),
       options: sqlite.OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE watch_history (
@@ -74,11 +74,13 @@ class LocalStore {
           await _createCollections(db);
           await _createEpisodeHistory(db);
           await _createPreferences(db);
+          await _createManagedAliases(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createCollections(db);
           if (oldVersion < 3) await _createEpisodeHistory(db);
           if (oldVersion < 4) await _createPreferences(db);
+          if (oldVersion < 5) await _createManagedAliases(db);
         },
       ),
     );
@@ -88,6 +90,63 @@ class LocalStore {
           const FlutterSecureStorage(
             aOptions: AndroidOptions(encryptedSharedPreferences: true),
           ),
+    );
+  }
+
+  static Future<void> _createManagedAliases(sqlite.DatabaseExecutor db) =>
+      db.execute('''
+    CREATE TABLE IF NOT EXISTS managed_account_aliases (
+      service_id TEXT NOT NULL,
+      username_hash TEXT NOT NULL,
+      storage_id TEXT NOT NULL,
+      PRIMARY KEY (service_id, username_hash)
+    )
+  ''');
+
+  Future<String?> managedConfigurationCache(String appId) =>
+      _secureStorage.read(key: 'managed.configuration.v1.$appId');
+
+  Future<void> saveManagedConfigurationCache(String appId, String envelope) =>
+      _secureStorage.write(
+        key: 'managed.configuration.v1.$appId',
+        value: envelope,
+      );
+
+  /// Aliases live outside clearable catalogue caches. Keep old account scopes
+  /// intact, including the secure parental PIN key, across an address migration.
+  Future<Session> bindManagedAccount(
+    Session session, {
+    String? legacyAccountId,
+  }) async {
+    final service = session.credentials.managedServiceId;
+    if (service == null) return session;
+    final usernameHash = sha256
+        .convert(utf8.encode(session.credentials.username.trim()))
+        .toString();
+    final storageId = await _database.transaction((txn) async {
+      final rows = await txn.query(
+        'managed_account_aliases',
+        where: 'service_id = ? AND username_hash = ?',
+        whereArgs: [service, usernameHash],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) return rows.single['storage_id']! as String;
+      final id = legacyAccountId ?? session.accountId;
+      if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(id)) {
+        throw const FormatException('Invalid account storage.');
+      }
+      await txn.insert('managed_account_aliases', {
+        'service_id': service,
+        'username_hash': usernameHash,
+        'storage_id': id,
+      });
+      return id;
+    });
+    return Session(
+      credentials: session.credentials,
+      userInfo: session.userInfo,
+      serverInfo: session.serverInfo,
+      storageAccountId: storageId,
     );
   }
 

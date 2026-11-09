@@ -6,3 +6,4 @@ analyzer:
     - .tooling/**
     - .pub-cache/**
     - packages/video_player_android/**
+    - portal/**

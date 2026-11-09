@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,7 @@ import 'core/desktop_controls.dart';
 import 'core/design_system.dart';
 import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
+import 'data/managed_configuration.dart';
 import 'features/dashboard_screen.dart';
 import 'features/login_screen.dart';
 import 'features/tv_dashboard_screen.dart';
@@ -24,11 +27,19 @@ class StreamlineApp extends ConsumerStatefulWidget {
 class _StreamlineAppState extends ConsumerState<StreamlineApp>
     with WidgetsBindingObserver {
   bool _startupFinished = false;
+  final _navigator = GlobalKey<NavigatorState>();
+  String? _managedFeed;
+  ManagedConfigurationManager? _management;
   static const _platform = MethodChannel('streamline/platform');
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final management = ref.read(managedConfigurationProvider);
+    _management = management;
+    _managedFeed = management?.current.updateManifestUrl;
+    management?.addListener(_configurationChanged);
+    management?.foreground(true, refreshNow: false);
     _platform.setMethodCallHandler((call) async {
       if (call.method == 'networkChanged' && mounted) {
         ref.read(apiProvider).resetConnectionPreferences();
@@ -36,15 +47,40 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
     });
   }
 
+  void _configurationChanged() {
+    if (!mounted) return;
+    final management = ref.read(managedConfigurationProvider)!;
+    ref.read(apiProvider).resetConnectionPreferences();
+    if (_managedFeed != management.current.updateManifestUrl) {
+      _managedFeed = management.current.updateManifestUrl;
+      final controller = ref.read(updateControllerProvider);
+      controller.sourceChanged();
+      if (_startupFinished) unawaited(controller.autoCheck());
+    }
+    final session = ref.read(sessionProvider);
+    if (session != null &&
+        session.credentials.managedServiceId != management.current.serviceId) {
+      ref.read(sessionProvider.notifier).state = null;
+      unawaited(ref.read(storeProvider).clearSession().catchError((_) {}));
+      _navigator.currentState?.popUntil((route) => route.isFirst);
+    }
+  }
+
   @override
   void dispose() {
     _platform.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
+    final management = _management;
+    management?.removeListener(_configurationChanged);
+    management?.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    ref
+        .read(managedConfigurationProvider)
+        ?.foreground(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
       ref.read(apiProvider).resetConnectionPreferences();
     }
@@ -71,6 +107,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
         systemNavigationBarIconBrightness: Brightness.light,
       ),
       child: MaterialApp(
+        navigatorKey: _navigator,
         title: appBrandName,
         debugShowCheckedModeBanner: false,
         theme: StreamlineTheme.forAppearance(

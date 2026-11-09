@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily app management backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

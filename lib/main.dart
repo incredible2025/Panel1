@@ -10,6 +10,7 @@ import 'core/provider_config.dart';
 import 'data/local_store.dart';
 import 'core/design_system.dart';
 import 'core/windows_smoke.dart';
+import 'data/managed_configuration.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,8 +31,28 @@ Future<void> main(List<String> args) async {
   });
   try {
     final store = await LocalStore.open();
+    ManagedConfigurationManager? management;
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        managedProfileJson.isNotEmpty) {
+      final profile = ManagedProfile.parse(managedProfileJson);
+      management = ManagedConfigurationManager(
+        profile: profile,
+        readCache: () => store.managedConfigurationCache(profile.appId),
+        writeCache: (envelope) =>
+            store.saveManagedConfigurationCache(profile.appId, envelope),
+      );
+      await management.initialize();
+    }
     final saved = await store.readSession();
-    final session = restoreConfiguredSession(saved);
+    final session = management == null
+        ? restoreConfiguredSession(saved)
+        : await restoreManagedSession(
+            store,
+            saved,
+            management.current,
+            migrateLegacy:
+                management.current.serviceId == managedLegacyServiceId,
+          );
     if (saved != null && session == null) await store.clearSession();
     if (session != null && !identical(session, saved)) {
       await store.saveSession(session);
@@ -41,6 +62,7 @@ Future<void> main(List<String> args) async {
       ProviderScope(
         overrides: [
           storeProvider.overrideWithValue(store),
+          managedConfigurationProvider.overrideWithValue(management),
           sessionProvider.overrideWith((ref) => session),
           isTvProvider.overrideWithValue(television),
         ],

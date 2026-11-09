@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/app_update.dart';
 import '../data/windows_update_platform.dart';
+import '../data/managed_configuration.dart';
+import 'providers.dart';
 
 final updateControllerProvider = ChangeNotifierProvider<UpdateController>(
   (ref) => Platform.isWindows
@@ -15,7 +17,16 @@ final updateControllerProvider = ChangeNotifierProvider<UpdateController>(
           UpdateTransport(target: UpdateTarget.windows),
           manifestUrl: windowsUpdateManifestUrl,
         )
-      : UpdateController(AndroidUpdatePlatform(), UpdateTransport()),
+      : UpdateController(
+          AndroidUpdatePlatform(),
+          UpdateTransport(expectedAndroidApplicationId: androidApplicationId),
+          manifestUrlProvider: () =>
+              ref
+                  .read(managedConfigurationProvider)
+                  ?.current
+                  .updateManifestUrl ??
+              appUpdateManifestUrl,
+        ),
 );
 
 enum UpdateStage {
@@ -35,6 +46,7 @@ class UpdateController extends ChangeNotifier {
     this.platform,
     this.transport, {
     this.manifestUrl = appUpdateManifestUrl,
+    this.manifestUrlProvider,
   });
   final UpdatePlatform platform;
   final UpdateTransport transport;
@@ -42,7 +54,20 @@ class UpdateController extends ChangeNotifier {
   AppUpdate? update;
   UpdateStage stage = UpdateStage.idle;
   final String manifestUrl;
-  String get url => manifestUrl;
+  final String Function()? manifestUrlProvider;
+  String get url => manifestUrlProvider?.call() ?? manifestUrl;
+  int _generation = 0;
+  void sourceChanged() {
+    _generation++;
+    cancel();
+    update = null;
+    _path = null;
+    lastCheck = null;
+    error = null;
+    stage = UpdateStage.idle;
+    _changed();
+  }
+
   DateTime? lastCheck;
   String? error, _path;
   int received = 0;
@@ -100,6 +125,8 @@ class UpdateController extends ChangeNotifier {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     if (busy) return;
+    final generation = _generation;
+    final source = url;
     stage = UpdateStage.checking;
     error = null;
     _changed();
@@ -111,7 +138,7 @@ class UpdateController extends ChangeNotifier {
             if (expired || _disposed) {
               throw const UpdateFailure('Update check ended.');
             }
-            return transport.check(url);
+            return transport.check(source);
           })().timeout(
             timeout,
             onTimeout: () {
@@ -120,7 +147,7 @@ class UpdateController extends ChangeNotifier {
               throw TimeoutException('Update check deadline exceeded.');
             },
           );
-      if (_disposed) return;
+      if (_disposed || generation != _generation || source != url) return;
       if (candidate.code > device!.code && candidate.minSdk > device!.sdk) {
         throw UpdateFailure(
           candidate.target == UpdateTarget.windows
@@ -137,10 +164,12 @@ class UpdateController extends ChangeNotifier {
       } catch (_) {
         /* A valid update remains available without saved preferences. */
       }
+      if (_disposed || generation != _generation || source != url) return;
       update = candidate.code > device!.code ? candidate : null;
       _path = null;
       stage = update == null ? UpdateStage.current : UpdateStage.available;
     } catch (e) {
+      if (_disposed || generation != _generation) return;
       error = describe(e);
       stage = UpdateStage.failed;
       if (quiet) {
@@ -159,25 +188,30 @@ class UpdateController extends ChangeNotifier {
 
   Future<void> download() async {
     if (busy || update == null || device == null) return;
+    final generation = _generation;
+    final candidate = update!;
     stage = UpdateStage.downloading;
     received = 0;
     error = null;
     _cancelled = false;
     _changed();
     try {
-      final path = await transport.download(update!, device!.directory, (
+      final path = await transport.download(candidate, device!.directory, (
         bytes,
       ) {
+        if (generation != _generation) return;
         received = bytes;
         _changed();
       });
-      await platform.validate(path, update!);
-      if (_cancelled || _disposed) {
+      if (generation != _generation) return;
+      await platform.validate(path, candidate);
+      if (_cancelled || _disposed || generation != _generation) {
         throw const UpdateFailure('Download cancelled.');
       }
       _path = path;
       stage = UpdateStage.ready;
     } catch (e) {
+      if (_disposed || generation != _generation) return;
       error = _cancelled
           ? 'Download cancelled. You can try again when ready.'
           : describe(e);
@@ -193,18 +227,23 @@ class UpdateController extends ChangeNotifier {
 
   Future<void> install() async {
     if (_path == null || update == null || busy) return;
+    final generation = _generation;
+    final candidate = update!;
+    final path = _path!;
     _installing = true;
     _changed();
     try {
       error = null;
-      await platform.validate(_path!, update!);
+      await platform.validate(path, candidate);
+      if (generation != _generation) return;
       if (!await platform.canInstall()) {
         stage = UpdateStage.permission;
         _changed();
         await platform.requestInstallPermission();
         return;
       }
-      await platform.install(_path!, update!);
+      if (generation != _generation) return;
+      await platform.install(path, candidate);
       stage = UpdateStage.installer;
     } catch (e) {
       error = describe(e);

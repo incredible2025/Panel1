@@ -62,6 +62,7 @@ class AppUpdate {
     String source, {
     Uri? sourceUri,
     UpdateTarget target = UpdateTarget.android,
+    String expectedAndroidApplicationId = 'com.streamline.iptv',
   }) {
     try {
       final json = jsonDecode(source) as Map<String, dynamic>;
@@ -85,7 +86,7 @@ class AppUpdate {
           packageId !=
               (target == UpdateTarget.windows
                   ? 'com.streamline.iptv.windows'
-                  : 'com.streamline.iptv') ||
+                  : expectedAndroidApplicationId) ||
           (target == UpdateTarget.windows &&
               json['platform'] != 'windows-x64') ||
           !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(hash)) {
@@ -200,9 +201,11 @@ class UpdateTransport {
     HttpClient Function()? clientFactory,
     this.operationTimeout = const Duration(minutes: 15),
     this.target = UpdateTarget.android,
+    this.expectedAndroidApplicationId = 'com.streamline.iptv',
   }) : _clientFactory = clientFactory ?? HttpClient.new;
   final Duration operationTimeout;
   final UpdateTarget target;
+  final String expectedAndroidApplicationId;
   final HttpClient Function() _clientFactory;
   HttpClient? _active;
   bool _cancelled = false;
@@ -285,6 +288,7 @@ class UpdateTransport {
       utf8.decode(buffer),
       sourceUri: remote.uri,
       target: target,
+      expectedAndroidApplicationId: expectedAndroidApplicationId,
     );
   });
   Future<String> download(

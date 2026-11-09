@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/design_system.dart';
 import '../core/providers.dart';
-import '../core/provider_config.dart';
 import '../core/update_controller.dart';
 import '../data/xtream_api.dart';
 import '../widgets/tv_controls.dart';
@@ -69,11 +68,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      final session = await ref
+      final authenticated = await ref
           .read(apiProvider)
-          .authenticate(portalCredentials(_username.text, _password.text));
+          .authenticate(loginCredentials(ref, _username.text, _password.text));
+      final session = await bindSignedInAccount(ref, authenticated);
+      ref
+          .read(apiProvider)
+          .connections
+          .verifyService(session.credentials.managedServiceId);
       await ref.read(storeProvider).saveSession(session);
-      if (mounted) ref.read(sessionProvider.notifier).state = session;
+      if (mounted) {
+        ref
+            .read(apiProvider)
+            .connections
+            .verifyService(session.credentials.managedServiceId);
+        ref.read(sessionProvider.notifier).state = session;
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -278,7 +288,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         MaterialPageRoute<void>(
                                           builder: (_) =>
                                               ConnectionDiagnosisScreen(
-                                                credentials: portalCredentials(
+                                                credentials: loginCredentials(
+                                                  ref,
                                                   _username.text,
                                                   _password.text,
                                                 ),
@@ -809,7 +820,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           context,
                           MaterialPageRoute<void>(
                             builder: (_) => ConnectionDiagnosisScreen(
-                              credentials: portalCredentials(
+                              credentials: loginCredentials(
+                                ref,
                                 _username.text,
                                 _password.text,
                               ),

@@ -1,7 +1,7 @@
 name: streamline_iptv
 description: A premium Xtream Codes player for Android, Android TV and Windows.
 publish_to: none
-version: 0.8.21+41
+version: 0.9.0+42
 environment:
   sdk: '>=3.9.0 <4.0.0'
 dependencies:
@@ -14,6 +14,7 @@ dependencies:
   path_provider: 2.1.5
   path: ^1.9.1
   crypto: ^3.0.6
+  cryptography: 2.9.0
   flutter_secure_storage: ^9.2.4
   video_player: 2.10.1
   media_kit: 1.2.6

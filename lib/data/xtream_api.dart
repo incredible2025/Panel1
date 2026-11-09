@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
-import 'provider_addresses.dart';
 import 'provider_connections.dart';
 import 'subscription_expiry.dart';
 
@@ -37,8 +36,10 @@ class XtreamApi {
     final Uri base;
     try {
       final supplied = normalizeServerUri(credentials.serverUrl);
-      base = connections.manages(supplied)
-          ? Uri.parse(providerPortalUrl)
+      connections.verifyService(credentials.managedServiceId);
+      base =
+          credentials.managedServiceId != null || connections.manages(supplied)
+          ? connections.preferred(ProviderRoute.api)
           : supplied;
     } on FormatException {
       throw const XtreamApiException(
@@ -49,6 +50,7 @@ class XtreamApi {
       serverUrl: base.toString(),
       username: credentials.username.trim(),
       password: credentials.password,
+      managedServiceId: credentials.managedServiceId,
     );
     if (normalized.username.isEmpty || normalized.password.isEmpty) {
       throw const XtreamApiException('Enter your username and password.');
@@ -196,11 +198,14 @@ class XtreamApi {
   }
 
   Uri streamUri(Session session, MediaItem item, {Episode? episode}) {
+    connections.verifyService(session.credentials.managedServiceId);
     if (item.kind == MediaKind.series && episode == null) {
       throw const XtreamApiException('Choose an episode to play.');
     }
     final supplied = normalizeServerUri(session.credentials.serverUrl);
-    final base = connections.manages(supplied)
+    final base =
+        session.credentials.managedServiceId != null ||
+            connections.manages(supplied)
         ? connections.preferred(ProviderRoute.playback)
         : supplied;
     final folder = switch (item.kind) {
@@ -286,27 +291,49 @@ class XtreamApi {
       _preparePlayback(session, streamUri(session, item, episode: episode));
 
   Future<Uri> _preparePlayback(Session session, Uri stream) async {
+    connections.verifyService(session.credentials.managedServiceId);
     final supplied = normalizeServerUri(session.credentials.serverUrl);
-    if (!connections.manages(supplied)) return stream;
-    return connections.run(supplied, ProviderRoute.playback, (base) async {
-      final uri = stream.replace(
-        scheme: base.scheme,
-        host: base.host,
-        port: base.hasPort ? base.port : null,
-      );
-      await _streamProbe(uri);
-      return uri;
-    });
+    if (session.credentials.managedServiceId == null &&
+        !connections.manages(supplied)) {
+      return stream;
+    }
+    final prefixLength = connections
+        .preferred(ProviderRoute.playback)
+        .pathSegments
+        .where((part) => part.isNotEmpty)
+        .length;
+    final suffix = stream.pathSegments.skip(prefixLength).toList();
+    return connections.run(
+      supplied,
+      ProviderRoute.playback,
+      (base) async {
+        final uri = stream.replace(
+          scheme: base.scheme,
+          host: base.host,
+          port: base.hasPort ? base.port : null,
+          pathSegments: [
+            ...base.pathSegments.where((part) => part.isNotEmpty),
+            ...suffix,
+          ],
+        );
+        await _streamProbe(uri);
+        return uri;
+      },
+      serviceId: session.credentials.managedServiceId,
+    );
   }
 
   Credentials diagnosticCredentials(Credentials credentials) {
+    connections.verifyService(credentials.managedServiceId);
     final base = normalizeServerUri(credentials.serverUrl);
     return Credentials(
-      serverUrl: connections.manages(base)
+      serverUrl:
+          credentials.managedServiceId != null || connections.manages(base)
           ? connections.preferred(ProviderRoute.api).toString()
           : base.toString(),
       username: credentials.username,
       password: credentials.password,
+      managedServiceId: credentials.managedServiceId,
     );
   }
 
@@ -322,6 +349,7 @@ class XtreamApi {
         supplied,
         ProviderRoute.api,
         (base) => _requestAt(credentials, base, query),
+        serviceId: credentials.managedServiceId,
       );
     } on XtreamApiException {
       rethrow;
@@ -362,7 +390,7 @@ class XtreamApi {
       },
     );
     final response = connections.manages(base)
-        ? await _managedGet(uri)
+        ? await _managedGet(uri, credentials.managedServiceId)
         : await _client
               .get(uri, headers: {'Accept': 'application/json'})
               .timeout(_timeout);
@@ -403,12 +431,13 @@ class XtreamApi {
     return payload;
   }
 
-  Future<http.Response> _managedGet(Uri initial) async {
+  Future<http.Response> _managedGet(Uri initial, String? serviceId) async {
     final abort = Completer<void>();
     try {
       return await (() async {
         var uri = initial;
         for (var hop = 0; hop < 4; hop++) {
+          connections.verifyService(serviceId);
           final request =
               http.AbortableRequest('GET', uri, abortTrigger: abort.future)
                 ..followRedirects = false
@@ -430,7 +459,7 @@ class XtreamApi {
           }
           final next = uri.resolve(location);
           final root = normalizeServerUri(next.toString());
-          if (!isConfiguredProviderUri(root) ||
+          if (!connections.approves(root) ||
               next.userInfo.isNotEmpty ||
               next.fragment.isNotEmpty ||
               uri.scheme == 'https' && next.scheme != 'https') {

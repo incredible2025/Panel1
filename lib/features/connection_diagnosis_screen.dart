@@ -14,7 +14,12 @@ import 'tv_diagnosis_view.dart';
 final connectionDiagnosticsFactoryProvider =
     Provider<ConnectionDiagnostics Function()>(
       (ref) =>
-          () => ConnectionDiagnostics(IoDiagnosticTransport()),
+          () => ConnectionDiagnostics(
+            IoDiagnosticTransport(),
+            approvedRoots: ref.read(managedConfigurationProvider) == null
+                ? null
+                : ref.read(apiProvider).connections.roots,
+          ),
     );
 
 class ConnectionDiagnosisScreen extends ConsumerStatefulWidget {
@@ -77,9 +82,12 @@ class _ConnectionDiagnosisScreenState
 
   Future<void> _run() async {
     if (_busy) return;
-    final credentials =
+    final rawCredentials =
         widget.credentials ?? ref.read(sessionProvider)?.credentials;
-    if (credentials == null) return;
+    if (rawCredentials == null) return;
+    final credentials = ref
+        .read(apiProvider)
+        .diagnosticCredentials(rawCredentials);
     final generation = ++_generation;
     setState(() {
       _busy = true;

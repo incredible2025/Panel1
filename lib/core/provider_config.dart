@@ -1,5 +1,7 @@
 import '../data/models.dart';
 import '../data/provider_addresses.dart';
+import '../data/managed_configuration.dart';
+import '../data/local_store.dart';
 
 export '../data/provider_addresses.dart'
     show providerPortalUrl, providerFallbackUrl;
@@ -43,4 +45,34 @@ Session? restoreConfiguredSession(Session? saved) {
   } on FormatException {
     return null;
   }
+}
+
+/// Bind only this build's explicitly approved legacy service. Reseller builds
+/// must opt into that one-time migration; arbitrary saved credentials are never
+/// forwarded to a newly configured service.
+Future<Session?> restoreManagedSession(
+  LocalStore store,
+  Session? saved,
+  ManagedConfiguration config, {
+  required bool migrateLegacy,
+}) async {
+  if (saved == null) return null;
+  final service = saved.credentials.managedServiceId;
+  if (service != null && service != config.serviceId) return null;
+  if (service == null &&
+      (!migrateLegacy || restoreConfiguredSession(saved) == null)) {
+    return null;
+  }
+  return store.bindManagedAccount(
+    Session(
+      credentials: config.credentials(
+        saved.credentials.username,
+        saved.credentials.password,
+      ),
+      userInfo: saved.userInfo,
+      serverInfo: saved.serverInfo,
+      storageAccountId: saved.storageAccountId,
+    ),
+    legacyAccountId: service == null ? saved.accountId : saved.storageAccountId,
+  );
 }

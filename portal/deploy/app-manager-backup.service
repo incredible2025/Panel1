@@ -1,0 +1,7 @@
+[Unit]
+Description=Back up private app management data
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/app-manager/deploy/backup.py

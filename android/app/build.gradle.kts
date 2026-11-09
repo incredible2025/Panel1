@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.streamline.iptv"
+        applicationId = System.getenv("MANAGED_ANDROID_APPLICATION_ID") ?: "com.streamline.iptv"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

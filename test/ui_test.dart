@@ -13,12 +13,16 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:streamline_iptv/app.dart';
 import 'package:streamline_iptv/core/design_system.dart';
 import 'package:streamline_iptv/core/providers.dart';
 import 'package:streamline_iptv/core/provider_config.dart';
 import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
+import 'package:streamline_iptv/data/managed_configuration.dart';
+import 'package:streamline_iptv/features/login_screen.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/data/provider_connections.dart';
@@ -108,6 +112,19 @@ const _series = MediaItem(
 );
 
 class _MemoryStore implements LocalStore {
+  @override
+  Future<Session> bindManagedAccount(
+    Session session, {
+    String? legacyAccountId,
+  }) async => session;
+  @override
+  Future<String?> managedConfigurationCache(String appId) async => null;
+  @override
+  Future<void> saveManagedConfigurationCache(
+    String appId,
+    String envelope,
+  ) async {}
+
   AppSettings preferences = const AppSettings(lastSection: 'live');
   @override
   Future<AppSettings> readSettings(String accountId) async => preferences;
@@ -243,6 +260,20 @@ class _MemoryStore implements LocalStore {
   Future<void> close() async {}
 }
 
+class _TestConfigurationManager extends ManagedConfigurationManager {
+  _TestConfigurationManager(ManagedProfile profile)
+    : super(
+        profile: profile,
+        readCache: () async => null,
+        writeCache: (_) async {},
+        clientFactory: () => MockClient((_) async => http.Response('', 503)),
+      );
+  void apply(ManagedConfiguration configuration) {
+    current = configuration;
+    notifyListeners();
+  }
+}
+
 class _TestApi extends XtreamApi {
   int authenticationCount = 0;
   Map<String, dynamic>? refreshedInfo;
@@ -276,6 +307,8 @@ Future<void> _pumpApp(
   bool tv = false,
   bool desktop = false,
   bool signedIn = true,
+  Session? suppliedSession,
+  ManagedConfigurationManager? management,
   Widget? screen,
   _TestApi? api,
   Size? viewport,
@@ -301,7 +334,10 @@ Future<void> _pumpApp(
     ProviderScope(
       overrides: [
         storeProvider.overrideWithValue(store),
-        sessionProvider.overrideWith((ref) => signedIn ? _account : null),
+        sessionProvider.overrideWith(
+          (ref) => signedIn ? suppliedSession ?? _account : null,
+        ),
+        managedConfigurationProvider.overrideWithValue(management),
         isTvProvider.overrideWithValue(tv),
         isDesktopProvider.overrideWithValue(desktop),
         startupUpdatesEnabledProvider.overrideWithValue(startupUpdates),
@@ -567,6 +603,65 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  _uiTest(
+    'managed address moves preserve an active route; service replacements return to sign-in',
+    (tester) async {
+      final manager = (await tester.runAsync(() async {
+        final profile = ManagedProfile.parse(
+          await File('test/fixtures/managed-profile.json').readAsString(),
+          packageId: 'com.example.fixture',
+        );
+        final manager = _TestConfigurationManager(profile);
+        await manager.initialize();
+        return manager;
+      }))!;
+      final session = Session(
+        credentials: manager.current.credentials('viewer', 'secret'),
+        userInfo: _account.userInfo,
+        serverInfo: const {},
+      );
+      await _pumpApp(
+        tester,
+        store: _MemoryStore(),
+        suppliedSession: session,
+        management: manager,
+      );
+      final navigator = tester.state<NavigatorState>(
+        find.byType(Navigator).first,
+      );
+      unawaited(
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Active viewing route')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      manager.apply(
+        ManagedConfiguration(
+          serviceId: manager.current.serviceId,
+          revision: 2,
+          endpoints: [Uri.parse('https://moved.example.test/service')],
+          updateManifestUrl: manager.current.updateManifestUrl,
+          envelope: manager.current.envelope,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Active viewing route'), findsOneWidget);
+      manager.apply(
+        ManagedConfiguration(
+          serviceId: '22222222-2222-4222-8222-222222222222',
+          revision: 3,
+          endpoints: manager.current.endpoints,
+          updateManifestUrl: manager.current.updateManifestUrl,
+          envelope: manager.current.envelope,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Active viewing route'), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
+    },
+  );
   _uiTest(
     'network change notification resets connection selection for new requests',
     (tester) async {

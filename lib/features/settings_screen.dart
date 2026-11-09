@@ -49,9 +49,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (session == null) return;
     setState(() => _refreshing = true);
     try {
-      final next = await ref
+      final authenticated = await ref
           .read(apiProvider)
           .authenticate(session.credentials);
+      final next = await ref
+          .read(storeProvider)
+          .bindManagedAccount(
+            authenticated,
+            legacyAccountId: session.accountId,
+          );
       await ref.read(storeProvider).saveSession(next);
       if (mounted &&
           ref.read(sessionProvider)?.accountId == session.accountId) {

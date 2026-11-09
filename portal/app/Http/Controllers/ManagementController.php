@@ -8,6 +8,8 @@ use App\Models\ManagedApp;
 use App\Models\User;
 use App\Services\AppConfiguration;
 use App\Services\ConfigSigner;
+use App\Services\ConfigurationPreview;
+use App\Services\DashboardHealth;
 use App\Services\ManagementActivity;
 use App\Services\ReleaseCentre;
 use Illuminate\Http\Request;
@@ -25,7 +27,7 @@ class ManagementController extends Controller
             $metrics[$app->id] = app(ManagementActivity::class)->metrics($app);
         }
 
-        return view('management.index', compact('apps', 'metrics'));
+        return view('management.index', [...compact('apps', 'metrics'), 'health' => auth()->user()->role === 'owner' ? app(DashboardHealth::class)->summary() : null]);
     }
 
     public function show(ManagedApp $managedApp)
@@ -34,6 +36,8 @@ class ManagementController extends Controller
 
         return view('management.app', ['app' => $managedApp, 'history' => $managedApp->revisions()->with('actor')->orderByDesc('revision')->paginate(20),
             'metrics' => app(ManagementActivity::class)->metrics($managedApp),
+            'preview' => app(ConfigurationPreview::class)->describe($managedApp),
+            'download' => app(DashboardHealth::class)->snapshot()['apps'][$managedApp->app_id]['downloadUrl'] ?? null,
             'releases' => AppRelease::where('managed_app_id', $managedApp->id)->latest()->get(),
             'devices' => AppDevice::where('managed_app_id', $managedApp->id)->where('tester', true)->get()]);
     }
@@ -59,24 +63,17 @@ class ManagementController extends Controller
 
     public function publish(Request $request, ManagedApp $managedApp, AppConfiguration $configuration)
     {
-        $configuration->publish($request->user(), $managedApp, $this->version($request));
-
-        return back()->with('status', 'Configuration published.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'publish');
     }
 
     public function rollback(Request $request, ManagedApp $managedApp, int $revision, AppConfiguration $configuration)
     {
-        $configuration->rollback($request->user(), $managedApp, $revision, $this->version($request));
-
-        return back()->with('status', 'Previous settings published as a new revision.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'rollback');
     }
 
     public function replace(Request $request, ManagedApp $managedApp, AppConfiguration $configuration)
     {
-        $request->validate(['confirmation' => ['required', 'in:REPLACE']]);
-        $configuration->replaceService($request->user(), $managedApp, $request->all(), $this->version($request));
-
-        return back()->with('status', 'Service replaced. Connected apps will require a new sign-in.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'replace');
     }
 
     public function profile(ManagedApp $managedApp, ConfigSigner $signer)

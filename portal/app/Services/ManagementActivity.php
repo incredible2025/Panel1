@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AppDevice;
+use App\Models\AppRelease;
 use App\Models\ManagedApp;
 use Illuminate\Support\Facades\DB;
 
@@ -20,8 +21,19 @@ class ManagementActivity
     {
         $devices = AppDevice::where('managed_app_id', $app->id);
         $recent = (clone $devices)->where('last_seen_at', '>=', now()->subDays(30));
+        $public = AppRelease::where('managed_app_id', $app->id)->find($app->public_release_id);
+        $build = $public?->manifest['versionCode'] ?? null;
+        $total = (clone $recent)->count();
+        $latest = $build === null ? 0 : (clone $recent)->where('build', $build)->count();
 
         return [
+            'reporting' => $total,
+            'latest' => $latest,
+            'older' => $build === null ? 0 : (clone $recent)->where('build', '<', $build)->count(),
+            'ahead' => $build === null ? 0 : (clone $recent)->where('build', '>', $build)->count(),
+            'adoption' => $total && $build !== null ? round($latest / $total * 100, 1) : null,
+            'publicBuild' => $build,
+            'publicVersion' => $public?->manifest['versionName'] ?? null,
             'online' => (clone $devices)->where('last_seen_at', '>=', now()->subMinutes(3))->count(),
             'today' => (clone $devices)->where('last_seen_at', '>=', now()->startOfDay())->count(),
             'current' => (clone $recent)->where('revision', $app->revision)->count(),

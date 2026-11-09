@@ -42,6 +42,9 @@ class RemoteManagementController extends Controller
     {
         abort_unless($request->user()->role === 'owner', 403);
         $data = $request->validate(['action' => ['required', 'in:test,publish,withdraw']]);
+        if ($data['action'] === 'publish') {
+            $request->validate(['reviewed' => ['accepted']]);
+        }
         $releases->action($managedApp, $release, $data['action']);
 
         return back()->with('status', 'Release action saved. Refresh for processing status.');

@@ -9,11 +9,19 @@ use App\Services\ReleaseCentre;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 
 Artisan::command('management:housekeeping', function () {
     AppDevice::where('last_seen_at', '<', now()->subDays(30))->delete();
     AppDevice::where('pair_expires_at', '<=', now())->update(['pair_hash' => null, 'pair_expires_at' => null]);
+    $disk = Storage::disk('local');
+    $used = ManagedApp::whereNotNull('brand_logo')->pluck('brand_logo')->all();
+    foreach ($disk->files('brand-assets') as $path) {
+        if (! in_array($path, $used, true) && $disk->lastModified($path) < now()->subDay()->timestamp) {
+            $disk->delete($path);
+        }
+    }
     $this->info('Inactive activity records and expired pairing codes removed.');
 });
 Artisan::command('management:sync-releases', function () {

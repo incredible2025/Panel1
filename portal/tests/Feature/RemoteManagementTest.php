@@ -166,7 +166,8 @@ class RemoteManagementTest extends TestCase
         file_put_contents($path, json_encode($receipt));
         app(ReleaseCentre::class)->sync($this->brand);
         $this->assertSame('ready', $release->fresh()->status);
-        $this->actingAs($this->owner)->post(route('releases.action', [$this->brand, $release]), ['action' => 'publish'])->assertRedirect();
+        $release->update(['test_result' => 'passed']);
+        $this->actingAs($this->owner)->post(route('releases.action', [$this->brand, $release]), ['action' => 'publish', 'reviewed' => 1])->assertRedirect();
         $this->assertSame('publishing', $release->fresh()->status);
         $this->assertNull($this->brand->fresh()->public_release_id);
         $receipt['status'] = 'published';

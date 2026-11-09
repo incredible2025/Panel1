@@ -1,12 +1,12 @@
 # Managing Android apps
 
-The portal manages connection settings for each Android app independently. It does not collect customers’ usernames, passwords or viewing history. Branding, icons, application identity and the Android release key remain part of each app build.
+The portal manages connection settings for each Android app independently. It does not collect customersâ€™ usernames, passwords or viewing history. Branding, icons, application identity and the Android release key remain part of each app build.
 
 ## First installation
 
 Existing APKs need one compatible app update before they can receive portal settings. Install the managed Android release over the existing app. Keep the same application identity and release certificate; do not uninstall it to perform this upgrade. The primary app preserves its existing account storage, favourites, watch progress, preferences and parental PIN.
 
-The primary brand’s public verification key and signed offline bootstrap live alongside its existing connection configuration in source. Normal primary builds retain that configuration automatically. The private portal signing key never enters an APK or this repository.
+The primary brandâ€™s public verification key and signed offline bootstrap live alongside its existing connection configuration in source. Normal primary builds retain that configuration automatically. The private portal signing key never enters an APK or this repository.
 
 ## Change an address for the same service
 
@@ -29,13 +29,13 @@ Use publish history to restore previous settings. A restore creates a higher con
 
 The owner registers its name, a permanent app identifier, a unique Android package identifier, service addresses and an HTTPS update manifest address. Publish the first configuration, then choose **Download build profile**.
 
-The developer uses the same codebase, the exported profile and the brand’s own assets and Android release key to build that app. `scripts/prepare_managed_profile.py` prepares private Flutter defines. `scripts/build_branded_android.ps1` combines that profile with a branding manifest and private release credentials. It stages an isolated workspace, renders launcher artwork, and builds the combined ARM APK without changing the primary app. `scripts/package_branded_android.py` verifies the actual native identity and produces the three-file update ZIP. Reseller builds disable legacy primary-account migration by default. Keep build profiles outside public release assets.
+The developer uses the same codebase, the exported profile and the brandâ€™s own assets and Android release key to build that app. `scripts/prepare_managed_profile.py` prepares private Flutter defines. `scripts/build_branded_android.ps1` combines that profile with a branding manifest and private release credentials. It stages an isolated workspace, renders launcher artwork, and builds the combined ARM APK without changing the primary app. `scripts/package_branded_android.py` verifies the actual native identity and produces the three-file update ZIP. Reseller builds disable legacy primary-account migration by default. Keep build profiles outside public release assets.
 
 Portal settings cannot overwrite compiled branding. Each branded APK must retain its own application identity and release key across later updates. Shared code improvements still need a new APK for each branded variant. The release centre uploads and publishes built packages; building them remains a separate developer operation.
 
 ## Publish an APK update
 
-Keep each brand’s APKs and update manifest in its own hosting folder. Upload the APK files first, then replace that brand’s update manifest last. The manifest must describe the exact APK bytes, actual Android build number and matching package identity. Keep the stable APK filename for initial-download links. Android still asks the customer to approve installation.
+Keep each brandâ€™s APKs and update manifest in its own hosting folder. Upload the APK files first, then replace that brandâ€™s update manifest last. The manifest must describe the exact APK bytes, actual Android build number and matching package identity. Keep the stable APK filename for initial-download links. Android still asks the customer to approve installation.
 
 ### Automatic upload cleanup
 
@@ -45,11 +45,29 @@ The server's `app-manager-uploads.timer` checks completed jobs every minute. A Z
 
 The operator SFTP processor publishes into an immutable version/build folder and replaces the permanent download links, with `update.json` last. Dashboard uploads instead prepare a verified candidate and wait for an owner release action. Increment both the Android build number and the versioned APK filename for a new release. Retrying an identical operator upload is safe. The two APK names share their bytes through a hard link. On successful processing the uploaded ZIP, private extraction folder and ready marker are removed. Local build files are not deleted.
 
-## Dashboard release workflow
+## Administration tools
+
+The dashboard's **Health overview** reports release failures, jobs pending for more than fifteen minutes, host storage, background timers and the last integrity-checked backup. A separate host collector updates a small read-only snapshot every minute. Missing reports older than five minutes are shown as unknown. Storage warns below 5 GiB or ten percent free; backups need attention after thirty-six hours or a failed attempt. These are management-host checks, not customer ISP or playback tests. Backup verification refers to the SQLite snapshot integrity check, not a full recovery rehearsal. No backup contents or private keys are offered through the dashboard.
+
+**Update adoption** compares the current public Android build with installations reporting within the last thirty days. Exact matches, older builds and builds ahead of public (including testers) are separate. The denominator includes every recently reporting installation. It is not an estimate of every installed copy. Existing compatible APKs already report the required fields; no additional APK is needed for these tools.
+
+Use **Bulk actions** to select at most fifty brands, then save notice drafts, publish notices, offer selected verified packages to testers or publish packages publicly. Every operation has a fifteen-minute, account/session-bound review listing exactly the selected apps. Confirming checks each app's saved version and release state again. Stale reviews make no changes. Notices preserve individual service addresses and support settings. Bulk notice publication refuses apps with unrelated pending drafts or no initial publication; prepare notice drafts or review those apps separately instead. Owner-only bulk actions retain the existing per-app staff settings permissions.
+
+Individual configuration publication, service replacement and history restoration now open a before/after review. Service replacement and cross-service restoration clearly identify when users must sign in again. A review itself does not publish anything. Existing password confirmation remains required for service replacement.
+
+The **Release centre checklist** shows verification, paired devices, devices last reporting the candidate build and the recorded test result. Staff can record passed/failed observations; only the owner can waive testing, with a reason. Public publication requires a passed result or owner waiver and an explicit review acknowledgement. A failed result blocks publication. Test results are private management metadata and never become customer release notes. Pairing/opening an app alone is not evidence that playback testing passed.
+
+Each owner-only **Private reseller record** stores business contact details and a numeric Downloader code. These fields are not included in signed app configuration or update manifests. The permanent APK link comes from the host's configured distribution mapping, preserving legacy filenames and folders.
+
+**Set up a new brand** guides the owner through a name, optional artwork, service/support addresses and private reseller details. It generates permanent app/package identifiers and a managed feed address, then shows a review before creating an unpublished draft. The first-build checklist explains settings publication, the existing build-profile export, initial branding-kit download and developer registration/build of the first APK. Artwork is private PNG/JPEG/WebP, up to 4 MiB and 256â€“2048 pixels per side. Branding kits contain only branding metadata and artwork; service settings remain in the separate build profile. Old unreferenced artwork is removed after a day. Changing build artwork does not alter installed launcher icons remotely. Automatic APK compilation remains outside this dashboard.
+
+Install `app-manager-health.service` and its timer alongside the existing upload/scheduler timers. The collector reads only the worker distribution mapping, backup-status metadata and service/disk status; it writes `release-receipts/health.json` for the web container's read-only receipt mount. The existing backup helper now records success/failure in private release state, retaining the last successful timestamp when an attempt fails. The supplied nginx configuration raises request limits only for package and artwork upload routes. Keep private operational directories excluded from Docker build contexts.
+
+## Publishing a prepared package
 
 1. Open the brand and upload its three-file update ZIP in **Release centre**. The browser shows upload progress; verification then runs in the background. Refresh to see Ready or Failed.
 2. Native verification compares the actual Android package, version, APK integrity and permanent certificate against the operator's allowlist. A ZIP/report supplied by the uploader cannot select its own trusted certificate. Failed packages stay private for operator inspection.
-3. In an updated Android app, choose **Settings → App & maintenance → Management & support → Link test device**. The owner enters the six-digit code and a device label on that brand's dashboard. Codes last ten minutes and work once.
+3. In an updated Android app, choose **Settings â†’ App & maintenance â†’ Management & support â†’ Link test device**. The owner enters the six-digit code and a device label on that brand's dashboard. Codes last ten minutes and work once.
 4. The owner chooses **Offer to testers**. Paired installations receive the candidate through their updater. Existing public APK links and ordinary devices keep the public release.
 5. After testing, choose **Publish to everyone**. The worker promotes the same verified bytes and permanent download links. No new Downloader code is needed. Removing a tester or withdrawing a candidate never downgrades an installed APK.
 
@@ -87,6 +105,6 @@ Windows management is not enabled in this release. Its existing updater and inst
 
 ## Repeat a branded build
 
-Keep the non-secret branding manifest and source logo under `brands/<app-id>/`. Keep exported portal profiles and release credentials in ignored private storage. Increase that brand’s versionCode before publishing another release, keeping its package identifier and stable APK filename unchanged. The build script sets the Flutter display version and Android version together. The test brand starts at version 0.9.0, build 43.
+Keep the non-secret branding manifest and source logo under `brands/<app-id>/`. Keep exported portal profiles and release credentials in ignored private storage. Increase that brandâ€™s versionCode before publishing another release, keeping its package identifier and stable APK filename unchanged. The build script sets the Flutter display version and Android version together. The test brand starts at version 0.9.0, build 43.
 
 Primary publication runs only when the primary version has a new release tag to create. Building a test brand does not replace the primary APK or its update feed. Branded packages are hosted in their own folders and do not become the primary GitHub release.

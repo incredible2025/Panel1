@@ -11,6 +11,16 @@ use Illuminate\Validation\ValidationException;
 
 class ReleaseCentre
 {
+    public function assertPublishable(ManagedApp $app, AppRelease $release): void
+    {
+        $current = AppRelease::where('managed_app_id', $app->id)->find($app->public_release_id);
+        if ($release->managed_app_id !== $app->id || ! in_array($release->status, ['ready', 'testing'], true)
+            || ($release->manifest['versionCode'] ?? 0) <= ($current?->manifest['versionCode'] ?? 0)
+            || ! in_array($release->test_result, ['passed', 'not_required'], true)) {
+            throw ValidationException::withMessages(['release' => 'Use a verified newer release and record a passed test or an owner waiver before publishing.']);
+        }
+    }
+
     private function queue(array $job): void
     {
         $directory = config('management.upload_inbox');
@@ -121,6 +131,7 @@ class ReleaseCentre
                 $release->update(['status' => 'testing']);
                 ManagementActivity::record($app->id, 'Release offered to paired testers');
             } elseif ($action === 'publish') {
+                $this->assertPublishable($locked, $release);
                 abort_unless(in_array($release->status, ['ready', 'testing'], true), 422);
                 abort_if(AppRelease::where('managed_app_id', $app->id)->where('status', 'publishing')->exists(), 409);
                 DB::afterCommit(fn () => $this->queue(['operation' => 'promote', 'ticket' => $release->id, 'appId' => $app->app_id]));

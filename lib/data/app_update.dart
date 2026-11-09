@@ -7,7 +7,10 @@ import 'package:flutter/services.dart';
 
 import 'public_release_notes.dart';
 
-const appUpdateManifestUrl = 'https://ultra-vpn.store/dl/app/update.json';
+const appUpdateManifestUrl = String.fromEnvironment(
+  'APP_UPDATE_MANIFEST_URL',
+  defaultValue: 'https://ultra-vpn.store/dl/app/update.json',
+);
 
 const maxApkBytes = 512 * 1024 * 1024;
 final windowsUpdateManifestUrl = Uri.parse(

@@ -35,6 +35,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-needed:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for a new primary app version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r' | cut -d+ -f1)"
+          tags="$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v$version")"
+          exists="$(printf '%s' "$tags" | jq --arg ref "refs/tags/v$version" '[.[][] | select(.ref == $ref)] | length')"
+          if [ "$exists" = "0" ]; then echo 'publish=true' >> "$GITHUB_OUTPUT"; else echo 'publish=false' >> "$GITHUB_OUTPUT"; fi
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -163,8 +182,8 @@ jobs:
           retention-days: 30
 
   release:
-    needs: validate
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [validate, release-needed]
+    if: needs.release-needed.outputs.publish == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -301,8 +320,8 @@ jobs:
           rm -f android/key.properties android/signing/streamline-release.p12
 
   windows-publish:
-    needs: [release, windows-build]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [release, windows-build, release-needed]
+    if: needs.release-needed.outputs.publish == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write

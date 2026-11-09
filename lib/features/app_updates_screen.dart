@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -241,7 +242,7 @@ class _AppUpdatesScreenState extends ConsumerState<AppUpdatesScreen> {
                         ],
                         Text(
                           update?.publicNotes ??
-                              'Check for the latest improvements and fixes for Ultravpn-player.',
+                              'Check for the latest improvements and fixes for $appBrandName.',
                           style: const TextStyle(fontSize: 15, height: 1.5),
                         ),
                         const SizedBox(height: 20),

@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -32,7 +33,7 @@ class SpeedResult {
   bool get hasMeasurements =>
       download != null || upload != null || latency != null;
   String toText() =>
-      'Ultravpn-player speed test\n'
+      '$appBrandName speed test\n'
       'This device’s connection to Cloudflare; not a provider-stream test.\n'
       'Download: ${download?.toStringAsFixed(1) ?? 'Not measured'} Mbps\n'
       'Upload: ${upload?.toStringAsFixed(1) ?? 'Not measured'} Mbps\n'
@@ -123,7 +124,7 @@ class IoSpeedTestTransport implements SpeedTestTransport {
         request!.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
         request!.headers.set(
           HttpHeaders.userAgentHeader,
-          'Ultravpn-player-SpeedTest',
+          '$appBrandName-SpeedTest',
         );
         if (upload) {
           request!.headers.contentType = ContentType.binary;

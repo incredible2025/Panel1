@@ -1,3 +1,4 @@
+import '../core/app_brand.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -189,7 +190,7 @@ class _StartupUpdateGateState extends ConsumerState<StartupUpdateGate> {
     );
     return tv
         ? TvUtilityScaffold(
-            title: 'Ultravpn-player',
+            title: appBrandName,
             showBack: false,
             hint: _checking
                 ? 'Checking the installed version…'

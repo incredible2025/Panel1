@@ -257,7 +257,7 @@ class StreamlineMark extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'ULTRAVPN',
+                appBrandTitle,
                 style: TextStyle(
                   fontFamily: 'Glass Sans',
                   color: AppColors.text,
@@ -267,7 +267,7 @@ class StreamlineMark extends StatelessWidget {
                 ),
               ),
               Text(
-                'PLAYER',
+                appBrandSubtitle,
                 style: TextStyle(
                   fontFamily: 'Glass Sans',
                   color: const Color(0xFFA6DAEF),

@@ -1,3 +1,3 @@
-const appVersionName = '0.8.20';
-const appBuildNumber = 40;
+const appVersionName = '0.8.21';
+const appBuildNumber = 41;
 const appVersion = '$appVersionName ($appBuildNumber)';

@@ -19,12 +19,14 @@ void main() {
     name: 'Coastal Road (2024)',
     kind: MediaKind.movie,
     categoryId: 'drama',
+    genre: 'Drama',
   );
   const secondSource = MediaItem(
     id: '2',
     name: 'Flight',
     kind: MediaKind.movie,
     categoryId: 'action',
+    genre: 'Action',
   );
   WatchEntry watched(
     MediaItem item, {
@@ -42,6 +44,7 @@ void main() {
     name: 'New drama',
     kind: MediaKind.movie,
     categoryId: 'drama',
+    genre: 'Drama',
     rating: '8',
   );
   const other = MediaItem(
@@ -49,6 +52,7 @@ void main() {
     name: 'New action',
     kind: MediaKind.movie,
     categoryId: 'action',
+    genre: 'Action',
     rating: '9',
   );
 

@@ -161,6 +161,14 @@ bool? _archiveFlag(Object? value) =>
       _ => null,
     };
 
+String genreValue(dynamic value) {
+  if (value is List) {
+    return value.map(genreValue).where((v) => v.isNotEmpty).join(', ');
+  }
+  if (value is Map) return textValue(value['name']).trim();
+  return value is String ? value.trim() : '';
+}
+
 class MediaItem {
   const MediaItem({
     required this.id,
@@ -170,6 +178,7 @@ class MediaItem {
     this.imageUrl = '',
     this.containerExtension = 'mp4',
     this.rating = '',
+    this.genre = '',
     this.addedAt,
     this.archiveEnabled,
     this.archiveDays = 0,
@@ -182,6 +191,7 @@ class MediaItem {
   final String imageUrl;
   final String containerExtension;
   final String rating;
+  final String genre;
   final DateTime? addedAt;
   final bool? archiveEnabled;
   final int archiveDays;
@@ -212,6 +222,7 @@ class MediaItem {
       archiveEnabled: _archiveFlag(json['tv_archive']),
       archiveDays: intValue(json['tv_archive_duration']).clamp(0, 365),
       rating: textValue(json['rating'] ?? json['rating_5based']),
+      genre: genreValue(json['genre'] ?? json['genres']),
       addedAt:
           _catalogDate(json['addedAt']) ??
           _catalogDate(json['added']) ??
@@ -227,10 +238,25 @@ class MediaItem {
     'imageUrl': imageUrl,
     'containerExtension': containerExtension,
     'rating': rating,
+    if (genre.isNotEmpty) 'genre': genre,
     'addedAt': addedAt?.toUtc().toIso8601String(),
     if (archiveEnabled != null) 'tv_archive': archiveEnabled,
     if (archiveDays > 0) 'tv_archive_duration': archiveDays,
   };
+
+  MediaItem withGenre(String value) => MediaItem(
+    id: id,
+    name: name,
+    kind: kind,
+    categoryId: categoryId,
+    imageUrl: imageUrl,
+    containerExtension: containerExtension,
+    rating: rating,
+    genre: value,
+    addedAt: addedAt,
+    archiveEnabled: archiveEnabled,
+    archiveDays: archiveDays,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -280,11 +306,12 @@ class MovieDetail {
 
   factory MovieDetail.fromJson(MediaItem item, Map<String, dynamic> json) {
     final info = objectValue(json['info']);
+    final genre = genreValue(info['genre'] ?? info['genres']);
     return MovieDetail(
-      item: item,
+      item: genre.isEmpty ? item : item.withGenre(genre),
       plot: textValue(info['plot'] ?? info['description']),
       cast: textValue(info['cast'] ?? info['actors']),
-      genre: textValue(info['genre']),
+      genre: genre.isEmpty ? item.genre : genre,
       rating: textValue(info['rating'] ?? info['rating_5based'], item.rating),
       duration: textValue(info['duration'] ?? info['duration_secs']),
       backdropUrl: artworkValue(

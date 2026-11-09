@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
 import '../data/local_store.dart';
 import '../data/models.dart';
 import '../data/xtream_api.dart';
+import '../data/movie_genre_index.dart';
 
 final storeProvider = Provider<LocalStore>((ref) {
   throw StateError('LocalStore must be initialized before launching the app.');
@@ -15,6 +16,23 @@ final apiProvider = Provider<XtreamApi>((ref) {
   final api = XtreamApi();
   ref.onDispose(api.dispose);
   return api;
+});
+
+final movieGenreIndexProvider = Provider<MovieGenreIndex?>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (session == null) return null;
+  final store = ref.watch(storeProvider);
+  final api = ref.watch(apiProvider);
+  return MovieGenreIndex(
+    read: () => store.cachedJson(
+      session.accountId,
+      'movie-genres:v1',
+      maxAge: const Duration(days: 90),
+    ),
+    write: (data) =>
+        store.cacheJson(session.accountId, 'movie-genres:v1', data),
+    fetch: (item) => api.movieInfo(session, item),
+  );
 });
 
 final sessionProvider = StateProvider<Session?>((ref) => null);
@@ -138,10 +156,13 @@ final itemsProvider = FutureProvider.family<List<MediaItem>, MediaKind>((
 });
 
 final movieDetailProvider = FutureProvider.autoDispose
-    .family<MovieDetail, MediaItem>((ref, item) {
+    .family<MovieDetail, MediaItem>((ref, item) async {
       final session = ref.watch(sessionProvider);
       if (session == null) throw StateError('Please sign in again.');
-      return ref.watch(apiProvider).movieInfo(session, item);
+      final index = ref.watch(movieGenreIndexProvider);
+      final detail = await ref.watch(apiProvider).movieInfo(session, item);
+      if (index != null) unawaited(index.remember(detail));
+      return detail;
     });
 
 final seriesDetailProvider = FutureProvider.autoDispose

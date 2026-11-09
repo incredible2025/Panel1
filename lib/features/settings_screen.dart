@@ -397,7 +397,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         _toggle(
           'Personal movie recommendations',
-          'Based on watched films and your provider’s categories. Computed on this device; no history upload.',
+          'Matches the genres of films you watch. Computed on this device; no history upload.',
           s.recommendations,
           (v) => _save({'recommendations': v}),
         ),

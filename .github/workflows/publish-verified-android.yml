@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      BUNDLE_URL: ${{ inputs.bundle_url || 'https://editors-greg-commented-york.trycloudflare.com/Ultravpn-player-0.8.20-remote-update.zip' }}
-      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'd102ae9295848038e1a48640f45e02d918e70f74b4638efa880f664fa0d02f31' }}
+      BUNDLE_URL: ${{ inputs.bundle_url || 'https://sleeve-ceramic-ran-sheer.trycloudflare.com/Ultravpn-player-0.8.21-remote-update.zip' }}
+      BUNDLE_SHA256: ${{ inputs.bundle_sha256 || 'f59f4c35350b2c2cec6bcf8e07b3b8b8ddaecc0732a2ec404fd3efc369132ab3' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5

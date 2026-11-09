@@ -106,6 +106,27 @@ class LocalStore {
   Future<String?> managedConfigurationCache(String appId) =>
       _secureStorage.read(key: 'managed.configuration.v1.$appId');
 
+  Future<String> managedInstallationSecret(String appId) async {
+    final key = 'managed.installation.v1.$appId';
+    final saved = await _secureStorage.read(key: key);
+    if (saved != null && RegExp(r'^[a-f0-9]{64}$').hasMatch(saved)) {
+      return saved;
+    }
+    final random = math.Random.secure();
+    final secret = List.generate(
+      32,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    await _secureStorage.write(key: key, value: secret);
+    return secret;
+  }
+
+  Future<String?> managedDismissedNotice(String appId) =>
+      _secureStorage.read(key: 'managed.notice.v1.$appId');
+
+  Future<void> saveManagedDismissedNotice(String appId, String id) =>
+      _secureStorage.write(key: 'managed.notice.v1.$appId', value: id);
+
   Future<void> saveManagedConfigurationCache(String appId, String envelope) =>
       _secureStorage.write(
         key: 'managed.configuration.v1.$appId',

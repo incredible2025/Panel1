@@ -9,6 +9,11 @@
 /storage/pail
 /vendor
 /data
+/backups
+/upload-inbox
+/release-state
+/release-receipts
+/release-tools
 .env
 .env.backup
 .env.production

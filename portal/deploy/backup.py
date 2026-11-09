@@ -29,5 +29,9 @@ with tempfile.TemporaryDirectory(dir=destination) as temporary:
         tar.add(snapshot, arcname='management.sqlite')
         tar.add(key, arcname='config-signing.key')
         tar.add(environment, arcname='deployment.env')
+        for name in ['release-tools/uploads.json', 'release-state', 'release-receipts']:
+            path = root / name
+            if path.exists():
+                tar.add(path, arcname=name)
 archive.chmod(0o600)
 print('Private management backup created.')

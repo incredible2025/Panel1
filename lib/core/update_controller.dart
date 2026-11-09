@@ -19,7 +19,15 @@ final updateControllerProvider = ChangeNotifierProvider<UpdateController>(
         )
       : UpdateController(
           AndroidUpdatePlatform(),
-          UpdateTransport(expectedAndroidApplicationId: androidApplicationId),
+          UpdateTransport(
+            expectedAndroidApplicationId: androidApplicationId,
+            headersFor: (uri) =>
+                ref
+                    .read(managedConfigurationProvider)
+                    ?.activity
+                    ?.updateHeaders(uri) ??
+                const {},
+          ),
           manifestUrlProvider: () =>
               ref
                   .read(managedConfigurationProvider)

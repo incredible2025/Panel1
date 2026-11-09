@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppDevice;
+use App\Models\AppRelease;
 use App\Models\ManagedApp;
 use App\Models\User;
 use App\Services\AppConfiguration;
 use App\Services\ConfigSigner;
+use App\Services\ManagementActivity;
+use App\Services\ReleaseCentre;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
@@ -14,12 +18,24 @@ class ManagementController extends Controller
 {
     public function index()
     {
-        return view('management.index', ['apps' => ManagedApp::orderBy('name')->get()]);
+        $apps = ManagedApp::orderBy('name')->get();
+        $metrics = [];
+        foreach ($apps as $app) {
+            app(ReleaseCentre::class)->sync($app);
+            $metrics[$app->id] = app(ManagementActivity::class)->metrics($app);
+        }
+
+        return view('management.index', compact('apps', 'metrics'));
     }
 
     public function show(ManagedApp $managedApp)
     {
-        return view('management.app', ['app' => $managedApp, 'history' => $managedApp->revisions()->with('actor')->orderByDesc('revision')->paginate(20)]);
+        app(ReleaseCentre::class)->sync($managedApp);
+
+        return view('management.app', ['app' => $managedApp, 'history' => $managedApp->revisions()->with('actor')->orderByDesc('revision')->paginate(20),
+            'metrics' => app(ManagementActivity::class)->metrics($managedApp),
+            'releases' => AppRelease::where('managed_app_id', $managedApp->id)->latest()->get(),
+            'devices' => AppDevice::where('managed_app_id', $managedApp->id)->where('tester', true)->get()]);
     }
 
     public function create(Request $request, AppConfiguration $configuration)
@@ -98,6 +114,8 @@ class ManagementController extends Controller
         $user->email_verified_at = now();
         $user->save();
 
+        ManagementActivity::record(null, 'Staff account created');
+
         return back()->with('status', 'Staff account created. Share the initial login details privately.');
     }
 
@@ -109,6 +127,7 @@ class ManagementController extends Controller
             $user->remember_token = null;
             $user->save();
             DB::table('sessions')->where('user_id', $user->id)->delete();
+            ManagementActivity::record(null, 'Staff access updated');
         });
 
         return back()->with('status', 'Staff access updated.');

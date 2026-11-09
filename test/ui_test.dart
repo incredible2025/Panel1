@@ -113,6 +113,13 @@ const _series = MediaItem(
 
 class _MemoryStore implements LocalStore {
   @override
+  Future<String> managedInstallationSecret(String appId) async =>
+      List.filled(64, 'a').join();
+  @override
+  Future<String?> managedDismissedNotice(String appId) async => null;
+  @override
+  Future<void> saveManagedDismissedNotice(String appId, String id) async {}
+  @override
   Future<Session> bindManagedAccount(
     Session session, {
     String? legacyAccountId,

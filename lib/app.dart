@@ -16,6 +16,7 @@ import 'features/dashboard_screen.dart';
 import 'features/login_screen.dart';
 import 'features/tv_dashboard_screen.dart';
 import 'features/startup_update_gate.dart';
+import 'widgets/managed_home_notice.dart';
 
 class StreamlineApp extends ConsumerStatefulWidget {
   const StreamlineApp({super.key});
@@ -135,11 +136,13 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
         },
         home: StartupUpdateGate(
           onFinished: () => _startupFinished = true,
-          builder: (_) => session == null
-              ? const LoginScreen()
-              : tv
-              ? TvDashboardScreen(key: ValueKey(session.accountId))
-              : DashboardScreen(key: ValueKey(session.accountId)),
+          builder: (_) => ManagedHomeNotice(
+            child: session == null
+                ? const LoginScreen()
+                : tv
+                ? TvDashboardScreen(key: ValueKey(session.accountId))
+                : DashboardScreen(key: ValueKey(session.accountId)),
+          ),
         ),
       ),
     );

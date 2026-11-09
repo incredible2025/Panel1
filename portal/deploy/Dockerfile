@@ -8,6 +8,7 @@ WORKDIR /app
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-interaction --prefer-dist --no-scripts --no-autoloader
 COPY . .
+COPY deploy/uploads.ini /usr/local/etc/php/conf.d/management-uploads.ini
 RUN composer dump-autoload --no-dev --optimize --no-scripts \
     && php artisan package:discover --ansi \
     && chown -R www-data:www-data storage bootstrap/cache

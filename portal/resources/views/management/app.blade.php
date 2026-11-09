@@ -2,6 +2,10 @@
     <div class="mx-auto max-w-6xl space-y-8">
         <header><a href="{{ route('dashboard') }}" class="text-sm text-cyan-700 dark:text-cyan-400">← All apps</a><flux:heading size="xl" class="mt-3">{{ $app->name }}</flux:heading><flux:text class="mt-2">{{ $app->package_id }} · Published revision {{ $app->revision }}</flux:text></header>
         @include('management.messages')
+        @include('management.activity')
+        @include('management.activity-refresh')
+        <section class="portal-card p-6"><flux:heading size="lg">Reported versions</flux:heading><p class="portal-muted mt-2 text-sm">Devices seen within 30 days. Versions are reported by the app. Refresh the page for the latest breakdown.</p><div class="mt-4 grid gap-3 sm:grid-cols-3">@forelse ($metrics['versions'] as $version)<div class="rounded-lg border border-slate-200 dark:border-white/10 p-3"><strong>{{ $version->version }} ({{ $version->build }})</strong><p class="portal-muted text-sm">{{ $version->devices }} devices @if ($releases->firstWhere('id', $app->public_release_id)?->manifest['versionCode'] > $version->build) · Older release @endif</p></div>@empty<p class="portal-muted">No reporting devices yet. Older apps appear after receiving a compatible update.</p>@endforelse</div></section>
+        @include('management.releases')
         <div class="grid gap-6 lg:grid-cols-2">
             <section class="portal-card p-6">
                 <flux:heading size="lg">Draft settings</flux:heading><flux:text class="mt-2">Use these fields when addresses move for the same service. Existing accounts remain signed in.</flux:text>

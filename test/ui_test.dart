@@ -3583,4 +3583,60 @@ void main() {
     expect(top, inInclusiveRange(0, 320));
     expect(tester.takeException(), isNull);
   });
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest('TV exit Home Back confirms and cancels at ${size.width}', (
+      tester,
+    ) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(lastSection: 'live');
+      await _pumpApp(tester, store: store, tv: true, viewport: size);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Exit Ultravpn-player?'), findsOneWidget);
+      await _screenshot(tester, 'tv-exit-${size.width.toInt()}');
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(TvDashboardScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+    _uiTest('TV exit Settings action is reachable by D-pad at ${size.width}', (
+      tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'settings'),
+        tv: true,
+        viewport: size,
+      );
+      _cardFocus(tester, find.text('Playback').first).requestFocus();
+      await tester.pumpAndSettle();
+      await remote(tester, LogicalKeyboardKey.arrowDown, 6);
+      expect(find.text('Exit app').hitTestable(), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  _uiTest('TV exit sign-in Back offers exit without signing in', (
+    tester,
+  ) async {
+    await _pumpApp(tester, store: _MemoryStore(), tv: true, signedIn: false);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
 }

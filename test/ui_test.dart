@@ -23,6 +23,7 @@ import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/managed_configuration.dart';
 import 'package:streamline_iptv/features/login_screen.dart';
+import 'package:streamline_iptv/features/content_declaration_screen.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/data/provider_connections.dart';
@@ -112,6 +113,10 @@ const _series = MediaItem(
 );
 
 class _MemoryStore implements LocalStore {
+  @override
+  Future<bool> hasAcknowledgedContentDeclaration(int version) async => true;
+  @override
+  Future<void> acknowledgeContentDeclaration(int version) async {}
   @override
   Future<String> managedInstallationSecret(String appId) async =>
       List.filled(64, 'a').join();
@@ -2689,10 +2694,18 @@ void main() {
           final rect = tester.getRect(text);
           expect(rect.top, greaterThan(before.top + 30));
           expect(rect.bottom, lessThan(before.bottom - 15));
+          if (label == 'Setting: Content declaration') {
+            await remote(tester, LogicalKeyboardKey.select);
+            expect(find.byType(ContentDeclarationScreen), findsOneWidget);
+            expect(find.text('Acknowledge and continue'), findsNothing);
+            await tester.binding.handlePopRoute();
+            await tester.pumpAndSettle();
+            expect(FocusManager.instance.primaryFocus?.debugLabel, label);
+          }
           await remote(tester, LogicalKeyboardKey.arrowDown);
           expect(tester.getRect(canvas), before);
         }
-        expect(visited.length, [7, 6, 5, 3, 7, 9][group]);
+        expect(visited.length, [7, 6, 5, 3, 7, 10][group]);
         await _screenshot(
           tester,
           'tv-redesign-settings-$group-bottom-${size.width.toInt()}',

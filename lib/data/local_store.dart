@@ -45,7 +45,7 @@ class LocalStore {
             'streamline.db',
           ),
       options: sqlite.OpenDatabaseOptions(
-        version: 5,
+        version: 6,
         onCreate: (db, _) async {
           await db.execute('''
             CREATE TABLE watch_history (
@@ -75,12 +75,14 @@ class LocalStore {
           await _createEpisodeHistory(db);
           await _createPreferences(db);
           await _createManagedAliases(db);
+          await _createInstallationDeclarations(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createCollections(db);
           if (oldVersion < 3) await _createEpisodeHistory(db);
           if (oldVersion < 4) await _createPreferences(db);
           if (oldVersion < 5) await _createManagedAliases(db);
+          if (oldVersion < 6) await _createInstallationDeclarations(db);
         },
       ),
     );
@@ -102,6 +104,31 @@ class LocalStore {
       PRIMARY KEY (service_id, username_hash)
     )
   ''');
+
+  static Future<void> _createInstallationDeclarations(
+    sqlite.DatabaseExecutor db,
+  ) => db.execute(
+    'CREATE TABLE IF NOT EXISTS installation_declarations (declaration_version INTEGER PRIMARY KEY, acknowledged_at INTEGER NOT NULL)',
+  );
+
+  Future<bool> hasAcknowledgedContentDeclaration(int version) async =>
+      (await _database.query(
+        'installation_declarations',
+        where: 'declaration_version = ?',
+        whereArgs: [version],
+        limit: 1,
+      )).isNotEmpty;
+
+  Future<void> acknowledgeContentDeclaration(int version) async {
+    await _database.insert(
+      'installation_declarations',
+      {
+        'declaration_version': version,
+        'acknowledged_at': DateTime.now().toUtc().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: sqlite.ConflictAlgorithm.ignore,
+    );
+  }
 
   Future<String?> managedConfigurationCache(String appId) =>
       _secureStorage.read(key: 'managed.configuration.v1.$appId');

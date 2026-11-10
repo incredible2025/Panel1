@@ -14,6 +14,7 @@ import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
 import 'data/managed_configuration.dart';
 import 'features/dashboard_screen.dart';
+import 'features/content_declaration_screen.dart';
 import 'features/login_screen.dart';
 import 'features/tv_dashboard_screen.dart';
 import 'features/startup_update_gate.dart';
@@ -137,16 +138,18 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
           const SingleActivator(LogicalKeyboardKey.gameButtonA):
               const ActivateIntent(),
         },
-        home: StartupUpdateGate(
-          onFinished: () => _startupFinished = true,
-          builder: (_) => ManagedHomeNotice(
-            child: session == null
-                ? ref.watch(isTvProvider)
-                      ? const TvExitOnBack(child: LoginScreen())
-                      : const LoginScreen()
-                : tv
-                ? TvDashboardScreen(key: ValueKey(session.accountId))
-                : DashboardScreen(key: ValueKey(session.accountId)),
+        home: ContentDeclarationGate(
+          builder: (_) => StartupUpdateGate(
+            onFinished: () => _startupFinished = true,
+            builder: (_) => ManagedHomeNotice(
+              child: session == null
+                  ? ref.watch(isTvProvider)
+                        ? const TvExitOnBack(child: LoginScreen())
+                        : const LoginScreen()
+                  : tv
+                  ? TvDashboardScreen(key: ValueKey(session.accountId))
+                  : DashboardScreen(key: ValueKey(session.accountId)),
+            ),
           ),
         ),
       ),

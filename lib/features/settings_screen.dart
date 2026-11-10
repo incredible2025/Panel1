@@ -19,6 +19,7 @@ import '../widgets/tv_controls.dart';
 import '../widgets/tv_settings_view.dart';
 import '../widgets/tv_utility_scaffold.dart';
 import 'tv_licences_screen.dart';
+import 'content_declaration_screen.dart';
 import 'management_support_screen.dart';
 import '../widgets/tv_pin_entry.dart';
 
@@ -552,6 +553,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         _info(appBrandName, appVersion),
+        _action(
+          'Content declaration',
+          'Read who supplies the player software and third-party content.',
+          Icons.info_outline,
+          () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ContentDeclarationScreen(),
+            ),
+          ),
+        ),
         _action(
           'Open source licences',
           'Licences for Flutter, the playback engines and bundled libraries.',

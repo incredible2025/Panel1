@@ -1,0 +1,2 @@
+- Added a first-launch declaration explaining that the developer supplies player software, not content.
+- You can review the content declaration at any time in Settings.

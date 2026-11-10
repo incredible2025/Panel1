@@ -19,6 +19,8 @@ import '../widgets/tv_controls.dart';
 import '../widgets/tv_settings_view.dart';
 import '../widgets/tv_utility_scaffold.dart';
 import 'tv_licences_screen.dart';
+import 'content_declaration_screen.dart';
+import 'management_support_screen.dart';
 import '../widgets/tv_pin_entry.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -483,6 +485,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ]),
       _group('App & maintenance', Icons.settings_outlined, [
+        if (ref.read(managedConfigurationProvider) != null)
+          _action(
+            'Management & support',
+            'Activity reporting, test-device pairing and support details.',
+            Icons.support_agent,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const ManagementSupportScreen(),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Center(
@@ -539,6 +553,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
         _info(appBrandName, appVersion),
+        _action(
+          'Content declaration',
+          'Read who supplies the player software and third-party content.',
+          Icons.info_outline,
+          () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ContentDeclarationScreen(),
+            ),
+          ),
+        ),
         _action(
           'Open source licences',
           'Licences for Flutter, the playback engines and bundled libraries.',

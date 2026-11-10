@@ -23,6 +23,7 @@ import 'package:streamline_iptv/data/local_store.dart';
 import 'package:streamline_iptv/data/models.dart';
 import 'package:streamline_iptv/data/managed_configuration.dart';
 import 'package:streamline_iptv/features/login_screen.dart';
+import 'package:streamline_iptv/features/content_declaration_screen.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/xtream_api.dart';
 import 'package:streamline_iptv/data/provider_connections.dart';
@@ -112,6 +113,17 @@ const _series = MediaItem(
 );
 
 class _MemoryStore implements LocalStore {
+  @override
+  Future<bool> hasAcknowledgedContentDeclaration(int version) async => true;
+  @override
+  Future<void> acknowledgeContentDeclaration(int version) async {}
+  @override
+  Future<String> managedInstallationSecret(String appId) async =>
+      List.filled(64, 'a').join();
+  @override
+  Future<String?> managedDismissedNotice(String appId) async => null;
+  @override
+  Future<void> saveManagedDismissedNotice(String appId, String id) async {}
   @override
   Future<Session> bindManagedAccount(
     Session session, {
@@ -2682,10 +2694,18 @@ void main() {
           final rect = tester.getRect(text);
           expect(rect.top, greaterThan(before.top + 30));
           expect(rect.bottom, lessThan(before.bottom - 15));
+          if (label == 'Setting: Content declaration') {
+            await remote(tester, LogicalKeyboardKey.select);
+            expect(find.byType(ContentDeclarationScreen), findsOneWidget);
+            expect(find.text('Acknowledge and continue'), findsNothing);
+            await tester.binding.handlePopRoute();
+            await tester.pumpAndSettle();
+            expect(FocusManager.instance.primaryFocus?.debugLabel, label);
+          }
           await remote(tester, LogicalKeyboardKey.arrowDown);
           expect(tester.getRect(canvas), before);
         }
-        expect(visited.length, [7, 6, 5, 3, 7, 9][group]);
+        expect(visited.length, [7, 6, 5, 3, 7, 10][group]);
         await _screenshot(
           tester,
           'tv-redesign-settings-$group-bottom-${size.width.toInt()}',
@@ -3575,5 +3595,61 @@ void main() {
     final top = tester.getTopLeft(find.text('Target 2')).dy;
     expect(top, inInclusiveRange(0, 320));
     expect(tester.takeException(), isNull);
+  });
+  for (final size in [
+    const Size(960, 540),
+    const Size(1280, 720),
+    const Size(1920, 1080),
+  ]) {
+    _uiTest('TV exit Home Back confirms and cancels at ${size.width}', (
+      tester,
+    ) async {
+      final store = _MemoryStore()
+        ..preferences = const AppSettings(lastSection: 'live');
+      await _pumpApp(tester, store: store, tv: true, viewport: size);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Exit Ultravpn-player?'), findsOneWidget);
+      await _screenshot(tester, 'tv-exit-${size.width.toInt()}');
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(TvDashboardScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+    _uiTest('TV exit Settings action is reachable by D-pad at ${size.width}', (
+      tester,
+    ) async {
+      await _pumpApp(
+        tester,
+        store: _MemoryStore()
+          ..preferences = const AppSettings(lastSection: 'settings'),
+        tv: true,
+        viewport: size,
+      );
+      _cardFocus(tester, find.text('Playback').first).requestFocus();
+      await tester.pumpAndSettle();
+      await remote(tester, LogicalKeyboardKey.arrowDown, 6);
+      expect(find.text('Exit app').hitTestable(), findsOneWidget);
+      await remote(tester, LogicalKeyboardKey.select);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  _uiTest('TV exit sign-in Back offers exit without signing in', (
+    tester,
+  ) async {
+    await _pumpApp(tester, store: _MemoryStore(), tv: true, signedIn: false);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await remote(tester, LogicalKeyboardKey.select);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
   });
 }

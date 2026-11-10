@@ -1,0 +1,18 @@
+[Unit]
+Description=Publish completed Android release uploads
+After=network.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=30min
+User=root
+Group=app-manager-web
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/app-manager/release-tools/publish_uploaded_android.py --config /opt/app-manager/release-tools/uploads.json
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+CapabilityBoundingSet=
+InaccessiblePaths=-/opt/app-manager/data -/opt/app-manager/backups -/opt/app-manager/deploy/.env
+ReadWritePaths=/opt/app-manager/upload-inbox /opt/app-manager/release-state /opt/app-manager/release-receipts /opt/app-manager/public/downloads

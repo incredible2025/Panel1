@@ -13,19 +13,46 @@ import 'playback_profile.dart';
 import 'vlc_playback.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
+final playbackRegistryProvider = Provider((ref) => PlaybackRegistry());
+
+/// Includes players whose views have already been removed but are still closing.
+class PlaybackRegistry {
+  final _active = <PlaybackHandle>{};
+  bool _closing = false;
+
+  PlaybackHandle track(PlaybackHandle player) {
+    if (_closing) {
+      unawaited(player.dispose().catchError((Object _) {}));
+      throw StateError('Playback is closing');
+    }
+    _active.add(player);
+    player._onReleased = () => _active.remove(player);
+    return player;
+  }
+
+  Future<void> closeAll() async {
+    _closing = true;
+    await Future.wait(_active.toList().map((player) => player.dispose()));
+  }
+
+  void resume() => _closing = false;
+}
+
 final playbackFactoryProvider = Provider<PlaybackFactory>((ref) {
   final desktop = ref.watch(isDesktopProvider);
+  final registry = ref.watch(playbackRegistryProvider);
   return (uri, engine) {
     if (desktop || engine == PlayerEngine.compatibility) {
-      return CompatibilityPlayback(uri);
+      return registry.track(CompatibilityPlayback(uri));
     }
-    if (engine == PlayerEngine.vlc) return VlcPlayback(uri);
-    return NativePlayback(uri);
+    if (engine == PlayerEngine.vlc) return registry.track(VlcPlayback(uri));
+    return registry.track(NativePlayback(uri));
   };
 });
 
 abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   PlaybackHandle() : super(const VideoPlayerValue(duration: Duration.zero));
+  VoidCallback? _onReleased;
   DecodingMode decoding = DecodingMode.automatic;
   AppSettings preferences = const AppSettings();
   bool isLive = false;
@@ -52,6 +79,8 @@ abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   Widget buildView();
   @override
   Future<void> dispose() async {
+    _onReleased?.call();
+    _onReleased = null;
     super.dispose();
   }
 }

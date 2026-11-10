@@ -2,6 +2,8 @@ package com.streamline.iptv
 
 import android.app.UiModeManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -47,6 +49,15 @@ class MainActivity : FlutterActivity() {
         platformChannel!!
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "openSupport" -> {
+                        try {
+                            val uri = Uri.parse(call.arguments as? String ?: "")
+                            val allowed = (uri.scheme == "https" && !uri.host.isNullOrEmpty() && uri.userInfo == null)
+                                || (uri.scheme == "mailto" && !uri.schemeSpecificPart.contains('\n') && !uri.schemeSpecificPart.contains('\r'))
+                            if (!allowed) { result.success(false) }
+                            else { startActivity(Intent(Intent.ACTION_VIEW, uri)); result.success(true) }
+                        } catch (_: Exception) { result.success(false) }
+                    }
                     "dnsDiagnosis" -> dnsDiagnostics?.lookup(
                         call.argument<String>("host"), call.argument<String>("id"),
                         call.argument<Int>("timeoutMs"), result,

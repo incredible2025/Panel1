@@ -1,0 +1,2 @@
+- Added a clear Exit app option for Android TV.
+- Improved TV shutdown to stop playback and keep your saved preferences.

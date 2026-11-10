@@ -1,0 +1,7 @@
+[Unit]
+Description=Run management dashboard scheduled tasks
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker compose --project-directory /opt/app-manager/deploy -f /opt/app-manager/deploy/compose.yaml exec -T app php artisan schedule:run

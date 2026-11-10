@@ -110,7 +110,9 @@ class ManagementTest extends TestCase
         $this->actingAs($staff)->post('/apps', $this->settings())->assertForbidden();
         $this->get('/staff')->assertForbidden();
         $this->withSession(['auth.password_confirmed_at' => time()])->post('/apps/'.$app->id.'/replace', [...$this->settings(), 'confirmation' => 'REPLACE', 'draft_version' => 1])->assertForbidden();
-        $this->post('/apps/'.$app->id.'/publish', ['draft_version' => 1])->assertRedirect();
+        $review = $this->post('/apps/'.$app->id.'/publish', ['draft_version' => 1])->assertRedirect();
+        $this->assertSame(0, $app->fresh()->revision);
+        $this->post($review->headers->get('Location'), ['reviewed' => 1])->assertRedirect();
         $this->assertSame(1, $app->fresh()->revision);
     }
 
@@ -130,7 +132,7 @@ class ManagementTest extends TestCase
         $owner = $this->owner();
         $app = app(AppConfiguration::class)->create($owner, $this->settings());
         $this->actingAs($owner)->get('/dashboard')->assertOk()->assertSee('Example Brand');
-        $this->get('/apps/'.$app->id)->assertOk()->assertSee('Publish saved draft');
+        $this->get('/apps/'.$app->id)->assertOk()->assertSee('Review saved draft');
         $this->get('/staff')->assertOk();
     }
 

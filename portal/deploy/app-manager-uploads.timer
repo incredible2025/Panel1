@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for completed Android release uploads
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+Unit=app-manager-uploads.service
+
+[Install]
+WantedBy=timers.target

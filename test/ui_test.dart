@@ -43,6 +43,7 @@ import 'package:streamline_iptv/widgets/tv_page_navigation.dart';
 import 'package:streamline_iptv/core/update_controller.dart';
 import 'package:streamline_iptv/features/app_updates_screen.dart';
 import 'package:streamline_iptv/features/tv_dashboard_screen.dart';
+import 'package:streamline_iptv/features/catchup_screen.dart';
 import 'package:streamline_iptv/data/public_release_notes.dart';
 import 'package:streamline_iptv/features/speed_test_screen.dart';
 import 'package:streamline_iptv/features/connection_diagnosis_screen.dart';
@@ -615,6 +616,33 @@ void _uiTest(String description, WidgetTesterCallback callback) {
 }
 
 void main() {
+  for (final tv in [false, true]) {
+    _uiTest(
+      'Official ${tv ? 'TV' : 'mobile'} opens the dedicated catch-up browser',
+      (tester) async {
+        await _pumpApp(tester, store: _MemoryStore(), tv: tv);
+        final button = find.text('Catch-up');
+        expect(button.hitTestable(), findsOneWidget);
+        if (tv) {
+          _cardFocus(tester, find.text('Settings').first).requestFocus();
+          await tester.pumpAndSettle();
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pumpAndSettle();
+          expect(_cardFocus(tester, button).hasPrimaryFocus, isTrue);
+          await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        } else {
+          await tester.tap(button);
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(CatchupScreen), findsOneWidget);
+        expect(find.text('No catch-up channels reported'), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(CatchupScreen), findsNothing);
+        if (tv) expect(_cardFocus(tester, button).hasPrimaryFocus, isTrue);
+      },
+    );
+  }
   _uiTest(
     'managed address moves preserve an active route; service replacements return to sign-in',
     (tester) async {

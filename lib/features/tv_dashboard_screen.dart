@@ -31,6 +31,7 @@ import 'series_detail_screen.dart';
 import 'settings_screen.dart';
 import 'speed_test_screen.dart';
 import 'tv_guide_screen.dart';
+import 'catchup_screen.dart';
 
 /// A dedicated television shell: no expanding sidebar or nested page/channel
 /// scrolling. Each browsing column has a stable, explicit remote path.
@@ -192,6 +193,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       return _enterPage() ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     return KeyEventResult.ignored;
+  }
+
+  Future<void> _openCatchup() async {
+    _channelFocusTimer?.cancel();
+    await _preview.currentState?.stop();
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const CatchupScreen()));
   }
 
   bool _visible(MediaItem item) =>
@@ -513,7 +523,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           ('list', 'My List'),
         ])
           Padding(
-            padding: const EdgeInsets.only(right: 20),
+            padding: const EdgeInsets.only(right: 12),
             child: TvControl(
               style: TvControlStyle.navigation,
               focusNode: _nav(entry.$1),
@@ -547,6 +557,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           onPressed: () => _sectionTo('settings'),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
           child: const Text('Settings', style: TextStyle(fontSize: 11)),
+        ),
+        const SizedBox(width: 16),
+        TvControl(
+          style: TvControlStyle.navigation,
+          focusNode: _nav('catchup'),
+          label: 'Catch-up',
+          onPressed: _openCatchup,
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+          child: const Text('Catch-up', style: TextStyle(fontSize: 13)),
         ),
       ],
     ),

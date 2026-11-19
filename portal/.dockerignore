@@ -11,3 +11,8 @@ storage/app/private/*
 database/*.sqlite*
 data
 public/downloads
+backups
+upload-inbox
+release-state
+release-receipts
+release-tools

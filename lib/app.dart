@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
+import 'core/playback_handle.dart';
 import 'core/update_controller.dart';
 import 'core/app_brand.dart';
 import 'core/desktop_controls.dart';
@@ -13,9 +14,12 @@ import 'core/settings_controller.dart';
 import 'data/app_settings.dart';
 import 'data/managed_configuration.dart';
 import 'features/dashboard_screen.dart';
+import 'features/content_declaration_screen.dart';
 import 'features/login_screen.dart';
 import 'features/tv_dashboard_screen.dart';
 import 'features/startup_update_gate.dart';
+import 'widgets/managed_home_notice.dart';
+import 'widgets/tv_app_exit.dart';
 
 class StreamlineApp extends ConsumerStatefulWidget {
   const StreamlineApp({super.key});
@@ -82,6 +86,7 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
         .read(managedConfigurationProvider)
         ?.foreground(state == AppLifecycleState.resumed);
     if (state == AppLifecycleState.resumed) {
+      ref.read(playbackRegistryProvider).resume();
       ref.read(apiProvider).resetConnectionPreferences();
     }
     if (state == AppLifecycleState.resumed && _startupFinished) {
@@ -133,13 +138,19 @@ class _StreamlineAppState extends ConsumerState<StreamlineApp>
           const SingleActivator(LogicalKeyboardKey.gameButtonA):
               const ActivateIntent(),
         },
-        home: StartupUpdateGate(
-          onFinished: () => _startupFinished = true,
-          builder: (_) => session == null
-              ? const LoginScreen()
-              : tv
-              ? TvDashboardScreen(key: ValueKey(session.accountId))
-              : DashboardScreen(key: ValueKey(session.accountId)),
+        home: ContentDeclarationGate(
+          builder: (_) => StartupUpdateGate(
+            onFinished: () => _startupFinished = true,
+            builder: (_) => ManagedHomeNotice(
+              child: session == null
+                  ? ref.watch(isTvProvider)
+                        ? const TvExitOnBack(child: LoginScreen())
+                        : const LoginScreen()
+                  : tv
+                  ? TvDashboardScreen(key: ValueKey(session.accountId))
+                  : DashboardScreen(key: ValueKey(session.accountId)),
+            ),
+          ),
         ),
       ),
     );

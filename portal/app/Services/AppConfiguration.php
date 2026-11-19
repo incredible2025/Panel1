@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ConfigRevision;
 use App\Models\ManagedApp;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -20,6 +21,12 @@ class AppConfiguration
             'primary' => ['required', 'string', 'max:2048'],
             'fallback' => ['nullable', 'string', 'max:2048', 'different:primary'],
             'updateManifestUrl' => ['required', 'string', 'max:2048'],
+            'noticeTitle' => ['nullable', 'string', 'max:80', 'required_with:noticeBody'],
+            'noticeBody' => ['nullable', 'string', 'max:500', 'required_with:noticeTitle'],
+            'noticeExpiresAt' => ['nullable', 'date', 'required_with:noticeTitle'],
+            'supportEmail' => ['nullable', 'email:rfc', 'max:180'],
+            'supportWebsite' => ['nullable', 'url:https', 'max:2048'],
+            'supportMessage' => ['nullable', 'string', 'max:500'],
         ])->validate();
         foreach (['primary', 'fallback', 'updateManifestUrl'] as $field) {
             $value = trim($data[$field] ?? '');
@@ -42,6 +49,17 @@ class AppConfiguration
         if ($data['primary'] === $data['fallback']) {
             throw ValidationException::withMessages(['fallback' => 'Choose a different fallback address.']);
         }
+        foreach (['noticeTitle', 'noticeBody', 'supportMessage'] as $field) {
+            if (preg_match('/[\x00-\x08\x0b-\x1f\x7f]|:\/\/|\b(?:\d{1,3}\.){3}\d{1,3}\b/', $data[$field] ?? '')) {
+                throw ValidationException::withMessages([$field => 'Use plain text without service addresses or control characters.']);
+            }
+        }
+        if (! empty($data['supportWebsite'])) {
+            $parts = parse_url($data['supportWebsite']);
+            if (isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+                throw ValidationException::withMessages(['supportWebsite' => 'Use an HTTPS support address without credentials, queries or fragments.']);
+            }
+        }
 
         return $data;
     }
@@ -55,7 +73,10 @@ class AppConfiguration
             'package_id' => ['required', 'max:180', 'regex:/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/', 'unique:managed_apps'],
         ])->validate();
 
-        return ManagedApp::create([...$identity, 'service_id' => (string) Str::uuid(), 'draft' => $this->validate($input)]);
+        $app = ManagedApp::create([...$identity, 'service_id' => (string) Str::uuid(), 'draft' => $this->validate($input)]);
+        ManagementActivity::record($app->id, 'App registered');
+
+        return $app;
     }
 
     private function locked(ManagedApp $app): ManagedApp
@@ -77,6 +98,7 @@ class AppConfiguration
             $locked = $this->locked($app);
             $this->check($actor, $locked, $version);
             $locked->update(['draft' => $this->validate($input), 'draft_version' => $version + 1]);
+            ManagementActivity::record($app->id, 'Draft settings saved');
         });
     }
 
@@ -127,6 +149,14 @@ class AppConfiguration
             'updateManifestUrl' => $draft['updateManifestUrl'],
             'issuedAt' => now()->utc()->toIso8601String(),
         ];
+        $payload['notice'] = empty($draft['noticeTitle']) ? null : [
+            'id' => (string) $revision, 'title' => $draft['noticeTitle'], 'body' => $draft['noticeBody'],
+            'expiresAt' => Carbon::parse($draft['noticeExpiresAt'])->utc()->toIso8601String(),
+        ];
+        $payload['support'] = [
+            'email' => $draft['supportEmail'] ?? null, 'website' => $draft['supportWebsite'] ?? null,
+            'message' => $draft['supportMessage'] ?? null,
+        ];
         $signed = $this->signer->sign($payload);
         $result = $app->revisions()->create([
             'revision' => $revision, 'service_id' => $serviceId,
@@ -134,6 +164,10 @@ class AppConfiguration
             'action' => $action, 'created_at' => now(),
         ]);
         $app->update(['revision' => $revision, 'service_id' => $serviceId, 'draft' => $draft, 'draft_version' => $app->draft_version + 1]);
+        ManagementActivity::record($app->id, match ($action) {
+            'rollback' => 'Previous settings restored', 'replace-service' => 'Service replaced',
+            default => 'Settings published',
+        });
 
         return $result;
     }

@@ -12,6 +12,7 @@ import 'data/local_store.dart';
 import 'core/design_system.dart';
 import 'core/windows_smoke.dart';
 import 'data/managed_configuration.dart';
+import 'data/managed_activity.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +44,21 @@ Future<void> main(List<String> args) async {
             store.saveManagedConfigurationCache(profile.appId, envelope),
       );
       await management.initialize();
+      try {
+        final manager = management;
+        manager.activity = ManagedActivity(
+          configUrl: profile.configUrl,
+          secret: await store.managedInstallationSecret(profile.appId),
+          revision: () => manager.current.revision,
+        );
+        manager.dismissedNoticeId = await store.managedDismissedNotice(
+          profile.appId,
+        );
+        manager.saveDismissedNotice = (id) =>
+            store.saveManagedDismissedNotice(profile.appId, id);
+      } catch (_) {
+        // Optional reporting must never prevent starting the app.
+      }
     }
     final saved = await store.readSession();
     final session = management == null

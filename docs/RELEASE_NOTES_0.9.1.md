@@ -1,0 +1,3 @@
+- Added remote notices and support details.
+- Added anonymous device activity reporting.
+- Improved managed updates and test-device pairing.

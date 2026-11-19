@@ -2,24 +2,55 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppDevice;
+use App\Models\AppRelease;
 use App\Models\ManagedApp;
 use App\Models\User;
 use App\Services\AppConfiguration;
 use App\Services\ConfigSigner;
+use App\Services\ConfigurationPreview;
+use App\Services\DashboardAlerts;
+use App\Services\DashboardHealth;
+use App\Services\ManagementActivity;
+use App\Services\ReleaseCentre;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
 
 class ManagementController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return view('management.index', ['apps' => ManagedApp::orderBy('name')->get()]);
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'attention' => ['nullable', 'in:1']]);
+        $apps = ManagedApp::orderBy('name')->get();
+        $metrics = [];
+        $alerts = [];
+        $health = app(DashboardHealth::class)->summary();
+        foreach ($apps as $app) {
+            app(ReleaseCentre::class)->sync($app);
+            $metrics[$app->id] = app(ManagementActivity::class)->metrics($app);
+            $alerts[$app->id] = app(DashboardAlerts::class)->forApp($app, $metrics[$app->id], $health);
+        }
+        $attentionCount = collect($alerts)->filter(fn ($items) => count($items) > 0)->count();
+        $visibleApps = $apps->filter(function ($app) use ($filters, $alerts) {
+            return (! isset($filters['attention']) || count($alerts[$app->id]) > 0)
+                && (! isset($filters['q']) || str_contains(mb_strtolower($app->name.' '.$app->app_id), mb_strtolower($filters['q'])));
+        });
+
+        return view('management.index', ['apps' => $visibleApps, 'metrics' => $metrics, 'alerts' => $alerts, 'attentionCount' => $attentionCount,
+            'health' => auth()->user()->role === 'owner' ? $health : null]);
     }
 
     public function show(ManagedApp $managedApp)
     {
-        return view('management.app', ['app' => $managedApp, 'history' => $managedApp->revisions()->with('actor')->orderByDesc('revision')->paginate(20)]);
+        app(ReleaseCentre::class)->sync($managedApp);
+
+        return view('management.app', ['app' => $managedApp, 'history' => $managedApp->revisions()->with('actor')->orderByDesc('revision')->paginate(20),
+            'metrics' => app(ManagementActivity::class)->metrics($managedApp),
+            'preview' => app(ConfigurationPreview::class)->describe($managedApp),
+            'download' => app(DashboardHealth::class)->snapshot()['apps'][$managedApp->app_id]['downloadUrl'] ?? null,
+            'releases' => AppRelease::where('managed_app_id', $managedApp->id)->latest()->get(),
+            'devices' => AppDevice::where('managed_app_id', $managedApp->id)->where('tester', true)->get()]);
     }
 
     public function create(Request $request, AppConfiguration $configuration)
@@ -43,24 +74,17 @@ class ManagementController extends Controller
 
     public function publish(Request $request, ManagedApp $managedApp, AppConfiguration $configuration)
     {
-        $configuration->publish($request->user(), $managedApp, $this->version($request));
-
-        return back()->with('status', 'Configuration published.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'publish');
     }
 
     public function rollback(Request $request, ManagedApp $managedApp, int $revision, AppConfiguration $configuration)
     {
-        $configuration->rollback($request->user(), $managedApp, $revision, $this->version($request));
-
-        return back()->with('status', 'Previous settings published as a new revision.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'rollback');
     }
 
     public function replace(Request $request, ManagedApp $managedApp, AppConfiguration $configuration)
     {
-        $request->validate(['confirmation' => ['required', 'in:REPLACE']]);
-        $configuration->replaceService($request->user(), $managedApp, $request->all(), $this->version($request));
-
-        return back()->with('status', 'Service replaced. Connected apps will require a new sign-in.');
+        return app(DashboardOperationsController::class)->prepareSingle($request, $managedApp, 'replace');
     }
 
     public function profile(ManagedApp $managedApp, ConfigSigner $signer)
@@ -98,6 +122,8 @@ class ManagementController extends Controller
         $user->email_verified_at = now();
         $user->save();
 
+        ManagementActivity::record(null, 'Staff account created');
+
         return back()->with('status', 'Staff account created. Share the initial login details privately.');
     }
 
@@ -109,6 +135,7 @@ class ManagementController extends Controller
             $user->remember_token = null;
             $user->save();
             DB::table('sessions')->where('user_id', $user->id)->delete();
+            ManagementActivity::record(null, 'Staff access updated');
         });
 
         return back()->with('status', 'Staff access updated.');

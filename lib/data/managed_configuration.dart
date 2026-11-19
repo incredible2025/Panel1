@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'models.dart';
+import 'managed_activity.dart';
 import 'provider_addresses.dart';
 
 const androidApplicationId = String.fromEnvironment(
@@ -114,6 +115,8 @@ class ManagedProfile {
         httpsOnly: true,
       ).toString(),
       envelope: Map.unmodifiable({'payload': encoded, 'signature': signature}),
+      notice: ManagedNotice.parse(payload['notice']),
+      support: ManagedSupport.parse(payload['support']),
     );
   }
 }
@@ -147,6 +150,55 @@ Uri _address(dynamic value, {bool httpsOnly = false, bool root = false}) {
       : uri;
 }
 
+class ManagedNotice {
+  const ManagedNotice(this.id, this.title, this.body, this.expiresAt);
+  final String id, title, body;
+  final DateTime expiresAt;
+  bool activeAt(DateTime now) => expiresAt.isAfter(now);
+  static ManagedNotice? parse(dynamic data) {
+    if (data == null) return null;
+    if (data is! Map ||
+        data['id'] is! String ||
+        data['title'] is! String ||
+        data['body'] is! String ||
+        data['expiresAt'] is! String) {
+      throw const FormatException('Invalid notice.');
+    }
+    final expiry = DateTime.tryParse(data['expiresAt']);
+    if (expiry == null ||
+        (data['id'] as String).length > 80 ||
+        (data['title'] as String).length > 80 ||
+        (data['body'] as String).length > 500) {
+      throw const FormatException('Invalid notice.');
+    }
+    return ManagedNotice(data['id'], data['title'], data['body'], expiry);
+  }
+}
+
+class ManagedSupport {
+  const ManagedSupport({this.email = '', this.website = '', this.message = ''});
+  final String email, website, message;
+  static ManagedSupport parse(dynamic data) {
+    if (data == null) return const ManagedSupport();
+    if (data is! Map) throw const FormatException('Invalid support details.');
+    String text(String key, int max) {
+      final value = data[key] ?? '';
+      if (value is! String || value.length > max) {
+        throw const FormatException('Invalid support details.');
+      }
+      return value;
+    }
+
+    final website = text('website', 2048);
+    if (website.isNotEmpty) _address(website, httpsOnly: true);
+    return ManagedSupport(
+      email: text('email', 180),
+      website: website,
+      message: text('message', 500),
+    );
+  }
+}
+
 class ManagedConfiguration {
   ManagedConfiguration({
     required this.serviceId,
@@ -154,11 +206,15 @@ class ManagedConfiguration {
     required this.endpoints,
     required this.updateManifestUrl,
     required this.envelope,
+    this.notice,
+    this.support = const ManagedSupport(),
   });
   final String serviceId, updateManifestUrl;
   final int revision;
   final List<Uri> endpoints;
   final Map<String, dynamic> envelope;
+  final ManagedNotice? notice;
+  final ManagedSupport support;
 
   Credentials credentials(String username, String password) => Credentials(
     serverUrl: endpoints.first.toString(),
@@ -190,6 +246,15 @@ class ManagedConfigurationManager extends ChangeNotifier {
   http.Client? _client;
   Completer<void>? _abort;
   bool _disposed = false;
+  ManagedActivity? activity;
+  String? dismissedNoticeId;
+  Future<void> Function(String)? saveDismissedNotice;
+
+  void dismissNotice(String id) {
+    dismissedNoticeId = id;
+    notifyListeners();
+    unawaited(saveDismissedNotice?.call(id).catchError((_) {}));
+  }
 
   Future<void> initialize() async {
     current = await profile.verify(profile.bootstrap);
@@ -206,6 +271,7 @@ class ManagedConfigurationManager extends ChangeNotifier {
   }
 
   void foreground(bool active, {bool refreshNow = true}) {
+    activity?.foreground(active);
     _timer?.cancel();
     _timer = null;
     if (!active || _disposed) return;
@@ -261,6 +327,7 @@ class ManagedConfigurationManager extends ChangeNotifier {
       await writeCache(jsonEncode(candidate.envelope));
       if (_disposed) return false;
       current = candidate;
+      unawaited(activity?.report());
       notifyListeners();
       return true;
     } catch (_) {
@@ -277,6 +344,7 @@ class ManagedConfigurationManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    activity?.dispose();
     _disposed = true;
     _timer?.cancel();
     if (_abort?.isCompleted == false) _abort!.complete();

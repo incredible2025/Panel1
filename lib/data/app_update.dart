@@ -205,10 +205,12 @@ class UpdateTransport {
     this.operationTimeout = const Duration(minutes: 15),
     this.target = UpdateTarget.android,
     this.expectedAndroidApplicationId = 'com.streamline.iptv',
+    this.headersFor,
   }) : _clientFactory = clientFactory ?? HttpClient.new;
   final Duration operationTimeout;
   final UpdateTarget target;
   final String expectedAndroidApplicationId;
+  final Map<String, String> Function(Uri)? headersFor;
   final HttpClient Function() _clientFactory;
   HttpClient? _active;
   bool _cancelled = false;
@@ -252,6 +254,9 @@ class UpdateTransport {
           .timeout(const Duration(seconds: 20));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+      headersFor
+          ?.call(url)
+          .forEach((name, value) => request.headers.set(name, value));
       final response = await request.close().timeout(
         const Duration(seconds: 20),
       );

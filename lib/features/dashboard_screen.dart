@@ -23,6 +23,7 @@ import 'movie_detail_screen.dart';
 import 'player_screen.dart';
 import 'series_detail_screen.dart';
 import 'tv_guide_screen.dart';
+import 'catchup_screen.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -319,6 +320,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  Future<void> _openCatchup() async {
+    await _previewKey.currentState?.stop();
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const CatchupScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final isTv = ref.watch(isLargeScreenProvider);
@@ -449,6 +458,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                     child: _header(isTv),
                                   ),
                                 ),
+                                if (_kind == MediaKind.live)
+                                  SliverPadding(
+                                    padding: EdgeInsets.fromLTRB(
+                                      margin,
+                                      0,
+                                      margin,
+                                      12,
+                                    ),
+                                    sliver: SliverToBoxAdapter(
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: OutlinedButton.icon(
+                                          onPressed: _openCatchup,
+                                          icon: const Icon(Icons.history),
+                                          label: const Text('Catch-up'),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 SliverPadding(
                                   padding: EdgeInsets.fromLTRB(
                                     margin,

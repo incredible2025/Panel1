@@ -7,10 +7,15 @@ services:
     image: app-manager:local
     restart: unless-stopped
     env_file: .env
+    environment:
+      MANAGEMENT_UPLOAD_INBOX: /app/upload-inbox
+      MANAGEMENT_RELEASE_RECEIPTS: /app/release-receipts
     volumes:
       - ../data/storage:/app/storage
       - ../data/cache:/app/bootstrap/cache
       - ../data/database:/app/database-state
+      - ../upload-inbox:/app/upload-inbox
+      - ../release-receipts:/app/release-receipts:ro
     networks:
       default:
         aliases: [app-manager-app]

@@ -19,11 +19,12 @@ class DashboardAlerts
             $alerts[] = 'APK download check failed';
         }
         $days = $status['certificate']['daysRemaining'] ?? null;
+        $warning = $status['certificate']['warningDays'] ?? 21;
         if ($health['fresh'] && ($status['certificate']['checked'] ?? false)) {
             if (! ($status['certificate']['ok'] ?? false)) {
                 $alerts[] = 'Download certificate check failed';
-            } elseif (is_numeric($days) && $days <= 21) {
-                $alerts[] = 'Download certificate expires within 21 days';
+            } elseif (is_numeric($days) && $days <= $warning) {
+                $alerts[] = 'Download certificate expires within '.$warning.' days';
             }
         }
         $jobs = AppRelease::where('managed_app_id', $app->id)->where(function ($query) {

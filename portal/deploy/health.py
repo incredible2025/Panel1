@@ -56,8 +56,10 @@ def probe_certificate(base):
             with ssl.create_default_context().wrap_socket(connection, server_hostname=uri.hostname) as secure:
                 certificate = secure.getpeercert()
         expires = ssl.cert_time_to_seconds(certificate['notAfter'])
+        issued = ssl.cert_time_to_seconds(certificate['notBefore'])
         remaining = int((expires - datetime.now(timezone.utc).timestamp()) // 86400)
-        return dict(checked=True, ok=remaining >= 0, daysRemaining=remaining)
+        warning = max(1, min(21, int((expires - issued) / 86400 / 3)))
+        return dict(checked=True, ok=remaining >= 0, daysRemaining=remaining, warningDays=warning)
     except (OSError, ValueError, KeyError, TypeError):
         return dict(checked=True, ok=False)
 

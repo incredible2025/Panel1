@@ -92,6 +92,14 @@ class DashboardHealthTest(unittest.TestCase):
             result = health.probe_certificate('https://updates.example.test/app')
         self.assertEqual(result, {'checked': True, 'ok': False})
 
+    def test_short_lived_certificates_use_a_short_warning_window(self):
+        with patch.object(health.socket, 'create_connection'), patch.object(health.ssl, 'create_default_context') as context:
+            context.return_value.wrap_socket.return_value.__enter__.return_value.getpeercert.return_value = {
+                'notBefore': 'Nov 19 00:00:00 2030 GMT', 'notAfter': 'Nov 26 00:00:00 2030 GMT'}
+            result = health.probe_certificate('https://updates.example.test/app')
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['warningDays'], 2)
+
 
 if __name__ == '__main__':
     unittest.main()

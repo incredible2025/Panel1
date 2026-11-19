@@ -11,5 +11,13 @@
         </div>
         <section class="portal-card p-6"><flux:heading size="lg">Background services</flux:heading><div class="mt-4 grid gap-4 sm:grid-cols-3">@foreach (['uploads' => 'Package processing', 'scheduler' => 'Dashboard housekeeping', 'backups' => 'Backup timer'] as $key => $label)<div><p class="portal-muted text-sm">{{ $label }}</p><strong>{{ $health['fresh'] ? (($health['snapshot']['services'][$key] ?? false) ? 'Active' : 'Not active') : 'Unknown' }}</strong></div>@endforeach</div><p class="portal-muted mt-5 text-xs">Snapshot: {{ $health['snapshot']['capturedAt'] ?? 'Not reported' }} · Last successful backup: {{ $health['snapshot']['backup']['completedAt'] ?? 'Not reported' }}. Refresh this page for the latest report.</p></section>
         <section class="portal-card p-6"><flux:heading size="lg">Releases needing attention</flux:heading><div class="mt-4 space-y-3">@forelse ($issues as $release)<a href="{{ route('apps.show', $release->managed_app_id) }}" class="block rounded-lg border border-slate-200 p-4 dark:border-white/10"><strong>{{ $release->app?->name ?? 'App' }}</strong><p class="portal-muted text-sm">{{ ucfirst($release->status) }} · {{ $release->updated_at->diffForHumans() }}</p></a>@empty<p class="portal-muted">No failed or stalled release jobs.</p>@endforelse</div></section>
+        <section class="space-y-4"><flux:heading size="lg">App alerts and downloads</flux:heading><p class="portal-muted text-sm">Download size and HTTPS certificate checks run from the management server. Older-build alerts start seven days after publication. Playback alerts start at five reports in 24 hours. Status refreshes with each health snapshot.</p>
+        @foreach ($apps as $app)
+            @php($status = $health['snapshot']['apps'][$app->app_id] ?? [])
+            <div class="portal-card p-5"><a href="{{ route('apps.show', $app) }}" class="font-semibold text-cyan-700 dark:text-cyan-300">{{ $app->name }}</a>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2"><p>APK download · {{ $health['fresh'] && ($status['download']['checked'] ?? false) ? (($status['download']['ok'] ?? false) ? 'Available; size matches manifest' : 'Check failed') : 'Not checked' }}</p><p>HTTPS certificate · {{ $health['fresh'] && ($status['certificate']['checked'] ?? false) ? (($status['certificate']['ok'] ?? false) ? ($status['certificate']['daysRemaining'].' days remaining') : 'Check failed') : 'Not checked' }}</p></div>
+                @foreach ($alerts[$app->id] as $alert)<p role="status" class="mt-3 rounded-lg bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200">{{ $alert }}</p>@endforeach
+            </div>
+        @endforeach</section>
     </div>
 </x-layouts::app>

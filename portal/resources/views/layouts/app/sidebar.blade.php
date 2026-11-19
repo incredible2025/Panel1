@@ -15,6 +15,10 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Apps') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="play" :href="route('playback.index')" :current="request()->routeIs('playback.*')" wire:navigate>Playback reports</flux:sidebar.item>
+                    @if (auth()->user()->role === 'owner')
+                        <flux:sidebar.item icon="bell" :href="route('operations.health')" :current="request()->routeIs('operations.health')" wire:navigate>Health and alerts</flux:sidebar.item>
+                    @endif
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

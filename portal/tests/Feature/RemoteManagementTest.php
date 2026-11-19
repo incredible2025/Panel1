@@ -7,10 +7,12 @@ use App\Models\AppRelease;
 use App\Models\ManagedApp;
 use App\Models\User;
 use App\Services\AppConfiguration;
+use App\Services\DashboardAlerts;
 use App\Services\ManagementActivity;
 use App\Services\ReleaseCentre;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -63,6 +65,87 @@ class RemoteManagementTest extends TestCase
             'status' => $status, 'manifest' => ['schemaVersion' => 1, 'applicationId' => $this->brand->package_id,
                 'versionCode' => $build, 'versionName' => '1.0.'.$build, 'apkUrl' => 'https://downloads.example.test/player-'.$build.'.apk',
                 'sizeBytes' => 100, 'minSdk' => 24, 'sha256' => str_repeat('a', 64), 'releaseNotes' => '- Improved playback.\n- Improved navigation.']]);
+    }
+
+    private function playback(array $changes = []): array
+    {
+        return array_replace(['event_id' => (string) Str::uuid(), 'version' => '1.0.0', 'build' => 44,
+            'device_model' => 'Example TV', 'os_version' => 'Android 14', 'form_factor' => 'tv',
+            'engine' => 'vlc', 'decoding' => 'hardware', 'kind' => 'live', 'category' => 'decoder', 'source' => 'automatic'], $changes);
+    }
+
+    public function test_playback_reports_are_deduplicated_and_store_only_allowed_fields(): void
+    {
+        $this->beat();
+        $data = $this->playback();
+        $data['url'] = 'https://private.example.test/secret';
+        $data['error'] = 'private-error';
+        $url = '/api/v1/apps/example-player/playback';
+        $this->withToken(str_repeat('a', 64))->postJson($url, $data)->assertNoContent();
+        $this->postJson($url, $data)->assertNoContent();
+        $this->assertDatabaseCount('playback_events', 1);
+        $stored = (array) DB::table('playback_events')->first();
+        $this->assertArrayNotHasKey('url', $stored);
+        $this->assertArrayNotHasKey('error', $stored);
+        $this->actingAs($this->owner)->get(route('playback.index'))->assertOk()->assertSee('Example TV')->assertSee('Decoder or codec error');
+    }
+
+    public function test_playback_reports_reject_cross_app_devices_raw_errors_and_false_manual_sources(): void
+    {
+        $this->beat();
+        $url = '/api/v1/apps/example-player/playback';
+        $this->withToken(str_repeat('b', 64))->postJson($url, $this->playback())->assertNotFound();
+        $this->withToken(str_repeat('a', 64))->postJson($url, $this->playback(['category' => 'https://private.example.test']))->assertUnprocessable();
+        $this->postJson($url, $this->playback(['category' => 'green_screen']))->assertUnprocessable();
+        $this->postJson($url, $this->playback(['device_model' => 'https://private.example.test']))->assertUnprocessable();
+        $this->postJson($url, $this->playback(['category' => 'green_screen', 'source' => 'user']))->assertNoContent();
+        $this->assertDatabaseCount('playback_events', 1);
+        $this->get(route('playback.index'))->assertRedirect(route('login'));
+    }
+
+    public function test_playback_reports_expire_and_alert_filter_finds_affected_apps(): void
+    {
+        $this->beat();
+        for ($i = 0; $i < 5; $i++) {
+            $this->withToken(str_repeat('a', 64))->postJson('/api/v1/apps/example-player/playback', $this->playback())->assertNoContent();
+        }
+        $this->actingAs($this->owner)->get(route('dashboard', ['attention' => 1]))->assertOk()->assertSee('5 playback reports from 1 installations');
+        $this->get(route('dashboard', ['q' => 'missing']))->assertOk()->assertSee('No apps match these filters.');
+        $this->travel(31)->days();
+        $this->artisan('management:housekeeping')->assertSuccessful();
+        $this->assertDatabaseCount('playback_events', 0);
+    }
+
+    public function test_playback_rate_limit_and_stale_health_do_not_claim_current_failures(): void
+    {
+        $this->beat();
+        for ($i = 0; $i < 12; $i++) {
+            $this->withToken(str_repeat('a', 64))->postJson('/api/v1/apps/example-player/playback', $this->playback())->assertNoContent();
+        }
+        $this->postJson('/api/v1/apps/example-player/playback', $this->playback())->assertStatus(429);
+        $metrics = app(ManagementActivity::class)->metrics($this->brand);
+        $health = ['fresh' => false, 'snapshot' => ['apps' => ['example-player' => ['download' => ['checked' => true, 'ok' => false]]]]];
+        $alerts = app(DashboardAlerts::class)->forApp($this->brand, $metrics, $health);
+        $this->assertNotContains('APK download check failed', $alerts);
+    }
+
+    public function test_operational_alerts_cover_expiring_certificates_and_delayed_adoption(): void
+    {
+        $release = $this->release(45, 'published');
+        $this->brand->update(['public_release_id' => $release->id]);
+        $this->beat();
+        $health = ['fresh' => true, 'snapshot' => ['apps' => ['example-player' => [
+            'download' => ['checked' => true, 'ok' => false],
+            'certificate' => ['checked' => true, 'ok' => true, 'daysRemaining' => 12],
+        ]]]];
+        $metrics = app(ManagementActivity::class)->metrics($this->brand);
+        $alerts = app(DashboardAlerts::class)->forApp($this->brand, $metrics, $health);
+        $this->assertContains('APK download check failed', $alerts);
+        $this->assertContains('Download certificate expires within 21 days', $alerts);
+        $this->assertCount(2, $alerts);
+        $this->travel(8)->days();
+        $alerts = app(DashboardAlerts::class)->forApp($this->brand, $metrics, $health);
+        $this->assertContains('1 reporting devices still on older builds', $alerts);
     }
 
     public function test_heartbeats_deduplicate_and_do_not_store_customer_information(): void

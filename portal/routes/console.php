@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 
 Artisan::command('management:housekeeping', function () {
+    DB::table('playback_events')->where('created_at', '<', now()->subDays(30))->delete();
     AppDevice::where('last_seen_at', '<', now()->subDays(30))->delete();
     AppDevice::where('pair_expires_at', '<=', now())->update(['pair_hash' => null, 'pair_expires_at' => null]);
     $disk = Storage::disk('local');

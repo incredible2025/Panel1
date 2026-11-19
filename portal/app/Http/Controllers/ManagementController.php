@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\AppConfiguration;
 use App\Services\ConfigSigner;
 use App\Services\ConfigurationPreview;
+use App\Services\DashboardAlerts;
 use App\Services\DashboardHealth;
 use App\Services\ManagementActivity;
 use App\Services\ReleaseCentre;
@@ -18,16 +19,26 @@ use Illuminate\Validation\Rules\Password;
 
 class ManagementController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'attention' => ['nullable', 'in:1']]);
         $apps = ManagedApp::orderBy('name')->get();
         $metrics = [];
+        $alerts = [];
+        $health = app(DashboardHealth::class)->summary();
         foreach ($apps as $app) {
             app(ReleaseCentre::class)->sync($app);
             $metrics[$app->id] = app(ManagementActivity::class)->metrics($app);
+            $alerts[$app->id] = app(DashboardAlerts::class)->forApp($app, $metrics[$app->id], $health);
         }
+        $attentionCount = collect($alerts)->filter(fn ($items) => count($items) > 0)->count();
+        $visibleApps = $apps->filter(function ($app) use ($filters, $alerts) {
+            return (! isset($filters['attention']) || count($alerts[$app->id]) > 0)
+                && (! isset($filters['q']) || str_contains(mb_strtolower($app->name.' '.$app->app_id), mb_strtolower($filters['q'])));
+        });
 
-        return view('management.index', [...compact('apps', 'metrics'), 'health' => auth()->user()->role === 'owner' ? app(DashboardHealth::class)->summary() : null]);
+        return view('management.index', ['apps' => $visibleApps, 'metrics' => $metrics, 'alerts' => $alerts, 'attentionCount' => $attentionCount,
+            'health' => auth()->user()->role === 'owner' ? $health : null]);
     }
 
     public function show(ManagedApp $managedApp)

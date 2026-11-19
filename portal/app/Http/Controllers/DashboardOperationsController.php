@@ -6,6 +6,7 @@ use App\Models\AppRelease;
 use App\Models\ManagedApp;
 use App\Services\AppConfiguration;
 use App\Services\ConfigurationPreview;
+use App\Services\DashboardAlerts;
 use App\Services\DashboardHealth;
 use App\Services\DashboardReview;
 use App\Services\ManagementActivity;
@@ -20,7 +21,14 @@ class DashboardOperationsController extends Controller
     {
         abort_unless($request->user()->role === 'owner', 403);
 
-        return view('management.health', ['health' => $health->summary(),
+        $summary = $health->summary();
+        $apps = ManagedApp::orderBy('name')->get();
+        $alerts = [];
+        foreach ($apps as $app) {
+            $alerts[$app->id] = app(DashboardAlerts::class)->forApp($app, app(ManagementActivity::class)->metrics($app), $summary);
+        }
+
+        return view('management.health', ['health' => $summary, 'apps' => $apps, 'alerts' => $alerts,
             'issues' => AppRelease::with('app')->where(function ($query) {
                 $query->where('status', 'failed')->orWhere(function ($pending) {
                     $pending->whereIn('status', ['queued', 'publishing', 'withdrawing'])->where('updated_at', '<', now()->subMinutes(15));

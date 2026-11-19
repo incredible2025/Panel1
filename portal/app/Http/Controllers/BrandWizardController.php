@@ -85,6 +85,13 @@ class BrandWizardController extends Controller
         return Storage::disk('local')->response($data['logo'], null, ['X-Content-Type-Options' => 'nosniff']);
     }
 
+    public function currentLogo(ManagedApp $managedApp)
+    {
+        abort_unless($managedApp->brand_logo && Storage::disk('local')->exists($managedApp->brand_logo), 404);
+
+        return Storage::disk('local')->response($managedApp->brand_logo, null, ['X-Content-Type-Options' => 'nosniff']);
+    }
+
     public function create(Request $request, string $ticket)
     {
         $data = $this->plan($request, $ticket);

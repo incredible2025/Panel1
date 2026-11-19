@@ -1,0 +1,2 @@
+- Added a picture problem report option during playback.
+- Improved playback support and reliability reporting.

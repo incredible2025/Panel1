@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/app_version.dart';
+import 'playback_reporting.dart';
 
 /// Anonymous per-installation presence. Never receives provider credentials.
 class ManagedActivity extends ChangeNotifier {
@@ -25,6 +26,7 @@ class ManagedActivity extends ChangeNotifier {
   Future<void>? _sending;
   bool _active = false, _disposed = false;
   DateTime? lastReported;
+  late final playback = PlaybackReporting(this);
 
   Map<String, String> updateHeaders(Uri uri) =>
       uri == configUrl.resolve('updates')
@@ -40,6 +42,7 @@ class ManagedActivity extends ChangeNotifier {
       return;
     }
     unawaited(report());
+    unawaited(playback.reportPreviousCrash());
     _timer = Timer.periodic(interval, (_) => unawaited(report()));
   }
 
@@ -116,6 +119,7 @@ class ManagedActivity extends ChangeNotifier {
     _disposed = true;
     _timer?.cancel();
     _client?.close();
+    playback.dispose();
     super.dispose();
   }
 }

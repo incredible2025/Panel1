@@ -8,16 +8,24 @@
         @endif
         <div class="portal-card p-5 flex flex-wrap gap-8"><div><p class="portal-muted text-sm">Online across apps</p><strong class="text-3xl" data-total="online">{{ collect($metrics)->sum('online') }}</strong></div><div><p class="portal-muted text-sm">Active today</p><strong class="text-3xl" data-total="today">{{ collect($metrics)->sum('today') }}</strong></div>@if (auth()->user()->role === 'owner')<a href="{{ route('management.events') }}" class="self-center text-cyan-700 dark:text-cyan-400">Staff activity log →</a>@endif</div>
         @include('management.activity-refresh')
+        <form method="GET" class="portal-card flex flex-wrap items-end gap-4 p-5">
+            <label class="flex flex-1 flex-col gap-2"><span class="text-sm">Find an app</span><input type="search" name="q" value="{{ request('q') }}" placeholder="App name" class="min-w-0 rounded-lg border border-slate-300 bg-white p-3 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"></label>
+            <label class="flex items-center gap-2 py-3"><input type="checkbox" name="attention" value="1" @checked(request('attention') === '1')>Needs attention ({{ $attentionCount }})</label>
+            <flux:button type="submit" variant="primary">Filter</flux:button><flux:button :href="route('dashboard')">Clear</flux:button>
+        </form>
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             @forelse ($apps as $app)
                 <a href="{{ route('apps.show', $app) }}" class="portal-card p-6 transition hover:border-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400">
-                    <div class="flex items-start justify-between gap-3"><flux:heading size="lg">{{ $app->name }}</flux:heading><span class="rounded-full bg-cyan-500/10 px-3 py-1 text-xs text-cyan-800 dark:text-cyan-300">{{ $app->revision ? 'Published' : 'Draft' }}</span></div>
+                    <div class="flex items-start gap-3">@if ($app->brand_logo)<img src="{{ route('brands.logo.current', $app) }}" alt="" class="h-12 w-12 rounded-xl object-contain" loading="lazy">@else<span aria-hidden="true" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-xl font-semibold">{{ mb_substr($app->name, 0, 1) }}</span>@endif<div class="min-w-0 flex-1"><flux:heading size="lg">{{ $app->name }}</flux:heading><p class="portal-muted mt-1 text-xs">{{ $app->revision ? 'Published' : 'Draft' }}</p></div></div>
+                    <p class="mt-4 font-medium">{{ $metrics[$app->id]['publicVersion'] ? 'Version '.$metrics[$app->id]['publicVersion'].' ('.$metrics[$app->id]['publicBuild'].')' : 'No public APK yet' }}</p>
+                    @foreach ($alerts[$app->id] as $alert)<p class="mt-2 rounded-lg bg-amber-500/10 p-2 text-sm text-amber-900 dark:text-amber-200">{{ $alert }}</p>@endforeach
                     <p class="mt-3 text-sm text-slate-600 dark:text-slate-400">{{ $app->package_id }}</p><p class="mt-6 text-sm text-slate-700 dark:text-slate-300">Revision {{ $app->revision }} <span class="float-right text-cyan-700 dark:text-cyan-400">Manage →</span></p>
                     <div class="mt-5" data-activity-app="{{ $app->id }}"><p class="text-sm"><strong data-count="online">{{ $metrics[$app->id]['online'] }}</strong> online · <strong data-count="today">{{ $metrics[$app->id]['today'] }}</strong> active today</p><p class="portal-muted mt-2 text-xs">Reporting devices · {{ config('app.timezone') }}</p></div>
                     <p class="portal-muted mt-3 text-xs">Latest public version: {{ $metrics[$app->id]['adoption'] === null ? 'No adoption data yet' : $metrics[$app->id]['adoption'].'% of reporting devices' }}</p>
+                    <p class="portal-muted mt-2 text-xs">{{ $metrics[$app->id]['older'] }} on older builds · {{ $metrics[$app->id]['reporting'] }} installations seen in 30 days</p>
                 </a>
             @empty
-                <div class="rounded-2xl border border-dashed border-slate-200 dark:border-white/10 p-8 text-slate-600 dark:text-slate-400 md:col-span-2">No apps registered yet. Add your first brand below.</div>
+                <div class="rounded-2xl border border-dashed border-slate-200 dark:border-white/10 p-8 text-slate-600 dark:text-slate-400 md:col-span-2">No apps match these filters.</div>
             @endforelse
         </div>
         @if (auth()->user()->role === 'owner')

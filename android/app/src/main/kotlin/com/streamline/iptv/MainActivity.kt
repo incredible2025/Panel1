@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private var vlcPlayback: VlcPlaybackBridge? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        PlaybackCrashReport.setContext(null)
         vlcPlayback?.close()
         vlcPlayback = null
         networkCallback?.let { callback ->
@@ -42,6 +43,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        PlaybackCrashReport.install(this)
         vlcPlayback = VlcPlaybackBridge(this, flutterEngine.dartExecutor.binaryMessenger, flutterEngine.renderer)
         updater = AppUpdater(this, flutterEngine.dartExecutor.binaryMessenger)
         dnsDiagnostics = NetworkDnsDiagnostics(this)
@@ -49,6 +51,20 @@ class MainActivity : FlutterActivity() {
         platformChannel!!
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "playbackDevice" -> {
+                        val manager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                        result.success(mapOf("model" to Build.MODEL, "release" to Build.VERSION.RELEASE,
+                            "tv" to (manager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION)))
+                    }
+                    "playbackContext" -> {
+                        PlaybackCrashReport.setContext(call.arguments as? Map<String, String>)
+                        result.success(null)
+                    }
+                    "previousPlaybackCrash" -> result.success(PlaybackCrashReport.previous(this))
+                    "acknowledgePlaybackCrash" -> {
+                        PlaybackCrashReport.acknowledge(this, call.arguments as? String)
+                        result.success(null)
+                    }
                     "openSupport" -> {
                         try {
                             val uri = Uri.parse(call.arguments as? String ?: "")

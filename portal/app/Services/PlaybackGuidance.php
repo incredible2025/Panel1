@@ -52,6 +52,6 @@ class PlaybackGuidance
         }
 
         return ['confidence' => 'Undetermined', 'explanation' => $category === 'buffering' ? 'The player reported prolonged buffering.' : 'The received report does not identify a specific root cause.',
-            'action' => 'Open the session timeline and check recovery results. Ask the customer to send connection diagnosis using the support reference. Older reports gain technical details after the app is updated.'];
+            'action' => 'Open the session timeline and check recovery results. Ask the customer to send connection diagnosis using the support reference. New reports can include technical details after the app is updated; older reports remain unchanged.'];
     }
 }

@@ -9,6 +9,8 @@ import '../data/diagnostic_transport.dart';
 import '../data/models.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/tv_page_navigation.dart';
+import '../widgets/tv_reading_dialog.dart';
+import '../data/playback_reporting.dart';
 import 'tv_diagnosis_view.dart';
 
 final connectionDiagnosticsFactoryProvider =
@@ -29,11 +31,13 @@ class ConnectionDiagnosisScreen extends ConsumerStatefulWidget {
     this.item,
     this.episode,
     this.canTestStream = false,
+    this.supportSessionId,
   });
   final Credentials? credentials;
   final MediaItem? item;
   final Episode? episode;
   final bool canTestStream;
+  final String? supportSessionId;
   @override
   ConsumerState<ConnectionDiagnosisScreen> createState() =>
       _ConnectionDiagnosisScreenState();
@@ -46,6 +50,58 @@ class _ConnectionDiagnosisScreenState
   DiagnosticReport? _report;
   bool _busy = false, _includeStream = false;
   int _generation = 0;
+  bool _sendingReport = false;
+  String? _sentReference;
+  late final String _diagnosisSessionId =
+      widget.supportSessionId ?? PlaybackReporting.newId();
+
+  Future<void> _sendReport() async {
+    final report = _report;
+    final reporting = ref
+        .read(managedConfigurationProvider)
+        ?.activity
+        ?.playback;
+    if (report == null ||
+        report.cancelled ||
+        _busy ||
+        _sendingReport ||
+        _sentReference != null ||
+        reporting == null) {
+      return;
+    }
+    final confirmed = await showTvReadingDialog(
+      context,
+      'Send connection diagnosis?',
+      const Text(
+        'Send check results, timings, connection type and device information to app support. Login details, addresses and viewing titles are excluded.',
+      ),
+      actionLabel: 'Send report',
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _sendingReport = true);
+    final sent = await reporting.sendDiagnosis(
+      report,
+      sessionId: _diagnosisSessionId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _sendingReport = false;
+      if (sent) {
+        _sentReference =
+            'D-${_diagnosisSessionId.substring(0, 8).toUpperCase()}';
+      }
+    });
+    await showTvReadingDialog(
+      context,
+      sent ? 'Report sent' : 'Report could not be sent',
+      Text(
+        sent
+            ? 'Your support reference is $_sentReference. Give this to app support so they can find the report.'
+            : 'Support could not be reached. Try again later.',
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +148,7 @@ class _ConnectionDiagnosisScreenState
     setState(() {
       _busy = true;
       _report = null;
+      _sentReference = null;
     });
     var permitted = false;
     if (_includeStream && widget.canTestStream && widget.item != null) {
@@ -177,6 +234,18 @@ class _ConnectionDiagnosisScreenState
         onRun: _run,
         onStop: _stop,
         onCopy: _copy,
+        showSend: ref.read(managedConfigurationProvider)?.activity != null,
+        onSend:
+            report == null ||
+                report.cancelled ||
+                _busy ||
+                _sendingReport ||
+                _sentReference != null
+            ? null
+            : _sendReport,
+        sendLabel: _sendingReport
+            ? 'Sending report…'
+            : _sentReference ?? 'Send to support',
         progressLabel: next,
         includeStream: widget.canTestStream && widget.item != null
             ? _includeStream
@@ -263,6 +332,26 @@ class _ConnectionDiagnosisScreenState
                             icon: const Icon(Icons.copy_outlined),
                             label: const Text('Copy private report'),
                           ),
+                          if (ref
+                                  .read(managedConfigurationProvider)
+                                  ?.activity !=
+                              null)
+                            OutlinedButton.icon(
+                              onPressed:
+                                  report == null ||
+                                      report.cancelled ||
+                                      _busy ||
+                                      _sendingReport ||
+                                      _sentReference != null
+                                  ? null
+                                  : _sendReport,
+                              icon: const Icon(Icons.support_agent),
+                              label: Text(
+                                _sendingReport
+                                    ? 'Sending report…'
+                                    : _sentReference ?? 'Send to support',
+                              ),
+                            ),
                         ],
                       ),
                       if (credentials == null)

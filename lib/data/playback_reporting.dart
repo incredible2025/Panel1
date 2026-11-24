@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import '../core/app_version.dart';
 import 'app_settings.dart';
 import 'managed_activity.dart';
+import 'playback_evidence.dart';
+import 'connection_diagnostics.dart';
 
 enum PlaybackIssue {
   connection,
@@ -19,6 +21,11 @@ enum PlaybackIssue {
   noPicture,
   pixelation,
   crash,
+  started,
+  playing,
+  fallback,
+  ended,
+  diagnosis,
   unknown;
 
   String get code => switch (this) {
@@ -27,7 +34,15 @@ enum PlaybackIssue {
     _ => name,
   };
 
-  bool get manual => [greenScreen, noPicture, pixelation].contains(this);
+  bool get manual =>
+      [greenScreen, noPicture, pixelation, diagnosis].contains(this);
+}
+
+class PlaybackReportSession {
+  final id = PlaybackReporting.newId();
+  final clock = Stopwatch()..start();
+  int sequence = 0, attempt = 0;
+  bool playingReported = false, ended = false;
 }
 
 /// Accepts fixed categories only. Stream exceptions and media names stay local.
@@ -42,6 +57,8 @@ class PlaybackReporting {
   final _clients = <http.Client>{};
   Map<String, String>? _device;
   bool _disposed = false;
+  Future<void> _pipeline = Future.value();
+  int _pending = 0;
 
   static String _model(Object? value) {
     final safe = (value is String ? value : 'Unknown Android')
@@ -66,7 +83,7 @@ class PlaybackReporting {
     };
   }
 
-  static String _uuid() {
+  static String newId() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     bytes[6] = (bytes[6] & 15) | 64;
@@ -83,25 +100,131 @@ class PlaybackReporting {
     String? eventId,
     String? previousVersion,
     int? previousBuild,
+    String? sessionId,
+    int? sequence,
+    int? elapsedMs,
+    Map<String, Object> details = const {},
+    DateTime? occurredAt,
   }) async {
     if (_disposed ||
-        _clients.length >= 2 ||
+        _pending >= 24 ||
         !['live', 'movie', 'series', 'catchup'].contains(kind)) {
       return false;
     }
-    final key = '${issue.code}/${engine.name}/${decoding.name}';
+    final occurred = (occurredAt ?? DateTime.now()).toUtc().toIso8601String();
+    final key =
+        '${sessionId ?? ''}/${details['attempt'] ?? ''}/${issue.code}/${engine.name}/${decoding.name}';
     final now = DateTime.now();
     _recent.removeWhere(
       (_, time) => now.difference(time) >= const Duration(minutes: 1),
     );
-    if (_recent.containsKey(key) || _recent.length >= 8) return false;
+    if (_recent.containsKey(key) || _recent.length >= 24) return false;
     _recent[key] = now;
+    final before = _pipeline;
+    final finished = Completer<void>();
+    _pipeline = finished.future;
+    _pending++;
+    try {
+      await before;
+      if (_disposed) return false;
+      final client = _clientFactory();
+      _clients.add(client);
+      try {
+        if (activity.lastReported == null) await activity.report();
+        final metadata = await _metadata();
+        if (_disposed) return false;
+        final request =
+            http.Request('POST', activity.configUrl.resolve('playback'))
+              ..followRedirects = false
+              ..headers.addAll({
+                'Authorization': 'Bearer ${activity.secret}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              })
+              ..body = jsonEncode({
+                'event_id': eventId ?? newId(),
+                'version': issue == PlaybackIssue.crash
+                    ? previousVersion ?? appVersionName
+                    : appVersionName,
+                'build': issue == PlaybackIssue.crash
+                    ? previousBuild ?? appBuildNumber
+                    : appBuildNumber,
+                ...metadata,
+                'engine': engine.name,
+                'decoding': decoding.name,
+                'kind': kind,
+                'category': issue.code,
+                'source': issue.manual ? 'user' : 'automatic',
+                'schema_version': 2,
+                if (sessionId != null) 'session_id': sessionId,
+                if (sequence != null) 'sequence': sequence,
+                if (elapsedMs != null)
+                  'elapsed_ms': elapsedMs.clamp(0, 604800000),
+                'occurred_at': occurred,
+                'details': {
+                  ...PlaybackEvidence.sanitize(details),
+                  if (details['attempt'] is int)
+                    'attempt': (details['attempt'] as int).clamp(1, 1000),
+                  if ([
+                    'opening',
+                    'playing',
+                    'buffering',
+                    'recovering',
+                    'stopped',
+                    'unknown',
+                  ].contains(details['stage']))
+                    'stage': details['stage'],
+                  ...await _network(),
+                },
+              });
+        final response = await client
+            .send(request)
+            .timeout(const Duration(seconds: 3));
+        return response.statusCode == 204;
+      } catch (_) {
+        return false;
+      } finally {
+        _clients.remove(client);
+        client.close();
+      }
+    } finally {
+      _pending--;
+      finished.complete();
+    }
+  }
+
+  Future<Map<String, Object>> _network() async {
+    try {
+      final raw = await platform
+          .invokeMapMethod<String, dynamic>('networkDiagnosis')
+          .timeout(const Duration(milliseconds: 400));
+      final names = raw?['transports'];
+      return {
+        if (names is List)
+          'transports': names
+              .whereType<String>()
+              .where(['Wi-Fi', 'Ethernet', 'Mobile', 'VPN', 'Other'].contains)
+              .take(5)
+              .toList(),
+        if (raw?['vpn'] is bool) 'vpn': raw!['vpn'] as bool,
+        if (raw?['validated'] is bool)
+          'network_validated': raw!['validated'] as bool,
+        if (raw?['metered'] is bool) 'metered': raw!['metered'] as bool,
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<bool> sendDiagnosis(
+    DiagnosticReport report, {
+    String? sessionId,
+  }) async {
+    if (_disposed || report.cancelled || report.checks.isEmpty) return false;
     final client = _clientFactory();
     _clients.add(client);
     try {
-      await activity.report();
-      final metadata = await _metadata();
-      if (_disposed) return false;
+      if (activity.lastReported == null) await activity.report();
       final request =
           http.Request('POST', activity.configUrl.resolve('playback'))
             ..followRedirects = false
@@ -111,24 +234,36 @@ class PlaybackReporting {
               'Accept': 'application/json',
             })
             ..body = jsonEncode({
-              'event_id': eventId ?? _uuid(),
-              'version': issue == PlaybackIssue.crash
-                  ? previousVersion ?? appVersionName
-                  : appVersionName,
-              'build': issue == PlaybackIssue.crash
-                  ? previousBuild ?? appBuildNumber
-                  : appBuildNumber,
-              ...metadata,
-              'engine': engine.name,
-              'decoding': decoding.name,
-              'kind': kind,
-              'category': issue.code,
-              'source': issue.manual ? 'user' : 'automatic',
+              'event_id': newId(),
+              'schema_version': 2,
+              'session_id': sessionId ?? newId(),
+              'version': appVersionName,
+              'build': appBuildNumber,
+              ...await _metadata(),
+              'engine': 'none',
+              'decoding': 'none',
+              'kind': 'none',
+              'category': 'diagnosis',
+              'source': 'user',
+              'occurred_at': DateTime.now().toUtc().toIso8601String(),
+              'details': {
+                'checks': report.checks
+                    .take(20)
+                    .map(
+                      (check) => {
+                        'stage': check.stage,
+                        'code': check.finding.code,
+                        'status': check.finding.status.name,
+                        'elapsed_ms': check.elapsedMs.clamp(0, 120000),
+                      },
+                    )
+                    .toList(),
+                ...await _network(),
+              },
             });
-      final response = await client
-          .send(request)
-          .timeout(const Duration(seconds: 3));
-      return response.statusCode == 204;
+      return (await client.send(request).timeout(const Duration(seconds: 3)))
+              .statusCode ==
+          204;
     } catch (_) {
       return false;
     } finally {
@@ -138,6 +273,7 @@ class PlaybackReporting {
   }
 
   Future<void> context({
+    String? sessionId,
     PlayerEngine? engine,
     DecodingMode? decoding,
     String? kind,
@@ -147,7 +283,12 @@ class PlaybackReporting {
         'playbackContext',
         engine == null
             ? null
-            : {'engine': engine.name, 'decoding': decoding?.name, 'kind': kind},
+            : {
+                'engine': engine.name,
+                'decoding': decoding?.name,
+                if (sessionId != null) 'session_id': sessionId,
+                'kind': kind,
+              },
       );
     } catch (_) {
       /* Reporting never changes playback. */
@@ -180,6 +321,16 @@ class PlaybackReporting {
         eventId: data['id'] as String,
         previousVersion: data['version'] as String?,
         previousBuild: data['build'] as int?,
+        sessionId: data['session_id'] as String?,
+        occurredAt: data['occurred_ms'] is int
+            ? DateTime.fromMillisecondsSinceEpoch(
+                data['occurred_ms'] as int,
+                isUtc: true,
+              )
+            : null,
+        details: data['native_code'] is String
+            ? {'native_code': data['native_code'] as String}
+            : const {},
       );
       if (sent) {
         await platform.invokeMethod<void>(

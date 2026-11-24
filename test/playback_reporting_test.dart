@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:streamline_iptv/data/app_settings.dart';
 import 'package:streamline_iptv/data/managed_activity.dart';
 import 'package:streamline_iptv/data/playback_reporting.dart';
+import 'package:streamline_iptv/data/connection_diagnostics.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -75,6 +76,9 @@ void main() {
         'kind',
         'category',
         'source',
+        'schema_version',
+        'occurred_at',
+        'details',
       });
       expect(body['category'], 'decoder');
       expect(body['device_model'], 'Example TV');
@@ -116,6 +120,52 @@ void main() {
         ),
         isFalse,
       );
+    },
+  );
+
+  test(
+    'a diagnosis sends only fixed codes and timings linked to its support session',
+    () async {
+      http.Request? sent;
+      final reporting = PlaybackReporting(
+        presence(),
+        clientFactory: () => MockClient((request) async {
+          sent = request;
+          return http.Response('', 204);
+        }),
+      );
+      addTearDown(reporting.dispose);
+      final report = DiagnosticReport(DateTime.now(), const [
+        DiagnosticCheck(
+          'dns',
+          DiagnosticFinding(
+            'DNS_TIMEOUT',
+            'private summary',
+            'private description',
+            evidence: ['private evidence'],
+          ),
+          8000,
+        ),
+      ]);
+      expect(
+        await reporting.sendDiagnosis(
+          report,
+          sessionId: '11111111-1111-4111-8111-111111111111',
+        ),
+        isTrue,
+      );
+      final body = jsonDecode(sent!.body) as Map;
+      expect(body['category'], 'diagnosis');
+      expect(body['session_id'], '11111111-1111-4111-8111-111111111111');
+      expect(body['details']['checks'], [
+        {
+          'stage': 'dns',
+          'code': 'DNS_TIMEOUT',
+          'status': 'failed',
+          'elapsed_ms': 8000,
+        },
+      ]);
+      expect(sent!.body, isNot(contains('private')));
     },
   );
 

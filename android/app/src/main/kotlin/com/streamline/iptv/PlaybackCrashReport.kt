@@ -24,6 +24,13 @@ object PlaybackCrashReport {
                         .putString("engine", state["engine"])
                         .putString("decoding", state["decoding"])
                         .putString("kind", state["kind"])
+                        .putString("session_id", state["session_id"])
+                        .putString("native_code", when(error) {
+                            is OutOfMemoryError -> "JAVA_OUT_OF_MEMORY"
+                            is IllegalStateException -> "JAVA_ILLEGAL_STATE"
+                            is LinkageError -> "JAVA_LINKAGE"
+                            else -> "JAVA_UNCAUGHT_EXCEPTION"
+                        })
                         .putString("version", version)
                         .putInt("build", build)
                         .putLong("time", System.currentTimeMillis())
@@ -53,7 +60,9 @@ object PlaybackCrashReport {
         }
         return mapOf("id" to id, "engine" to preferences.getString("engine", null),
             "decoding" to preferences.getString("decoding", null), "kind" to preferences.getString("kind", null),
-            "version" to preferences.getString("version", "0"), "build" to preferences.getInt("build", 1))
+            "version" to preferences.getString("version", "0"), "build" to preferences.getInt("build", 1),
+            "session_id" to preferences.getString("session_id", null), "native_code" to preferences.getString("native_code", null),
+            "occurred_ms" to preferences.getLong("time",0))
     }
 
     fun acknowledge(context: Context, id: String?) {

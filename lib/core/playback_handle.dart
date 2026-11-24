@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -11,6 +13,7 @@ import 'providers.dart';
 import 'native_playback_recovery.dart';
 import 'playback_profile.dart';
 import 'vlc_playback.dart';
+import '../data/playback_evidence.dart';
 
 typedef PlaybackFactory = PlaybackHandle Function(Uri uri, PlayerEngine engine);
 final playbackRegistryProvider = Provider((ref) => PlaybackRegistry());
@@ -70,6 +73,7 @@ abstract class PlaybackHandle extends ValueNotifier<VideoPlayerValue> {
   }
 
   String get failureSummary => playbackFailure(value.errorDescription);
+  Future<Map<String, Object>> diagnostics() async => const {};
   Future<void> initialize();
   Future<void> play();
   Future<void> pause();
@@ -100,6 +104,48 @@ class NativePlayback extends PlaybackHandle {
     controller.addListener(_changed);
   }
   final VideoPlayerController controller;
+  Map<String, Object> get _errorEvidence {
+    final error = controller.value.errorDescription ?? '';
+    final start = error.indexOf('STREAMLINE:');
+    if (start < 0) return const {};
+    try {
+      return PlaybackEvidence.sanitize(
+        jsonDecode(error.substring(start + 11)) as Map,
+      );
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @override
+  String get failureSummary => switch (_errorEvidence['cause']) {
+    'http' ||
+    'dns' ||
+    'tls' ||
+    'timeout' ||
+    'connection' => 'Connection or service error',
+    'decoder' || 'format' => 'Decoder or codec error',
+    _ => super.failureSummary,
+  };
+  @override
+  Future<Map<String, Object>> diagnostics() async {
+    try {
+      final data = await const MethodChannel('streamline/player_tracks')
+          .invokeMapMethod<String, dynamic>('diagnostics', {
+            // The pinned bridge shares the app-scoped track identifier.
+            // ignore: invalid_use_of_visible_for_testing_member
+            'playerId': controller.playerId,
+          })
+          .timeout(const Duration(milliseconds: 400));
+      return {
+        ..._errorEvidence,
+        ...PlaybackEvidence.sanitize(data ?? const {}),
+      };
+    } catch (_) {
+      return _errorEvidence;
+    }
+  }
+
   Future<void>? _release;
   bool _dead = false;
   void _changed() {
@@ -160,6 +206,53 @@ class CompatibilityPlayback extends PlaybackHandle {
   final String? audioOutput;
   final void Function(String)? onDiagnostic;
   String _failure = 'Playback error';
+  Map<String, Object> _evidence = const {};
+  @override
+  Future<Map<String, Object>> diagnostics() async {
+    final raw = <String, Object?>{..._evidence};
+    if (_created && !_dead) {
+      final state = _player.state;
+      raw.addAll({
+        'width': state.width,
+        'height': state.height,
+        'video_codec': _bridge?.value.videoCodec,
+        'audio_codec': _bridge?.value.audioCodec,
+      });
+      final native = _player.platform;
+      if (native is mk.NativePlayer) {
+        for (final entry in const {
+          'hwdec-current': 'actual_decoding',
+          'video-codec': 'video_codec',
+          'audio-codec-name': 'audio_codec',
+          'estimated-vf-fps': 'fps',
+          'video-bitrate': 'bitrate',
+          'decoder-frame-drop-count': 'dropped_frames',
+          'demuxer-cache-duration': 'buffer_ms',
+        }.entries) {
+          try {
+            final value = await native
+                .getProperty(entry.key)
+                .timeout(const Duration(milliseconds: 80));
+            raw[entry.value] = entry.value == 'actual_decoding'
+                ? (value == 'no'
+                      ? 'software'
+                      : value.isEmpty
+                      ? 'unknown'
+                      : 'hardware')
+                : entry.value.endsWith('codec')
+                ? value
+                : entry.value == 'buffer_ms'
+                ? (double.tryParse(value) ?? -1) * 1000
+                : num.tryParse(value);
+          } catch (_) {
+            /* Unsupported properties remain unknown. */
+          }
+        }
+      }
+    }
+    return PlaybackEvidence.sanitize(raw);
+  }
+
   @override
   String get failureSummary => _failure;
   String _initializationStage = 'created';
@@ -258,6 +351,7 @@ class CompatibilityPlayback extends PlaybackHandle {
         if (!_dead) {
           onDiagnostic?.call(message);
           _failure = playbackFailure(message);
+          _evidence = PlaybackEvidence.failure(message);
           _recovery.signal(_player.state.position);
         }
       }),

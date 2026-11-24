@@ -1,0 +1,2 @@
+- Added detailed playback reports and recovery history.
+- Send connection diagnosis to support with a reference code.

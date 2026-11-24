@@ -67,6 +67,7 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
     this.videoPlayerEvents = events;
     this.surfaceProducer = surfaceProducer;
     exoPlayer = exoPlayerProvider.get();
+    PlaybackDiagnostics.install(exoPlayer);
 
     // Try to get the track selector from the ExoPlayer if it was built with one
     if (exoPlayer.getTrackSelector() instanceof DefaultTrackSelector) {

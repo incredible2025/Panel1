@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../data/app_settings.dart';
 import 'playback_handle.dart';
 import 'player_tracks.dart';
+import '../data/playback_evidence.dart';
 
 /// Android LibVLC owns a texture and closes its media before releasing it.
 class VlcPlayback extends PlaybackHandle {
@@ -23,6 +24,16 @@ class VlcPlayback extends PlaybackHandle {
   final _ready = Completer<void>();
   Future<void>? _release;
   Map<dynamic, dynamic> _snapshot = const {};
+  @override
+  Future<Map<String, Object>> diagnostics() async => PlaybackEvidence.sanitize({
+    if (_snapshot['error'] == true) 'native_code': 'VLC_ENCOUNTERED_ERROR',
+    'cause': 'unknown',
+    'width': _snapshot['width'],
+    'height': _snapshot['height'],
+    'video_codec': (_snapshot['tracks'] as Map?)?['videoCodec'],
+    'audio_codec': (_snapshot['tracks'] as Map?)?['audioCodec'],
+    'fps': (_snapshot['tracks'] as Map?)?['fps'],
+  });
 
   @override
   Future<void> initialize() async {

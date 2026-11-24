@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 
 class PlaybackReports
 {
+    public const ERRORS = ['connection', 'decoder', 'timeout', 'certificate', 'buffering', 'green_screen', 'no_picture', 'pixelation', 'crash', 'unknown'];
+
     public const CATEGORIES = [
         'connection' => 'Connection or service error',
         'decoder' => 'Decoder or codec error',
@@ -19,12 +21,18 @@ class PlaybackReports
         'pixelation' => 'Pixelation reported by user',
         'crash' => 'Uncaught Android playback exception',
         'unknown' => 'Other playback error',
+        'started' => 'Playback attempt started',
+        'playing' => 'Playback progress observed',
+        'fallback' => 'Another player will be tried',
+        'ended' => 'Playback session closed',
+        'diagnosis' => 'Connection diagnosis attached',
     ];
 
-    public function query(?int $appId = null, int $days = 7): Builder
+    public function query(?int $appId = null, int $days = 7, bool $issuesOnly = true): Builder
     {
         return DB::table('playback_events')->where('created_at', '>=', now()->subDays($days))
-            ->when($appId !== null, fn ($query) => $query->where('managed_app_id', $appId));
+            ->when($appId !== null, fn ($query) => $query->where('managed_app_id', $appId))
+            ->when($issuesOnly, fn ($query) => $query->whereIn('category', self::ERRORS));
     }
 
     /** @return array{events: int, devices: int, groups: Collection<int, \stdClass>} */

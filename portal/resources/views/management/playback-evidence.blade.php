@@ -1,0 +1,12 @@
+<dl class="grid gap-3 sm:grid-cols-2">
+    @foreach(['native_code'=>'Native error code','http_status'=>'HTTP response','cause'=>'Failure classification','codec_string'=>'Codec profile string','bandwidth_bps'=>'Player bandwidth estimate in bits/second','video_codec'=>'Video codec','audio_codec'=>'Audio codec','decoder'=>'Decoder name','actual_decoding'=>'Actual decoding','width'=>'Video width','height'=>'Video height','fps'=>'Frames per second','bitrate'=>'Bitrate in bits/second','buffer_ms'=>'Media buffered in milliseconds','buffering_ms'=>'Buffering duration in milliseconds','dropped_frames'=>'Dropped frames','error_number'=>'Native error number','attempt'=>'Player attempt','stage'=>'Playback stage'] as $field=>$label)
+        @if(isset($evidence[$field]))<div><dt class="portal-muted text-xs">{{ $label }}</dt><dd class="mt-1 break-words text-sm">{{ $evidence[$field] }}</dd></div>@endif
+    @endforeach
+    @if(array_key_exists('first_frame',$evidence))<div><dt class="portal-muted text-xs">Video frame rendered</dt><dd>{{ $evidence['first_frame'] ? 'Observed' : 'Not observed at capture' }}</dd></div>@endif
+    @if(!empty($evidence['transports']))<div><dt class="portal-muted text-xs">Device connection snapshot</dt><dd>{{ implode(', ',$evidence['transports']) }}</dd></div>@endif
+    @foreach(['vpn'=>'VPN present','network_validated'=>'Android network validation','metered'=>'Metered connection'] as $field=>$label)@if(array_key_exists($field,$evidence))<div><dt class="portal-muted text-xs">{{ $label }}</dt><dd>{{ $evidence[$field] ? 'Yes' : 'No' }}</dd></div>@endif @endforeach
+</dl>
+@if(empty($evidence))<p class="portal-muted text-sm">This report includes no additional technical evidence.</p>@endif
+@if(!empty($evidence['device_clock_untrusted']))<p class="mt-3 text-sm text-amber-800 dark:text-amber-200">The device timestamp was outside the accepted window. Use the server receipt time and check the device clock.</p>@endif
+@if(!isset($evidence['actual_decoding']))<p class="portal-muted mt-3 text-xs">The actual decoder mode was unavailable. The requested decoding preference is shown separately.</p>@endif
+@if(!empty($evidence['checks']))<div class="mt-4 space-y-2">@foreach($evidence['checks'] as $check)<div class="rounded-lg border border-slate-200 p-3 text-sm dark:border-white/10"><strong>{{ ucfirst($check['stage']) }} · {{ ucfirst($check['status']) }}</strong><p class="portal-muted mt-1">{{ str_replace('_',' ',$check['code']) }} · {{ $check['elapsed_ms'] }} ms</p></div>@endforeach</div>@endif

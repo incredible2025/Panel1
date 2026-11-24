@@ -16,6 +16,7 @@ Route::post('/owner-setup/{token}', [OwnerSetupController::class, 'store'])->whe
 Route::middleware(['auth', 'verified', RequireTwoFactor::class])->group(function () {
     Route::get('/dashboard', [ManagementController::class, 'index'])->name('dashboard');
     Route::get('/playback', [PlaybackReportController::class, 'index'])->name('playback.index');
+    Route::get('/playback/sessions/{device}/{session}', [PlaybackReportController::class, 'session'])->whereUuid('session')->name('playback.session');
     Route::get('/apps/{managedApp}/logo', [BrandWizardController::class, 'currentLogo'])->name('brands.logo.current');
     Route::get('/health', [DashboardOperationsController::class, 'health'])->name('operations.health');
     Route::get('/bulk', [DashboardOperationsController::class, 'bulk'])->name('operations.bulk');

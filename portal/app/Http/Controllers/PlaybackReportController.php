@@ -132,6 +132,7 @@ class PlaybackReportController extends Controller
         return view('management.playback', ['apps' => ManagedApp::orderBy('name')->get(), 'appId' => $appId, 'days' => $days,
             'summary' => ['events' => (clone $issues)->count(), 'devices' => (clone $issues)->distinct()->count('app_device_id')],
             'entries' => $entries, 'filters' => $filters, 'categories' => PlaybackReports::CATEGORIES,
+            'diagnoses' => ! empty($filters['reference']) ? (clone $events)->where('category', 'diagnosis')->orderByDesc('id')->limit(20)->get() : collect(),
             'versions' => $reports->query($appId, 30, false)->distinct()->orderByDesc('build')->get(['version', 'build']),
             'models' => $reports->query($appId, 30, false)->distinct()->orderBy('device_model')->pluck('device_model')]);
     }

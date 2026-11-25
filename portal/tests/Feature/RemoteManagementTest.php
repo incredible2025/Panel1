@@ -222,7 +222,7 @@ class RemoteManagementTest extends TestCase
         $event = $this->richEvent($session, 1, 'diagnosis', ['checks' => [['stage' => 'dns', 'code' => 'DNS_TIMEOUT', 'status' => 'failed', 'elapsed_ms' => 8000]]]);
         $event = array_replace($event, ['source' => 'user', 'engine' => 'none', 'decoding' => 'none', 'kind' => 'none']);
         $this->withToken(str_repeat('a', 64))->postJson('/api/v1/apps/example-player/playback', $event)->assertNoContent();
-        $this->actingAs($this->owner)->get(route('playback.index', ['reference' => 'D-'.strtoupper(substr($session, 0, 8))]))->assertOk()->assertDontSee('Playback progress observed');
+        $this->actingAs($this->owner)->get(route('playback.index', ['reference' => 'D-'.strtoupper(substr($session, 0, 8))]))->assertOk()->assertSee('Open submitted diagnosis')->assertSee('Example TV')->assertDontSee('Playback progress observed');
         $device = AppDevice::first();
         $this->get(route('playback.session', [$device->id, $session]))->assertOk()->assertSee('DNS TIMEOUT');
         $event['details']['checks'][0]['message'] = 'private';

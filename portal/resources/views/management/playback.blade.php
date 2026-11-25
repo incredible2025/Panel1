@@ -31,5 +31,12 @@
     @empty<section class="portal-card p-6">No playback reports in this period match these filters.</section>@endforelse
     {{ $entries->links() }}
     </section>
+    @if($diagnoses->isNotEmpty())
+    <section class="space-y-3"><flux:heading size="lg">User-submitted connection diagnosis</flux:heading>
+        @foreach($diagnoses as $diagnosis)
+            @if($diagnosis->session_id)<a class="portal-card block p-4 text-cyan-700 dark:text-cyan-300" href="{{ route('playback.session',[$diagnosis->app_device_id,$diagnosis->session_id]) }}">{{ $diagnosis->device_model }} · Open submitted diagnosis · D-{{ strtoupper(substr($diagnosis->session_id,0,8)) }}</a>@endif
+        @endforeach
+    </section>
+    @endif
 </div>
 </x-layouts::app>

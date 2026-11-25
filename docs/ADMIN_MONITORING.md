@@ -10,7 +10,7 @@ The dashboard lists errors only, with line username, device, player, version and
 
 Player options includes Report picture problem for green screens, audio without picture and pixelation. The user confirms sending the device report. These issues are labelled as user reports in the manager.
 
-Connection diagnosis includes a user-confirmed Send to support action on mobile and TV. It transmits check codes, outcomes and timings from the affected device. Diagnostic prose, addresses and account data stay local. A support reference links the diagnosis to playback when opened from the player. Standalone diagnoses receive their own reference and do not enter playback-start statistics.
+Connection diagnosis includes a user-confirmed Send to support action on mobile and TV. It transmits check codes, outcomes and timings from the affected device. Diagnostic prose, addresses and account data stay local. A support reference links the diagnosis to playback when opened from the player. Standalone diagnoses receive their own reference and can be opened by reference lookup without appearing in the default error list.
 
 An uncaught Android Java exception while a player is active preserves a fixed context record, original occurrence time and session ID. Fixed codes distinguish out-of-memory, illegal-state, linkage and other uncaught exceptions. A later foreground launch reports the original app version and clears the record after acknowledgement. Records expire after seven days. Native signals, operating-system kills and failures before handler installation may produce no report. Context does not prove the player caused a crash.
 

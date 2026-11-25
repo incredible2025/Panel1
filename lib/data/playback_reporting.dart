@@ -36,6 +36,9 @@ enum PlaybackIssue {
 
   bool get manual =>
       [greenScreen, noPicture, pixelation, diagnosis].contains(this);
+
+  bool get isError =>
+      ![started, playing, fallback, ended, diagnosis].contains(this);
 }
 
 class PlaybackReportSession {
@@ -101,12 +104,14 @@ class PlaybackReporting {
     String? previousVersion,
     int? previousBuild,
     String? sessionId,
+    String? lineUsername,
     int? sequence,
     int? elapsedMs,
     Map<String, Object> details = const {},
     DateTime? occurredAt,
   }) async {
-    if (_disposed ||
+    if (!issue.isError ||
+        _disposed ||
         _pending >= 24 ||
         !['live', 'movie', 'series', 'catchup'].contains(kind)) {
       return false;
@@ -156,6 +161,7 @@ class PlaybackReporting {
                 'category': issue.code,
                 'source': issue.manual ? 'user' : 'automatic',
                 'schema_version': 2,
+                if (validUsername(lineUsername)) 'line_username': lineUsername,
                 if (sessionId != null) 'session_id': sessionId,
                 if (sequence != null) 'sequence': sequence,
                 if (elapsedMs != null)
@@ -216,6 +222,12 @@ class PlaybackReporting {
     }
   }
 
+  static bool validUsername(String? value) =>
+      value != null &&
+      value.isNotEmpty &&
+      value.runes.length <= 128 &&
+      !RegExp(r'[\x00-\x1f\x7f]').hasMatch(value);
+
   Future<bool> sendDiagnosis(
     DiagnosticReport report, {
     String? sessionId,
@@ -274,6 +286,7 @@ class PlaybackReporting {
 
   Future<void> context({
     String? sessionId,
+    String? lineUsername,
     PlayerEngine? engine,
     DecodingMode? decoding,
     String? kind,
@@ -287,6 +300,7 @@ class PlaybackReporting {
                 'engine': engine.name,
                 'decoding': decoding?.name,
                 if (sessionId != null) 'session_id': sessionId,
+                if (validUsername(lineUsername)) 'line_username': lineUsername,
                 'kind': kind,
               },
       );
@@ -322,6 +336,7 @@ class PlaybackReporting {
         previousVersion: data['version'] as String?,
         previousBuild: data['build'] as int?,
         sessionId: data['session_id'] as String?,
+        lineUsername: data['line_username'] as String?,
         occurredAt: data['occurred_ms'] is int
             ? DateTime.fromMillisecondsSinceEpoch(
                 data['occurred_ms'] as int,

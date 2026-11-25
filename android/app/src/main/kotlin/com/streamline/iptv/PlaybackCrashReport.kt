@@ -25,6 +25,7 @@ object PlaybackCrashReport {
                         .putString("decoding", state["decoding"])
                         .putString("kind", state["kind"])
                         .putString("session_id", state["session_id"])
+                        .putString("line_username", state["line_username"])
                         .putString("native_code", when(error) {
                             is OutOfMemoryError -> "JAVA_OUT_OF_MEMORY"
                             is IllegalStateException -> "JAVA_ILLEGAL_STATE"
@@ -62,6 +63,7 @@ object PlaybackCrashReport {
             "decoding" to preferences.getString("decoding", null), "kind" to preferences.getString("kind", null),
             "version" to preferences.getString("version", "0"), "build" to preferences.getInt("build", 1),
             "session_id" to preferences.getString("session_id", null), "native_code" to preferences.getString("native_code", null),
+            "line_username" to preferences.getString("line_username", null),
             "occurred_ms" to preferences.getLong("time",0))
     }
 

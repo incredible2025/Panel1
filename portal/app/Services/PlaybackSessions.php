@@ -2,8 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
 
 class PlaybackSessions
 {
@@ -49,29 +50,6 @@ class PlaybackSessions
         return $query;
     }
 
-    public function sessions(Builder $events): Builder
-    {
-        $errors = "'".implode("','", PlaybackReports::ERRORS)."'";
-
-        return (clone $events)->whereNotNull('session_id')->select('app_device_id', 'session_id', 'managed_app_id')
-            ->selectRaw('max(version) as version, max(build) as build, max(device_model) as device_model, min(created_at) as first_received, max(created_at) as last_received')
-            ->selectRaw("sum(case when category='started' then 1 else 0 end) as starts")
-            ->selectRaw("sum(case when category in ($errors) then 1 else 0 end) as errors")
-            ->selectRaw("max(case when category in ($errors) then coalesce(sequence,case when category='crash' then 1000001 else 0 end) end) as error_sequence")
-            ->selectRaw("max(case when category='playing' then sequence end) as playing_sequence")
-            ->groupBy('app_device_id', 'session_id', 'managed_app_id');
-    }
-
-    /** @return array{sessions:int, affected:int, recovered:int, playing:int} */
-    public function statistics(Builder $events): array
-    {
-        $rows = DB::query()->fromSub($this->sessions($events), 'sessions')->where('starts', '>', 0);
-
-        return ['sessions' => (clone $rows)->count(), 'affected' => (clone $rows)->where('errors', '>', 0)->count(),
-            'playing' => (clone $rows)->whereNotNull('playing_sequence')->count(),
-            'recovered' => (clone $rows)->where('errors', '>', 0)->whereColumn('playing_sequence', '>', 'error_sequence')->count()];
-    }
-
     /** @return array<string, mixed> */
     public static function details(?string $value): array
     {
@@ -83,5 +61,17 @@ class PlaybackSessions
     public static function installation(int $appId, int $deviceId): string
     {
         return 'I-'.strtoupper(substr(hash_hmac('sha256', $appId.'/'.$deviceId, config('app.key')), 0, 10));
+    }
+
+    public static function username(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($value);
+        } catch (DecryptException) {
+            return null;
+        }
     }
 }

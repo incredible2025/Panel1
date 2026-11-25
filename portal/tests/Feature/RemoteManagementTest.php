@@ -172,31 +172,32 @@ class RemoteManagementTest extends TestCase
             'elapsed_ms' => $sequence * 1000, 'occurred_at' => now()->toIso8601String(), 'category' => $category, 'engine' => $engine, 'details' => $details]);
     }
 
-    public function test_rich_timeline_orders_events_and_counts_recovery_across_players(): void
+    public function test_only_errors_are_retained_and_usernames_are_private(): void
     {
         $this->beat();
         $session = (string) Str::uuid();
         $url = '/api/v1/apps/example-player/playback';
-        foreach ([
-            $this->richEvent($session, 2, 'decoder', ['cause' => 'decoder', 'native_code' => 'ERROR_CODE_DECODER_INIT_FAILED', 'video_codec' => 'hevc']),
-            $this->richEvent($session, 1, 'started'),
-            $this->richEvent($session, 3, 'playing', ['actual_decoding' => 'software'], 'compatibility'),
-        ] as $event) {
-            $this->withToken(str_repeat('a', 64))->postJson($url, $event)->assertNoContent();
+        foreach (['started', 'playing', 'fallback', 'ended'] as $index => $category) {
+            $this->withToken(str_repeat('a', 64))->postJson($url, $this->richEvent($session, $index + 1, $category))->assertNoContent();
         }
-        $this->postJson($url, $this->richEvent($session, 2, 'decoder'))->assertNoContent();
-        $this->assertDatabaseCount('playback_events', 3);
-        $this->actingAs($this->owner)->get(route('playback.index', ['engine' => 'native', 'codec' => 'hevc', 'outcome' => 'recovered']))
-            ->assertOk()->assertSee('Recovery observed')->assertSee('ERROR_CODE_DECODER_INIT_FAILED');
-        $sessions = app(PlaybackSessions::class);
-        $stats = $sessions->statistics($sessions->events($this->brand->id, 7, ['codec' => 'hevc', 'engine' => 'native']));
-        $this->assertSame(['sessions' => 1, 'affected' => 1, 'playing' => 1, 'recovered' => 1], $stats);
+        $this->assertDatabaseCount('playback_events', 0);
+        $event = $this->richEvent($session, 5, 'decoder', ['cause' => 'decoder', 'native_code' => 'ERROR_CODE_DECODER_INIT_FAILED']);
+        $event['line_username'] = '<example-line>';
+        $this->postJson($url, $event)->assertNoContent();
+        $this->postJson($url, $event)->assertNoContent();
+        $this->assertDatabaseCount('playback_events', 1);
+        $stored = DB::table('playback_events')->first();
+        $this->assertNotSame('<example-line>', $stored->line_username);
+        $this->assertSame('<example-line>', PlaybackSessions::username($stored->line_username));
+        $this->actingAs($this->owner)->get(route('playback.index'))->assertOk()->assertSee('&lt;example-line&gt;', false)->assertDontSee('Playback progress observed')->assertDontSee('Sessions reporting errors');
         $device = AppDevice::first();
-        $page = $this->get(route('playback.session', [$device->id, $session]))->assertOk();
-        $page->assertSeeInOrder(['Playback attempt started', 'Decoder or codec error', 'Playback progress observed']);
+        $this->get(route('playback.session', [$device->id, $session]))->assertOk()->assertSee('&lt;example-line&gt;', false)->assertDontSee('Playback attempt started')->assertSee('Decoder or codec error');
         $this->beat('b');
         $other = AppDevice::where('secret_hash', hash('sha256', str_repeat('b', 64)))->first();
         $this->get(route('playback.session', [$other->id, $session]))->assertNotFound();
+        $event['event_id'] = (string) Str::uuid();
+        $event['line_username'] = "bad\nname";
+        $this->postJson($url, $event)->assertUnprocessable();
     }
 
     public function test_rich_evidence_rejects_private_payloads_and_non_error_events_do_not_raise_alerts(): void
@@ -221,7 +222,7 @@ class RemoteManagementTest extends TestCase
         $event = $this->richEvent($session, 1, 'diagnosis', ['checks' => [['stage' => 'dns', 'code' => 'DNS_TIMEOUT', 'status' => 'failed', 'elapsed_ms' => 8000]]]);
         $event = array_replace($event, ['source' => 'user', 'engine' => 'none', 'decoding' => 'none', 'kind' => 'none']);
         $this->withToken(str_repeat('a', 64))->postJson('/api/v1/apps/example-player/playback', $event)->assertNoContent();
-        $this->actingAs($this->owner)->get(route('playback.index', ['reference' => 'D-'.strtoupper(substr($session, 0, 8))]))->assertOk()->assertSee('Example TV');
+        $this->actingAs($this->owner)->get(route('playback.index', ['reference' => 'D-'.strtoupper(substr($session, 0, 8))]))->assertOk()->assertDontSee('Playback progress observed');
         $device = AppDevice::first();
         $this->get(route('playback.session', [$device->id, $session]))->assertOk()->assertSee('DNS TIMEOUT');
         $event['details']['checks'][0]['message'] = 'private';

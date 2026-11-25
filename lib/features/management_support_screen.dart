@@ -87,7 +87,7 @@ class _ManagementSupportScreenState
         final support = manager.current.support;
         final activity = manager.activity;
         const privacy =
-            'Anonymous activity reporting counts this installation while the app is open. It sends the app version and applied settings revision. Account credentials, viewing history and hardware identifiers are never included. Reporting stops in the background; inactive records expire after 30 days.';
+            'Activity reporting counts this installation while the app is open and sends the app version and applied settings revision. Playback errors additionally include your line username and technical details to help support identify the affected account. Passwords, server addresses, viewing titles and hardware identifiers are excluded. Normal playback is not logged. Reports expire after 30 days.';
         final code = _code != null && _expires!.isAfter(DateTime.now())
             ? _code
             : null;

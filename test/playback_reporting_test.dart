@@ -88,6 +88,54 @@ void main() {
   );
 
   test(
+    'healthy lifecycle events send nothing and errors identify only the line username',
+    () async {
+      final requests = <http.Request>[];
+      final reporting = PlaybackReporting(
+        presence(),
+        clientFactory: () => MockClient((request) async {
+          requests.add(request);
+          return http.Response('', 204);
+        }),
+      );
+      addTearDown(reporting.dispose);
+      for (final issue in [
+        PlaybackIssue.started,
+        PlaybackIssue.playing,
+        PlaybackIssue.fallback,
+        PlaybackIssue.ended,
+      ]) {
+        expect(
+          await reporting.report(
+            issue,
+            engine: PlayerEngine.native,
+            decoding: DecodingMode.automatic,
+            kind: 'live',
+            lineUsername: 'example-line',
+          ),
+          isFalse,
+        );
+      }
+      expect(requests, isEmpty);
+      expect(
+        await reporting.report(
+          PlaybackIssue.connection,
+          engine: PlayerEngine.native,
+          decoding: DecodingMode.automatic,
+          kind: 'live',
+          lineUsername: 'example-line',
+        ),
+        isTrue,
+      );
+      final body = jsonDecode(requests.single.body) as Map;
+      expect(body['line_username'], 'example-line');
+      expect(body.containsKey('password'), isFalse);
+      expect(body.containsKey('server_url'), isFalse);
+      expect(PlaybackReporting.validUsername('bad\nname'), isFalse);
+    },
+  );
+
+  test(
     'manual reports stay distinct and network rejection stays nonfatal',
     () async {
       http.Request? sent;

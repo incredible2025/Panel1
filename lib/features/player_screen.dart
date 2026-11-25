@@ -472,6 +472,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             decoding: _activeProfile.decoding,
             kind: _reportKind,
             sessionId: _supportSession?.id,
+            lineUsername: _session?.credentials.username,
           ) ??
           Future.value(),
     );
@@ -1171,7 +1172,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }) {
     final reporting = _reporting;
     final session = _supportSession;
-    if (reporting == null || session == null) return;
+    if (!issue.isError || reporting == null || session == null) return;
     final sequence = ++session.sequence,
         elapsed = session.clock.elapsedMilliseconds,
         attempt = session.attempt;
@@ -1195,6 +1196,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               decoding: decoding,
               kind: kind,
               sessionId: session.id,
+              lineUsername: _session?.credentials.username,
               sequence: sequence,
               elapsedMs: elapsed,
               details: {
@@ -1231,7 +1233,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       context,
       'Send playback report?',
       const Text(
-        'Send the problem type, device model, Android version, player and app version to app support. Your login details and viewing titles are excluded.',
+        'Send the problem type, line username, device model, Android version, player and app version to app support. Your password, server address and viewing titles are excluded.',
       ),
       actionLabel: 'Send report',
     );
@@ -1242,6 +1244,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       decoding: _activeProfile.decoding,
       kind: _reportKind,
       sessionId: _supportSession?.id,
+      lineUsername: _session?.credentials.username,
       sequence: _supportSession == null ? null : ++_supportSession!.sequence,
       elapsedMs: _supportSession?.clock.elapsedMilliseconds,
       details:

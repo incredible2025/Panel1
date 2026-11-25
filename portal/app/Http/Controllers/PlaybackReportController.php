@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -29,6 +30,7 @@ class PlaybackReportController extends Controller
         RateLimiter::hit($key, 60);
         $data = $request->validate([
             'event_id' => ['required', 'uuid'],
+            'line_username' => ['nullable', 'string', 'max:128', 'not_regex:/[\x00-\x1f\x7f]/u'],
             'version' => ['required', 'string', 'max:80', 'regex:/^[0-9A-Za-z.+-]+$/D'],
             'build' => ['required', 'integer', 'min:1', 'max:2100000000'],
             'device_model' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9 _()-]+$/D'],
@@ -78,6 +80,15 @@ class PlaybackReportController extends Controller
         abort_unless(($data['source'] === 'user') === $manual, 422);
         abort_if($data['category'] !== 'diagnosis' && in_array('none', [$data['engine'], $data['decoding'], $data['kind']], true), 422);
         abort_if(isset($data['details']['checks']) && $data['category'] !== 'diagnosis', 422);
+        // Acknowledge older clients without retaining healthy lifecycle events.
+        if (! in_array($data['category'], [...PlaybackReports::ERRORS, 'diagnosis'], true)) {
+            return response()->noContent()->header('Cache-Control', 'no-store');
+        }
+        if (isset($data['line_username']) && $data['line_username'] !== '') {
+            $data['line_username'] = Crypt::encryptString($data['line_username']);
+        } else {
+            unset($data['line_username']);
+        }
         if (isset($data['occurred_at'])) {
             $occurred = Carbon::parse($data['occurred_at'])->utc();
             if ($occurred->lt(now()->subDays(7)) || $occurred->gt(now()->addMinutes(5))) {
@@ -103,26 +114,16 @@ class PlaybackReportController extends Controller
             'version' => ['nullable', 'string', 'max:80', 'regex:/^[0-9A-Za-z.+-]+$/D'],
             'model' => ['nullable', 'string', 'max:80', 'regex:/^[A-Za-z0-9 _()-]+$/D'],
             'codec' => ['nullable', Rule::in(['h264', 'hevc', 'av1', 'vp8', 'vp9', 'mpeg2', 'mpeg4', 'unknown'])],
-            'outcome' => ['nullable', Rule::in(['recovered', 'unrecovered'])],
             'reference' => ['nullable', 'string', 'regex:/^(?:D-[A-Fa-f0-9]{8}|[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12})$/D'],
         ]);
         $appId = isset($filters['app']) ? (int) $filters['app'] : null;
         $days = (int) ($filters['days'] ?? 7);
         $sessions = app(PlaybackSessions::class);
         $events = $sessions->events($appId, $days, array_filter($filters, fn ($value) => $value !== null && $value !== ''));
-        if (! empty($filters['outcome'])) {
-            $matching = DB::query()->fromSub($sessions->sessions($events), 'outcomes')->where('errors', '>', 0);
-            if ($filters['outcome'] === 'recovered') {
-                $matching->whereColumn('playing_sequence', '>', 'error_sequence');
-            } else {
-                $matching->where(fn ($q) => $q->whereNull('playing_sequence')->orWhereColumn('playing_sequence', '<=', 'error_sequence'));
-            }
-            $events->whereIn(DB::raw("app_device_id || '/' || session_id"), $matching->selectRaw("app_device_id || '/' || session_id"));
-        }
-        $stats = $sessions->statistics($events);
         $issues = (clone $events)->whereIn('category', PlaybackReports::ERRORS);
         $entries = (clone $issues)->orderByDesc('id')->paginate(20)->withQueryString();
         foreach ($entries as $entry) {
+            $entry->username = PlaybackSessions::username($entry->line_username);
             $entry->evidence = PlaybackSessions::details($entry->details);
             $entry->guidance = PlaybackGuidance::describe($entry->category, $entry->evidence);
             $entry->installation = PlaybackSessions::installation($entry->managed_app_id, $entry->app_device_id);
@@ -130,18 +131,18 @@ class PlaybackReportController extends Controller
 
         return view('management.playback', ['apps' => ManagedApp::orderBy('name')->get(), 'appId' => $appId, 'days' => $days,
             'summary' => ['events' => (clone $issues)->count(), 'devices' => (clone $issues)->distinct()->count('app_device_id')],
-            'stats' => $stats, 'entries' => $entries, 'filters' => $filters, 'categories' => PlaybackReports::CATEGORIES,
-            'recentSessions' => $sessions->sessions($events)->orderByDesc('last_received')->limit(15)->get(),
+            'entries' => $entries, 'filters' => $filters, 'categories' => PlaybackReports::CATEGORIES,
             'versions' => $reports->query($appId, 30, false)->distinct()->orderByDesc('build')->get(['version', 'build']),
             'models' => $reports->query($appId, 30, false)->distinct()->orderBy('device_model')->pluck('device_model')]);
     }
 
     public function session(AppDevice $device, string $session): View
     {
-        $query = DB::table('playback_events')->where('app_device_id', $device->id)->where('session_id', $session)->where('created_at', '>=', now()->subDays(30));
+        $query = DB::table('playback_events')->where('app_device_id', $device->id)->where('session_id', $session)->whereIn('category', [...PlaybackReports::ERRORS, 'diagnosis'])->where('created_at', '>=', now()->subDays(30));
         abort_unless((clone $query)->exists(), 404);
         $events = (clone $query)->orderByRaw('coalesce(sequence, case when category=\'crash\' then 1000001 else 1000002 end)')->orderBy('id')->limit(200)->get();
         foreach ($events as $event) {
+            $event->username = PlaybackSessions::username($event->line_username);
             $event->evidence = PlaybackSessions::details($event->details);
             $event->guidance = PlaybackGuidance::describe($event->category, $event->evidence);
         }

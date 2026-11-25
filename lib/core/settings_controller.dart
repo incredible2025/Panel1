@@ -23,6 +23,7 @@ class SettingsController extends StateNotifier<AsyncValue<AppSettings>> {
   final String? account;
   late Future<void> ready;
   Future<void> _writes = Future.value();
+  Future<void> flush() => _writes;
   String? saveError;
   AppSettings get current => state.asData?.value ?? const AppSettings();
   Future<void> reload() async {

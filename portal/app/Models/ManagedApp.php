@@ -13,7 +13,7 @@ class ManagedApp extends Model
 
     protected function casts(): array
     {
-        return ['draft' => 'array', 'revision' => 'integer', 'draft_version' => 'integer'];
+        return ['draft' => 'array', 'brand_spec' => 'array', 'revision' => 'integer', 'draft_version' => 'integer'];
     }
 
     public function revisions(): HasMany

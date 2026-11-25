@@ -45,7 +45,9 @@ final class StreamlineTracks implements EventChannel.StreamHandler {
         Number id = call.argument("playerId");
         if (id == null) throw new IllegalArgumentException();
         ExoPlayer player = players.apply(id.longValue());
-        if (call.method.equals("snapshot")) {
+        if (call.method.equals("diagnostics")) {
+          result.success(PlaybackDiagnostics.snapshot(player));
+        } else if (call.method.equals("snapshot")) {
           result.success(snapshot(player));
         } else if (call.method.equals("select")) {
           String type = call.argument("type");

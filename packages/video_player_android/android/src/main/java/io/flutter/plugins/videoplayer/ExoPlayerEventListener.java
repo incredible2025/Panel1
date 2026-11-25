@@ -83,7 +83,7 @@ public abstract class ExoPlayerEventListener implements Player.Listener {
       exoPlayer.seekToDefaultPosition();
       exoPlayer.prepare();
     } else {
-      events.onError("VideoError", "Video player had error " + error, null);
+      events.onError("VideoError", "STREAMLINE:" + new org.json.JSONObject(PlaybackDiagnostics.snapshot(exoPlayer)), null);
     }
   }
 

@@ -273,6 +273,7 @@ class VlcPlaybackBridge(
                 "audioAuto" to false, "videoCodec" to (video?.codec ?: ""),
                 "audioCodec" to (currentAudio?.codec ?: ""),
                 "audioChannels" to (currentAudio?.channels ?: 0),
+                "fps" to video?.let { if (it.frameRateDen > 0) it.frameRateNum.toDouble() / it.frameRateDen else null },
             )
             return trackSnapshot
         }

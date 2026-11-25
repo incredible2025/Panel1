@@ -18,6 +18,7 @@ import '../widgets/tv_reading_dialog.dart';
 import '../data/local_store.dart';
 import '../data/models.dart';
 import '../data/provider_connections.dart';
+import '../data/playback_reporting.dart';
 import 'connection_diagnosis_screen.dart';
 
 /// Keeps every seek within a known, finite on-demand timeline.
@@ -72,6 +73,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   final _recordedLiveControllers = Expando<bool>('recorded live controllers');
   late final LocalStore _store;
   late final Session? _session;
+  PlaybackReporting? _reporting;
+  PlaybackReportSession? _supportSession;
+  Duration _attemptStart = Duration.zero;
   late final List<MediaItem> _channels;
   late MediaItem _item;
   PlaybackHandle? _controller;
@@ -199,6 +203,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     _store = ref.read(storeProvider);
     _session = ref.read(sessionProvider);
+    _reporting = ref.read(managedConfigurationProvider)?.activity?.playback;
     _item = widget.item;
     _episode = widget.episode;
     _resumePosition = widget.startPosition;
@@ -365,7 +370,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     Episode? episode,
     PlaybackProfile? profile,
     bool preservePlayer = false,
+    bool continueReport = false,
   }) async {
+    if (_reporting != null &&
+        (_supportSession == null ||
+            _supportSession!.ended ||
+            (profile == null && !preservePlayer && !continueReport))) {
+      _finishReport();
+      _supportSession = PlaybackReportSession();
+    }
+    _supportSession?.playingReported = false;
+    _supportSession?.attempt++;
+    _attemptStart = startPosition;
     if (profile == null && !preservePlayer) {
       _triedPlayers.clear();
       _playerAttempts.clear();
@@ -449,6 +465,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 desktop: ref.read(isDesktopProvider),
               ).first);
     _engine = _activeProfile.engine;
+    _reportIssue(PlaybackIssue.started);
+    unawaited(
+      _reporting?.context(
+            engine: _engine,
+            decoding: _activeProfile.decoding,
+            kind: _reportKind,
+            sessionId: _supportSession?.id,
+            lineUsername: _session?.credentials.username,
+          ) ??
+          Future.value(),
+    );
     _triedPlayers.add(_activeProfile.key);
     if (!_movieOpened && item.kind == MediaKind.movie && _session != null) {
       _movieOpened = true;
@@ -503,6 +530,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted || generation != _generation || _exiting) return;
       await controller.attachTracks(_tracks, _settings);
       if (!mounted || generation != _generation || _exiting) return;
+      if (controller.value.position > _attemptStart) {
+        _attemptStart = controller.value.position;
+      }
       if (_appActive && _wantsPlayback) {
         await controller.play();
       } else {
@@ -516,6 +546,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Native playback exceptions often include the complete stream URI,
       // including Xtream credentials. Never expose those exception strings.
       if (mounted && generation == _generation && !_exiting) {
+        if (controller == null) {
+          _reportIssue(
+            error is TimeoutException
+                ? PlaybackIssue.timeout
+                : PlaybackIssue.unknown,
+          );
+        }
         setState(() {
           _loading = false;
           _playbackError = isCertificateFailure(error)
@@ -551,6 +588,27 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ? failed.failureSummary
         : playbackFailure(error?.toString());
     _lastPlayerFailure = reason;
+    if (mounted &&
+        generation == _generation &&
+        !_exiting &&
+        _appActive &&
+        _wantsPlayback) {
+      _reportIssue(
+        error is TimeoutException
+            ? PlaybackIssue.timeout
+            : error != null && isCertificateFailure(error)
+            ? PlaybackIssue.certificate
+            : reason == 'Decoder or codec error'
+            ? PlaybackIssue.decoder
+            : reason == 'Connection or service error'
+            ? PlaybackIssue.connection
+            : PlaybackIssue.unknown,
+        player: failed,
+        extra: error is TimeoutException
+            ? {'native_code': 'INITIALIZATION_TIMEOUT', 'cause': 'timeout'}
+            : const {},
+      );
+    }
     if (!mounted ||
         generation != _generation ||
         _exiting ||
@@ -568,6 +626,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       desktop: ref.read(isDesktopProvider),
     ).where((candidate) => !_triedPlayers.contains(candidate.key)).firstOrNull;
     if (next == null) return false;
+    _reportIssue(PlaybackIssue.fallback, player: failed);
     _fallbackPending = true;
     _playerAttempts.add(
       '${_activeProfile.label} (${_activeProfile.decoding.name}) · $reason',
@@ -624,6 +683,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!mounted || _exiting) return;
     final value = _controller?.value;
     if (value == null) return;
+    if (!_loading &&
+        _appActive &&
+        _wantsPlayback &&
+        value.isPlaying &&
+        !value.isBuffering &&
+        !value.hasError &&
+        value.position > _attemptStart + const Duration(seconds: 1) &&
+        _supportSession?.playingReported == false) {
+      _supportSession!.playingReported = true;
+      _reportIssue(PlaybackIssue.playing);
+    }
     if (_lastPlaying != value.isPlaying ||
         _lastBuffering != value.isBuffering) {
       _lastPlaying = value.isPlaying;
@@ -686,6 +756,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _pauseAndSave({bool disconnect = false}) async {
+    _bufferingSince = null;
     _wantsPlayback = false;
     _retryTimer?.cancel();
     _cancelNext();
@@ -694,6 +765,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // while the native pause request is still in flight.
     final saved = _persistProgress();
     if (disconnect) {
+      _finishReport();
+      _bufferingSince = null;
+      unawaited(_reporting?.context() ?? Future.value());
       _generation++;
       _cancelInitialization();
       if (controller != null) {
@@ -890,11 +964,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         !_wantsPlayback ||
         value == null ||
         value.isCompleted) {
+      _bufferingSince = null;
       return;
     }
     if (value.isBuffering) {
       _bufferingSince ??= DateTime.now();
       if (DateTime.now().difference(_bufferingSince!).inSeconds >= 20) {
+        _reportIssue(
+          PlaybackIssue.buffering,
+          extra: {
+            'buffering_ms': DateTime.now()
+                .difference(_bufferingSince!)
+                .inMilliseconds,
+          },
+        );
         _scheduleReconnect();
         if (mounted) {
           setState(() => _playbackError = 'The stream stalled. Reconnecting…');
@@ -935,7 +1018,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           generation != _generation) {
         return;
       }
-      unawaited(_open(_item, startPosition: position));
+      unawaited(_open(_item, startPosition: position, continueReport: true));
     });
   }
 
@@ -1056,6 +1139,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               : 'Compatibility'}',
       if (_isLive) 'channels': 'Switch channel',
       'info': 'Playback diagnostics',
+      if (_reporting != null) 'report': 'Report picture problem',
     });
     if (!mounted || _exiting) return;
     if (action == 'engine') {
@@ -1064,9 +1148,119 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await _chooseChannel();
     } else if (action == 'info') {
       await _diagnostics();
+    } else if (action == 'report') {
+      await _reportPictureProblem();
     }
     _menuOpen = false;
     _showControls();
+  }
+
+  String get _reportKind =>
+      widget.catchupProgramme != null ? 'catchup' : _item.kind.name;
+
+  void _finishReport() {
+    final session = _supportSession;
+    if (session == null || session.ended) return;
+    session.ended = true;
+    _reportIssue(PlaybackIssue.ended);
+  }
+
+  void _reportIssue(
+    PlaybackIssue issue, {
+    PlaybackHandle? player,
+    Map<String, Object> extra = const {},
+  }) {
+    final reporting = _reporting;
+    final session = _supportSession;
+    if (!issue.isError || reporting == null || session == null) return;
+    final sequence = ++session.sequence,
+        elapsed = session.clock.elapsedMilliseconds,
+        attempt = session.attempt;
+    final engine = _engine,
+        decoding = _activeProfile.decoding,
+        kind = _reportKind;
+    final controller = player ?? _controller;
+    final evidence =
+        controller?.diagnostics().timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () => const <String, Object>{},
+        ) ??
+        Future.value(const <String, Object>{});
+    unawaited(
+      evidence
+          .catchError((Object _) => const <String, Object>{})
+          .then(
+            (data) => reporting.report(
+              issue,
+              engine: engine,
+              decoding: decoding,
+              kind: kind,
+              sessionId: session.id,
+              lineUsername: _session?.credentials.username,
+              sequence: sequence,
+              elapsedMs: elapsed,
+              details: {
+                ...data,
+                ...extra,
+                'attempt': attempt,
+                'stage': issue == PlaybackIssue.started
+                    ? 'opening'
+                    : issue == PlaybackIssue.playing
+                    ? 'playing'
+                    : issue == PlaybackIssue.buffering
+                    ? 'buffering'
+                    : issue == PlaybackIssue.ended
+                    ? 'stopped'
+                    : 'recovering',
+              },
+            ),
+          ),
+    );
+  }
+
+  Future<void> _reportPictureProblem() async {
+    final choice = await showTvMenu(context, 'Report picture problem', {
+      'green_screen': 'Green screen',
+      'no_picture': 'Audio with no picture',
+      'pixelation': 'Pixelated picture',
+    });
+    if (!mounted || choice == null || _reporting == null) return;
+    final issue = PlaybackIssue.values
+        .where((issue) => issue.code == choice)
+        .firstOrNull;
+    if (issue == null) return;
+    final confirmed = await showTvReadingDialog(
+      context,
+      'Send playback report?',
+      const Text(
+        'Send the problem type, line username, device model, Android version, player and app version to app support. Your password, server address and viewing titles are excluded.',
+      ),
+      actionLabel: 'Send report',
+    );
+    if (confirmed != true || !mounted || _exiting) return;
+    final sent = await _reporting!.report(
+      issue,
+      engine: _engine,
+      decoding: _activeProfile.decoding,
+      kind: _reportKind,
+      sessionId: _supportSession?.id,
+      lineUsername: _session?.credentials.username,
+      sequence: _supportSession == null ? null : ++_supportSession!.sequence,
+      elapsedMs: _supportSession?.clock.elapsedMilliseconds,
+      details:
+          await (_controller?.diagnostics() ??
+              Future.value(const <String, Object>{})),
+    );
+    if (!mounted) return;
+    await showTvReadingDialog(
+      context,
+      sent ? 'Report sent' : 'Report could not be sent',
+      Text(
+        sent
+            ? 'Thank you. App support can now see this picture problem.'
+            : 'A report may have been sent recently, or support could not be reached. Try again in a minute.',
+      ),
+    );
   }
 
   Future<void> _chooseEngine() async {
@@ -1142,6 +1336,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final navigator = Navigator.of(context);
     final item = _item;
     final episode = _episode;
+    final supportSessionId = _supportSession?.id;
     _exiting = true;
     _generation++;
     _retryTimer?.cancel();
@@ -1164,6 +1359,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             item: item,
             episode: episode,
             canTestStream: true,
+            supportSessionId: supportSessionId,
           ),
         ),
       ),
@@ -1190,6 +1386,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               ? 'Playing'
               : 'Paused';
           final fields = {
+            if (_supportSession != null)
+              'Support reference':
+                  'D-${_supportSession!.id.substring(0, 8).toUpperCase()}',
             'Player': ref.read(isDesktopProvider)
                 ? 'Windows · media_kit'
                 : _engine == PlayerEngine.native
@@ -1477,6 +1676,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
+    _finishReport();
+    unawaited(_reporting?.context() ?? Future.value());
     WidgetsBinding.instance.removeObserver(this);
     _progressTimer?.cancel();
     _controlsTimer?.cancel();

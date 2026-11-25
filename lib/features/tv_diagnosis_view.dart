@@ -17,6 +17,9 @@ class TvDiagnosisView extends StatefulWidget {
     required this.progressLabel,
     this.includeStream,
     this.onStreamChanged,
+    this.showSend = false,
+    this.onSend,
+    this.sendLabel = 'Send to support',
   });
   final DiagnosticReport? report;
   final bool busy, canRun;
@@ -24,6 +27,9 @@ class TvDiagnosisView extends StatefulWidget {
   final String progressLabel;
   final bool? includeStream;
   final ValueChanged<bool>? onStreamChanged;
+  final bool showSend;
+  final VoidCallback? onSend;
+  final String sendLabel;
   @override
   State<TvDiagnosisView> createState() => _TvDiagnosisViewState();
 }
@@ -33,6 +39,7 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
   final _reading = FocusNode(debugLabel: 'Diagnosis explanation');
   final _run = FocusNode(debugLabel: 'Diagnosis action');
   final _copy = FocusNode(debugLabel: 'Copy diagnosis');
+  final _send = FocusNode(debugLabel: 'Send diagnosis');
   final _stream = FocusNode(debugLabel: 'Diagnosis stream option');
   String? _stage;
   @override
@@ -40,6 +47,7 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
     _reading.dispose();
     _run.dispose();
     _copy.dispose();
+    _send.dispose();
     _stream.dispose();
     super.dispose();
   }
@@ -223,12 +231,29 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
                       ? null
                       : widget.onCopy,
                   onLeft: _run.requestFocus,
-                  onRight: widget.includeStream == null
+                  onRight: widget.showSend && widget.onSend != null
+                      ? _send.requestFocus
+                      : widget.includeStream == null
                       ? _reading.requestFocus
                       : _stream.requestFocus,
                   onUp: _reading.requestFocus,
                 ),
               ),
+              if (widget.showSend) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TvUtilityAction(
+                    label: widget.sendLabel,
+                    focusNode: _send,
+                    onPressed: widget.onSend,
+                    onLeft: _copy.requestFocus,
+                    onRight: widget.includeStream == null
+                        ? _reading.requestFocus
+                        : _stream.requestFocus,
+                    onUp: _reading.requestFocus,
+                  ),
+                ),
+              ],
               if (widget.includeStream != null) ...[
                 const SizedBox(width: 12),
                 Expanded(
@@ -241,7 +266,9 @@ class _TvDiagnosisViewState extends State<TvDiagnosisView> {
                         : () => widget.onStreamChanged?.call(
                             !widget.includeStream!,
                           ),
-                    onLeft: _copy.requestFocus,
+                    onLeft: widget.showSend && widget.onSend != null
+                        ? _send.requestFocus
+                        : _copy.requestFocus,
                     onUp: _reading.requestFocus,
                   ),
                 ),

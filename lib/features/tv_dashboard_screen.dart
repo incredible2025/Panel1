@@ -12,6 +12,7 @@ import '../data/models.dart';
 import '../data/recommendations.dart';
 import '../core/recommendation_providers.dart';
 import '../widgets/live_channel_preview.dart';
+import '../widgets/tv_app_exit.dart';
 import '../widgets/parental_access.dart';
 import '../widgets/status_view.dart';
 import '../widgets/tv_controls.dart';
@@ -30,6 +31,7 @@ import 'series_detail_screen.dart';
 import 'settings_screen.dart';
 import 'speed_test_screen.dart';
 import 'tv_guide_screen.dart';
+import 'catchup_screen.dart';
 
 /// A dedicated television shell: no expanding sidebar or nested page/channel
 /// scrolling. Each browsing column has a stable, explicit remote path.
@@ -193,6 +195,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     return KeyEventResult.ignored;
   }
 
+  Future<void> _openCatchup() async {
+    _channelFocusTimer?.cancel();
+    await _preview.currentState?.stop();
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const CatchupScreen()));
+  }
+
   bool _visible(MediaItem item) =>
       !_settings.hidden(item) &&
       (ref.read(parentalSessionProvider) || !_settings.locked(item));
@@ -343,6 +354,17 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
     ref.invalidate(categoriesProvider(_kind));
   }
 
+  Future<void> _exitApp() => ref
+      .read(tvAppExitProvider)
+      .request(
+        context,
+        ref,
+        beforeExit: () async {
+          _channelFocusTimer?.cancel();
+          await _preview.currentState?.stop();
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -366,9 +388,13 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
       child: Theme(
         data: TvGlass.theme(Theme.of(context)),
         child: PopScope(
-          canPop: _section == 'home',
+          canPop: _section == 'home' && !ref.watch(isTvProvider),
           onPopInvokedWithResult: (popped, result) {
             if (!popped) {
+              if (_section == 'home') {
+                unawaited(_exitApp());
+                return;
+              }
               if (_catalog && (_section == 'movie' || _section == 'series')) {
                 setState(() {
                   _catalog = false;
@@ -433,6 +459,8 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                                               ? 'Account ${info!.remainingDays! <= 0 ? 'expired' : 'expires in ${info.remainingDays} days'} · Open Settings'
                                               : ref.watch(isDesktopProvider)
                                               ? 'Mouse / arrows  Browse     Enter  Select     F11  Fullscreen'
+                                              : _section == 'home'
+                                              ? 'D-pad  Browse     OK  Details / watch     Back  Exit app'
                                               : 'D-pad  Browse     OK  Details / watch     Back  Home',
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -495,7 +523,7 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           ('list', 'My List'),
         ])
           Padding(
-            padding: const EdgeInsets.only(right: 20),
+            padding: const EdgeInsets.only(right: 12),
             child: TvControl(
               style: TvControlStyle.navigation,
               focusNode: _nav(entry.$1),
@@ -529,6 +557,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
           onPressed: () => _sectionTo('settings'),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
           child: const Text('Settings', style: TextStyle(fontSize: 11)),
+        ),
+        const SizedBox(width: 16),
+        TvControl(
+          style: TvControlStyle.navigation,
+          focusNode: _nav('catchup'),
+          label: 'Catch-up',
+          onPressed: _openCatchup,
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+          child: const Text('Catch-up', style: TextStyle(fontSize: 13)),
         ),
       ],
     ),
@@ -1600,6 +1637,15 @@ class _TvDashboardScreenState extends ConsumerState<TvDashboardScreen> {
                             builder: (_) => SettingsScreen(groupIndex: e.$1),
                           ),
                         ),
+                      ),
+                    if (ref.watch(isTvProvider))
+                      TvListEntry(
+                        id: 'exit',
+                        title: 'Exit app',
+                        subtitle:
+                            'Stop playback and return to your TV launcher',
+                        leading: const Icon(Icons.power_settings_new),
+                        onPressed: _exitApp,
                       ),
                   ],
                 ),

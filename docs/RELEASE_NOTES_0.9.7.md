@@ -1,0 +1,2 @@
+- Simplified playback issue reporting.
+- Improved support troubleshooting.

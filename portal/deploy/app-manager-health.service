@@ -1,0 +1,16 @@
+[Unit]
+Description=Collect management server health
+
+[Service]
+Type=oneshot
+User=root
+Group=app-manager-web
+UMask=0027
+ExecStart=/usr/bin/python3 /opt/app-manager/deploy/health.py
+PrivateTmp=true
+ProtectHome=true
+NoNewPrivileges=true
+ProtectSystem=strict
+CapabilityBoundingSet=
+InaccessiblePaths=-/opt/app-manager/data -/opt/app-manager/backups -/opt/app-manager/deploy/.env
+ReadWritePaths=/opt/app-manager/release-receipts

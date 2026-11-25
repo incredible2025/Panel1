@@ -21,7 +21,7 @@
     @forelse($entries as $entry)
         <article class="portal-card p-5">
             <div class="flex flex-wrap justify-between gap-3"><strong>{{ $categories[$entry->category] ?? 'Other playback error' }}</strong><span class="portal-muted text-sm">{{ $entry->created_at }} UTC</span></div>
-            <p class="mt-2 font-semibold">Line username: {{ $entry->username ?? 'Unavailable — requires the updated app' }}</p>
+            <p class="mt-2 break-all font-semibold">Line username: {{ $entry->username ?? 'Unavailable — requires the updated app' }}</p>
             <p class="mt-2">{{ $entry->device_model }} · {{ $entry->os_version }} · {{ $entry->form_factor==='tv' ? 'TV' : 'Mobile' }}</p>
             <p class="portal-muted mt-2 text-sm">{{ $apps->firstWhere('id',$entry->managed_app_id)?->name }} · {{ ['native'=>'ExoPlayer','compatibility'=>'MPV','vlc'=>'VLC'][$entry->engine] ?? 'Player' }} · Requested {{ $entry->decoding }} decoding · Version {{ $entry->version }} ({{ $entry->build }}) · {{ $entry->installation }}</p>
             <p class="mt-4 font-semibold">{{ $entry->guidance['confidence'] }}</p><p class="mt-2">{{ $entry->guidance['explanation'] }}</p><p class="portal-muted mt-2">{{ $entry->guidance['action'] }}</p>
